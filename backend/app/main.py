@@ -31,7 +31,7 @@ def _path_is_relative_to(path: Path, parent: Path) -> bool:
 
 def _build_openapi_schema(app: FastAPI) -> dict[str, Any]:
     if app.openapi_schema:
-        return cast(dict[str, Any], app.openapi_schema)
+        return app.openapi_schema
 
     schema = get_openapi(
         title=app.title,

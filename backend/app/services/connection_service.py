@@ -4,12 +4,14 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from json import JSONDecodeError
 from time import perf_counter
+from typing import TYPE_CHECKING, Protocol
 
 import pymysql  # type: ignore[import-untyped]
 from cryptography.fernet import InvalidToken
 from pymysql import MySQLError
-from sqlalchemy import Select, func, select
+from sqlalchemy import URL, Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,9 @@ from app.schemas.connection import (
     ConnectionUpdate,
 )
 
+if TYPE_CHECKING:
+    from app.services.query_executor import ExecutorService
+
 _PROTECTED_EXTRA_PARAM_KEYS = frozenset(
     {
         "connect_timeout",
@@ -38,7 +43,23 @@ _PROTECTED_EXTRA_PARAM_KEYS = frozenset(
         "username",
     }
 )
+_ALLOWED_EXTRA_PARAM_KEYS = frozenset(
+    {
+        "charset",
+        "read_timeout",
+        "ssl_ca",
+        "ssl_cert",
+        "ssl_key",
+        "ssl_verify_cert",
+        "ssl_verify_identity",
+        "write_timeout",
+    }
+)
 _PASSWORD_DECRYPT_ERROR = "Unable to decrypt connection password. Please update the saved password."
+
+
+class SecretDecryptor(Protocol):
+    def decrypt_secret(self, value: bytes | None) -> str | None: ...
 
 
 @dataclass(slots=True)
@@ -51,8 +72,13 @@ class ConnectionTestResult:
 
 
 class ConnectionService:
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        executor_service: ExecutorService | None = None,
+    ) -> None:
         self.session = session
+        self._executor_service = executor_service
 
     def list_connections(self, *, page: int, page_size: int) -> ConnectionListResponse:
         total = self.session.scalar(select(func.count()).select_from(Connection))
@@ -124,12 +150,14 @@ class ConnectionService:
 
         self._commit_or_raise_conflict()
         self.session.refresh(connection)
+        self._invalidate_executor_engine(connection_id)
         return self._to_read_model(connection)
 
     def delete_connection(self, connection_id: int) -> None:
         connection = self._get_connection_or_raise(connection_id)
         self.session.delete(connection)
         self.session.commit()
+        self._invalidate_executor_engine(connection_id)
 
     def test_connection(self, connection_id: int) -> ConnectionTestResponse:
         connection = self._get_connection_or_raise(connection_id)
@@ -211,6 +239,14 @@ class ConnectionService:
                 tested_at=tested_at,
                 error=str(exc),
             )
+        except OSError as exc:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=f"Invalid MySQL connection parameters: {exc}",
+            )
         except (TypeError, ValueError) as exc:
             return ConnectionTestResult(
                 ok=False,
@@ -248,14 +284,21 @@ class ConnectionService:
         if extra_params is None:
             return None
         normalized_extra_params = dict(extra_params)
-        protected_keys = sorted(
-            key for key in normalized_extra_params if key.lower() in _PROTECTED_EXTRA_PARAM_KEYS
-        )
+        protected_keys = ConnectionService._find_forbidden_extra_param_keys(normalized_extra_params)
         if protected_keys:
             raise ValidationError(
                 code="CONN_EXTRA_PARAMS_FORBIDDEN",
-                message="extra_params cannot override core connection fields.",
+                message="extra_params contains unsupported or unsafe keys.",
                 detail={"keys": protected_keys},
+            )
+        invalid_keys = ConnectionService._find_invalid_extra_param_value_keys(
+            normalized_extra_params
+        )
+        if invalid_keys:
+            raise ValidationError(
+                code="CONN_EXTRA_PARAMS_INVALID",
+                message="extra_params contains invalid value types.",
+                detail={"keys": invalid_keys},
             )
         return json.dumps(normalized_extra_params)
 
@@ -263,14 +306,67 @@ class ConnectionService:
     def _load_extra_params(raw_extra_params: str | None) -> dict[str, object]:
         if raw_extra_params is None:
             return {}
-        loaded = json.loads(raw_extra_params)
+        try:
+            loaded = json.loads(raw_extra_params)
+        except JSONDecodeError as exc:
+            raise ValidationError(
+                code="CONN_EXTRA_PARAMS_INVALID",
+                message="extra_params must be a valid JSON object.",
+            ) from exc
         if isinstance(loaded, dict):
+            protected_keys = ConnectionService._find_forbidden_extra_param_keys(loaded)
+            if protected_keys:
+                raise ValidationError(
+                    code="CONN_EXTRA_PARAMS_FORBIDDEN",
+                    message="extra_params contains unsupported or unsafe keys.",
+                    detail={"keys": protected_keys},
+                )
+            invalid_keys = ConnectionService._find_invalid_extra_param_value_keys(loaded)
+            if invalid_keys:
+                raise ValidationError(
+                    code="CONN_EXTRA_PARAMS_INVALID",
+                    message="extra_params contains invalid value types.",
+                    detail={"keys": invalid_keys},
+                )
             return loaded
         return {}
 
     @staticmethod
+    def _find_forbidden_extra_param_keys(extra_params: Mapping[str, object]) -> list[str]:
+        return sorted(
+            key
+            for key in extra_params
+            if key.lower() in _PROTECTED_EXTRA_PARAM_KEYS or key not in _ALLOWED_EXTRA_PARAM_KEYS
+        )
+
+    @staticmethod
+    def _find_invalid_extra_param_value_keys(extra_params: Mapping[str, object]) -> list[str]:
+        invalid_keys: list[str] = []
+        for key, value in extra_params.items():
+            invalid_string_value = key in {
+                "charset",
+                "ssl_ca",
+                "ssl_cert",
+                "ssl_key",
+            } and not isinstance(value, str)
+            invalid_boolean_value = key in {
+                "ssl_verify_cert",
+                "ssl_verify_identity",
+            } and not isinstance(value, bool)
+            invalid_timeout_value = key in {"read_timeout", "write_timeout"} and (
+                isinstance(value, bool) or not isinstance(value, int | float) or value <= 0
+            )
+            if invalid_string_value or invalid_boolean_value or invalid_timeout_value:
+                invalid_keys.append(key)
+        return sorted(invalid_keys)
+
+    @staticmethod
     def _is_connection_name_conflict(exc: IntegrityError) -> bool:
         return "connections.name" in str(exc.orig)
+
+    def _invalidate_executor_engine(self, connection_id: int) -> None:
+        if self._executor_service is not None:
+            self._executor_service.invalidate_engine(connection_id)
 
     def _to_read_model(self, connection: Connection) -> ConnectionRead:
         return ConnectionRead.model_validate(
@@ -291,3 +387,30 @@ class ConnectionService:
                 "last_test_ok": connection.last_test_ok,
             }
         )
+
+
+def _build_sqlalchemy_url(
+    connection: Connection,
+    crypto_service: SecretDecryptor | None = None,
+) -> URL:
+    password = (
+        crypto_service.decrypt_secret(connection.password_enc)
+        if crypto_service is not None
+        else decrypt_secret(connection.password_enc)
+    )
+    return URL.create(
+        "mysql+pymysql",
+        username=connection.username,
+        password=password,
+        host=connection.host,
+        port=connection.port or 3306,
+        database=connection.database,
+    )
+
+
+def _build_sqlalchemy_connect_args(connection: Connection) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in ConnectionService._load_extra_params(connection.extra_params).items()
+        if value is not None
+    }

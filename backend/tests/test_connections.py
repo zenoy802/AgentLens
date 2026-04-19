@@ -93,13 +93,13 @@ async def test_create_list_get_update_and_delete_connection() -> None:
             json={
                 "name": "prod-mysql-updated",
                 "password": "updated-secret",
-                "extra_params": {"charset": "utf8mb4", "ssl": True},
+                "extra_params": {"charset": "utf8mb4", "ssl_ca": "/tmp/ca.pem"},
             },
         )
         assert patch_response.status_code == HTTP_OK
         patched = patch_response.json()
         assert patched["name"] == "prod-mysql-updated"
-        assert patched["extra_params"] == {"charset": "utf8mb4", "ssl": True}
+        assert patched["extra_params"] == {"charset": "utf8mb4", "ssl_ca": "/tmp/ca.pem"}
 
         delete_response = await client.delete(f"/api/v1/connections/{connection_id}")
         assert delete_response.status_code == HTTP_NO_CONTENT
@@ -191,6 +191,137 @@ async def test_create_connection_rejects_extra_params_core_override() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra_params",
+    [
+        {"init_command": "DROP TABLE t"},
+        {"local_infile": True},
+        {"client_flag": 1},
+        {"read_default_file": "/tmp/my.cnf"},
+        {"cursorclass": "DictCursor"},
+        {"ssl": True},
+        {"bad_kwarg": True},
+        {"Read_Timeout": 5},
+        {"SSL_CA": "/tmp/ca.pem"},
+    ],
+)
+async def test_create_connection_rejects_unsupported_or_unsafe_extra_params(
+    extra_params: dict[str, object],
+) -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "unsafe-param-mysql",
+                "db_type": "mysql",
+                "host": "db.example.com",
+                "database": "agent_logs",
+                "extra_params": extra_params,
+            },
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": sorted(extra_params)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra_params",
+    [
+        {"charset": 123},
+        {"read_timeout": "5"},
+        {"write_timeout": True},
+        {"ssl_ca": True},
+        {"ssl_verify_cert": "true"},
+    ],
+)
+async def test_create_connection_rejects_invalid_extra_param_value_types(
+    extra_params: dict[str, object],
+) -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "invalid-param-type-mysql",
+                "db_type": "mysql",
+                "host": "db.example.com",
+                "database": "agent_logs",
+                "extra_params": extra_params,
+            },
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_INVALID"
+    assert payload["error"]["detail"] == {"keys": sorted(extra_params)}
+
+
+@pytest.mark.asyncio
+async def test_get_connection_rejects_persisted_unsafe_extra_params() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection = Connection(
+            name="legacy-unsafe",
+            db_type="mysql",
+            database="agent_logs",
+            extra_params=json.dumps({"init_command": "DROP TABLE t"}),
+            default_timeout=30,
+            default_row_limit=10000,
+        )
+        session.add(connection)
+        session.commit()
+        connection_id = connection.id
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(f"/api/v1/connections/{connection_id}")
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": ["init_command"]}
+
+
+@pytest.mark.asyncio
+async def test_get_connection_rejects_persisted_invalid_extra_params_json() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection = Connection(
+            name="legacy-invalid-json",
+            db_type="mysql",
+            database="agent_logs",
+            extra_params="{not-json",
+            default_timeout=30,
+            default_row_limit=10000,
+        )
+        session.add(connection)
+        session.commit()
+        connection_id = connection.id
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(f"/api/v1/connections/{connection_id}")
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_INVALID"
+
+
+@pytest.mark.asyncio
 async def test_test_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
     initialize_metadata_database()
 
@@ -243,7 +374,7 @@ async def test_test_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_test_connection_invalid_extra_param_returns_ok_false() -> None:
+async def test_update_connection_rejects_unsupported_extra_params() -> None:
     initialize_metadata_database()
 
     transport = httpx.ASGITransport(app=cast(Any, app))
@@ -251,18 +382,89 @@ async def test_test_connection_invalid_extra_param_returns_ok_false() -> None:
         create_response = await client.post(
             "/api/v1/connections",
             json={
-                "name": "invalid-param-mysql",
+                "name": "safe-param-mysql",
                 "db_type": "mysql",
                 "database": "agent_logs",
-                "extra_params": {"bad_kwarg": True},
+                "extra_params": {"charset": "utf8mb4"},
             },
         )
         connection_id = create_response.json()["id"]
 
-        test_response = await client.post(f"/api/v1/connections/{connection_id}/test")
+        response = await client.patch(
+            f"/api/v1/connections/{connection_id}",
+            json={"extra_params": {"init_command": "DROP TABLE t"}},
+        )
 
-    assert test_response.status_code == HTTP_OK
-    payload = test_response.json()
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": ["init_command"]}
+
+
+@pytest.mark.asyncio
+async def test_test_connection_rejects_persisted_unsafe_extra_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection = Connection(
+            name="legacy-unsafe-test",
+            db_type="mysql",
+            database="agent_logs",
+            extra_params=json.dumps({"init_command": "DROP TABLE t"}),
+            default_timeout=30,
+            default_row_limit=10000,
+        )
+        session.add(connection)
+        session.commit()
+        connection_id = connection.id
+    finally:
+        session.close()
+
+    def fake_connect(**_: object) -> FakeMySQLConnection:
+        raise AssertionError("unsafe extra_params must not reach pymysql.connect")
+
+    monkeypatch.setattr("app.services.connection_service.pymysql.connect", fake_connect)
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(f"/api/v1/connections/{connection_id}/test")
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": ["init_command"]}
+
+
+@pytest.mark.asyncio
+async def test_test_connection_file_error_returns_ok_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "missing-ssl-ca",
+                "db_type": "mysql",
+                "database": "agent_logs",
+                "extra_params": {"ssl_ca": "/definitely/not/found/ca.pem"},
+            },
+        )
+        connection_id = create_response.json()["id"]
+
+        def fake_connect(**_: object) -> FakeMySQLConnection:
+            raise FileNotFoundError("/definitely/not/found/ca.pem")
+
+        monkeypatch.setattr("app.services.connection_service.pymysql.connect", fake_connect)
+
+        response = await client.post(f"/api/v1/connections/{connection_id}/test")
+
+    assert response.status_code == HTTP_OK
+    payload = response.json()
     assert payload["ok"] is False
     assert payload["server_version"] is None
     assert payload["latency_ms"] is None

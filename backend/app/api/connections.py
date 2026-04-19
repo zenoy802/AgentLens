@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.executor_registry import get_executor_service
 from app.db.session import get_db_session
 from app.schemas.connection import (
     ConnectionCreate,
@@ -14,14 +15,16 @@ from app.schemas.connection import (
     ConnectionUpdate,
 )
 from app.services.connection_service import ConnectionService
+from app.services.query_executor import ExecutorService
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
 
 def get_connection_service(
     session: Annotated[Session, Depends(get_db_session)],
+    executor_service: Annotated[ExecutorService, Depends(get_executor_service)],
 ) -> ConnectionService:
-    return ConnectionService(session)
+    return ConnectionService(session, executor_service)
 
 
 @router.get("", response_model=ConnectionListResponse)
