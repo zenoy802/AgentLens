@@ -66,6 +66,12 @@ class SqlTimeoutError(AppError):
     default_http_status = status.HTTP_504_GATEWAY_TIMEOUT
 
 
+class SqlExecutionError(AppError):
+    default_code = "SQL_EXECUTION_ERROR"
+    default_message = "SQL execution failed."
+    default_http_status = status.HTTP_400_BAD_REQUEST
+
+
 class SqlRowLimitError(AppError):
     default_code = "SQL_ROW_LIMIT_EXCEEDED"
     default_message = "SQL row limit exceeded."
@@ -122,9 +128,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def request_validation_handler(
-        _: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def request_validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return _build_error_response(
             code="VALIDATION_ERROR",
             message="Request validation failed.",
@@ -133,9 +137,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(PydanticValidationError)
-    async def pydantic_validation_handler(
-        _: Request, exc: PydanticValidationError
-    ) -> JSONResponse:
+    async def pydantic_validation_handler(_: Request, exc: PydanticValidationError) -> JSONResponse:
         return _build_error_response(
             code="VALIDATION_ERROR",
             message="Validation failed.",

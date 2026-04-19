@@ -32,3 +32,11 @@ def decrypt_secret(value: bytes | None) -> str | None:
     if value is None:
         return None
     return get_fernet().decrypt(value).decode("utf-8")
+
+
+class CryptoService:
+    def encrypt_secret(self, value: str) -> bytes:
+        return encrypt_secret(value)
+
+    def decrypt_secret(self, value: bytes | None) -> str | None:
+        return decrypt_secret(value)
