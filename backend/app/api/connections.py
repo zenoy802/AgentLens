@@ -25,7 +25,7 @@ def get_connection_service(
 
 
 @router.get("", response_model=ConnectionListResponse)
-async def list_connections(
+def list_connections(
     service: Annotated[ConnectionService, Depends(get_connection_service)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -34,7 +34,7 @@ async def list_connections(
 
 
 @router.post("", response_model=ConnectionRead, status_code=status.HTTP_201_CREATED)
-async def create_connection(
+def create_connection(
     payload: ConnectionCreate,
     service: Annotated[ConnectionService, Depends(get_connection_service)],
 ) -> ConnectionRead:
@@ -42,7 +42,7 @@ async def create_connection(
 
 
 @router.get("/{connection_id}", response_model=ConnectionRead)
-async def get_connection(
+def get_connection(
     connection_id: int,
     service: Annotated[ConnectionService, Depends(get_connection_service)],
 ) -> ConnectionRead:
@@ -50,7 +50,7 @@ async def get_connection(
 
 
 @router.patch("/{connection_id}", response_model=ConnectionRead)
-async def update_connection(
+def update_connection(
     connection_id: int,
     payload: ConnectionUpdate,
     service: Annotated[ConnectionService, Depends(get_connection_service)],
@@ -59,7 +59,7 @@ async def update_connection(
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_connection(
+def delete_connection(
     connection_id: int,
     service: Annotated[ConnectionService, Depends(get_connection_service)],
 ) -> Response:
@@ -68,9 +68,8 @@ async def delete_connection(
 
 
 @router.post("/{connection_id}/test", response_model=ConnectionTestResponse)
-async def test_connection(
+def test_connection(
     connection_id: int,
     service: Annotated[ConnectionService, Depends(get_connection_service)],
 ) -> ConnectionTestResponse:
     return service.test_connection(connection_id)
-

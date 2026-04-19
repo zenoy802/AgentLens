@@ -18,7 +18,9 @@ HTTP_OK = status.HTTP_200_OK
 HTTP_NO_CONTENT = status.HTTP_204_NO_CONTENT
 HTTP_NOT_FOUND = status.HTTP_404_NOT_FOUND
 HTTP_CONFLICT = status.HTTP_409_CONFLICT
+HTTP_UNPROCESSABLE_ENTITY = status.HTTP_422_UNPROCESSABLE_CONTENT
 MYSQL_TEST_PORT = 3307
+PASSWORD_DECRYPT_ERROR = "Unable to decrypt connection password. Please update the saved password."
 
 
 class FakeCursor:
@@ -166,6 +168,29 @@ async def test_create_connection_rejects_duplicate_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_connection_rejects_extra_params_core_override() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "override-mysql",
+                "db_type": "mysql",
+                "host": "db.example.com",
+                "database": "agent_logs",
+                "extra_params": {"host": "other.example.com", "charset": "utf8mb4"},
+            },
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": ["host"]}
+
+
+@pytest.mark.asyncio
 async def test_test_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
     initialize_metadata_database()
 
@@ -215,6 +240,68 @@ async def test_test_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
         assert connection.last_tested_at is not None
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_test_connection_invalid_extra_param_returns_ok_false() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "invalid-param-mysql",
+                "db_type": "mysql",
+                "database": "agent_logs",
+                "extra_params": {"bad_kwarg": True},
+            },
+        )
+        connection_id = create_response.json()["id"]
+
+        test_response = await client.post(f"/api/v1/connections/{connection_id}/test")
+
+    assert test_response.status_code == HTTP_OK
+    payload = test_response.json()
+    assert payload["ok"] is False
+    assert payload["server_version"] is None
+    assert payload["latency_ms"] is None
+    assert payload["error"].startswith("Invalid MySQL connection parameters:")
+
+
+@pytest.mark.asyncio
+async def test_test_connection_decrypt_failure_returns_ok_false() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "broken-secret-mysql",
+                "db_type": "mysql",
+                "database": "agent_logs",
+                "password": "pw",
+            },
+        )
+        connection_id = create_response.json()["id"]
+
+    session = get_session_factory()()
+    try:
+        connection = session.get(Connection, connection_id)
+        assert connection is not None
+        connection.password_enc = b"not-a-fernet-token"
+        session.commit()
+    finally:
+        session.close()
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        test_response = await client.post(f"/api/v1/connections/{connection_id}/test")
+
+    assert test_response.status_code == HTTP_OK
+    payload = test_response.json()
+    assert payload["ok"] is False
+    assert payload["error"] == PASSWORD_DECRYPT_ERROR
 
 
 @pytest.mark.asyncio
