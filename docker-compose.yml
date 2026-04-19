@@ -1,0 +1,9 @@
+services:
+  agentlens:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/.agentlens:/root/.agentlens
+    environment:
+      - AGENTLENS_HOST=0.0.0.0

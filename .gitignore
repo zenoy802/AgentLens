@@ -16,6 +16,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!frontend/apps/web/src/lib/
+!frontend/apps/web/src/lib/**
 parts/
 sdist/
 var/
@@ -25,6 +27,10 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# JavaScript / pnpm
+node_modules/
+.pnpm-store/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
