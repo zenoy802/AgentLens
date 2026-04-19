@@ -208,3 +208,9 @@ __marimo__/
 
 # design
 .design/
+
+# Codex
+AGENTS.md
+
+# Claude Code
+CLAUDE.md
