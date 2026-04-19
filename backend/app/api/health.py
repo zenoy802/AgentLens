@@ -25,7 +25,7 @@ def get_app_version() -> str:
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check(request: Request) -> HealthResponse:
+def health_check(request: Request) -> HealthResponse:
     started_at = getattr(request.app.state, "started_at", time.monotonic())
     uptime_seconds = max(int(time.monotonic() - started_at), 0)
     metadata_db_status = "ok"

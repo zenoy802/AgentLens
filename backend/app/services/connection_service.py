@@ -7,13 +7,14 @@ from datetime import UTC, datetime
 from time import perf_counter
 
 import pymysql  # type: ignore[import-untyped]
+from cryptography.fernet import InvalidToken
 from pymysql import MySQLError
 from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.models.connection import Connection
 from app.schemas.common import Pagination
 from app.schemas.connection import (
@@ -23,6 +24,21 @@ from app.schemas.connection import (
     ConnectionTestResponse,
     ConnectionUpdate,
 )
+
+_PROTECTED_EXTRA_PARAM_KEYS = frozenset(
+    {
+        "connect_timeout",
+        "database",
+        "db",
+        "host",
+        "passwd",
+        "password",
+        "port",
+        "user",
+        "username",
+    }
+)
+_PASSWORD_DECRYPT_ERROR = "Unable to decrypt connection password. Please update the saved password."
 
 
 @dataclass(slots=True)
@@ -145,14 +161,25 @@ class ConnectionService:
         start = perf_counter()
         try:
             extra_params = self._load_extra_params(connection.extra_params)
+            try:
+                password = decrypt_secret(connection.password_enc)
+            except (InvalidToken, ValueError):
+                return ConnectionTestResult(
+                    ok=False,
+                    latency_ms=None,
+                    server_version=None,
+                    tested_at=tested_at,
+                    error=_PASSWORD_DECRYPT_ERROR,
+                )
+
             connect_kwargs: dict[str, object] = {
+                **extra_params,
                 "host": connection.host,
                 "port": connection.port or 3306,
                 "user": connection.username,
-                "password": decrypt_secret(connection.password_enc),
+                "password": password,
                 "database": connection.database,
                 "connect_timeout": connection.default_timeout,
-                **extra_params,
             }
             connect_kwargs = {
                 key: value for key, value in connect_kwargs.items() if value is not None
@@ -184,12 +211,26 @@ class ConnectionService:
                 tested_at=tested_at,
                 error=str(exc),
             )
+        except (TypeError, ValueError) as exc:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=f"Invalid MySQL connection parameters: {exc}",
+            )
 
     def _commit_or_raise_conflict(self) -> None:
         try:
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
+            if not self._is_connection_name_conflict(exc):
+                raise ConflictError(
+                    code="DB_INTEGRITY_CONFLICT",
+                    message="Database integrity constraint failed.",
+                ) from exc
+
             raise ConflictError(
                 code="CONN_NAME_CONFLICT",
                 message="Connection name already exists.",
@@ -206,7 +247,17 @@ class ConnectionService:
     def _dump_extra_params(extra_params: Mapping[str, object] | None) -> str | None:
         if extra_params is None:
             return None
-        return json.dumps(dict(extra_params))
+        normalized_extra_params = dict(extra_params)
+        protected_keys = sorted(
+            key for key in normalized_extra_params if key.lower() in _PROTECTED_EXTRA_PARAM_KEYS
+        )
+        if protected_keys:
+            raise ValidationError(
+                code="CONN_EXTRA_PARAMS_FORBIDDEN",
+                message="extra_params cannot override core connection fields.",
+                detail={"keys": protected_keys},
+            )
+        return json.dumps(normalized_extra_params)
 
     @staticmethod
     def _load_extra_params(raw_extra_params: str | None) -> dict[str, object]:
@@ -216,6 +267,10 @@ class ConnectionService:
         if isinstance(loaded, dict):
             return loaded
         return {}
+
+    @staticmethod
+    def _is_connection_name_conflict(exc: IntegrityError) -> bool:
+        return "connections.name" in str(exc.orig)
 
     def _to_read_model(self, connection: Connection) -> ConnectionRead:
         return ConnectionRead.model_validate(
