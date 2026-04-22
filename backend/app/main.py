@@ -15,6 +15,7 @@ from app.api import api_router
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, register_exception_handlers
 from app.core.logging import setup_logging
+from app.core.scheduler import shutdown_scheduler, start_scheduler
 from app.db.session import dispose_engine, initialize_metadata_database
 
 API_PREFIX = "/api/v1"
@@ -83,9 +84,12 @@ def create_app() -> FastAPI:
         settings.ensure_directories()
         setup_logging()
         initialize_metadata_database()
+        scheduler = start_scheduler(settings)
+        app.state.scheduler = scheduler
         app.state.started_at = time.monotonic()
         logger.info("AgentLens API startup complete.")
         yield
+        shutdown_scheduler(getattr(app.state, "scheduler", None))
         dispose_engine()
 
     app = FastAPI(
