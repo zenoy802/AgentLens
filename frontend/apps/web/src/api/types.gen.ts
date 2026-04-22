@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/admin/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Cleanup */
+        post: operations["run_cleanup_api_v1_admin_cleanup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Info */
+        get: operations["get_admin_info_api_v1_admin_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connections": {
         parameters: {
             query?: never;
@@ -58,6 +92,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Sql */
+        post: operations["execute_sql_api_v1_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -75,10 +126,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Queries */
+        get: operations["list_queries_api_v1_queries_get"];
+        put?: never;
+        /** Create Query */
+        post: operations["create_query_api_v1_queries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Query */
+        get: operations["get_query_api_v1_queries__query_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Query */
+        delete: operations["delete_query_api_v1_queries__query_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Query */
+        patch: operations["update_query_api_v1_queries__query_id__patch"];
+        trace?: never;
+    };
+    "/queries/{query_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote Query */
+        post: operations["promote_query_api_v1_queries__query_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Query */
+        post: operations["execute_query_api_v1_queries__query_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/query-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Query History */
+        get: operations["list_query_history_api_v1_query_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminInfoResponse */
+        AdminInfoResponse: {
+            /** Version */
+            version: string;
+            /** Data Dir */
+            data_dir: string;
+            /** Db Path */
+            db_path: string;
+            /** Uptime Seconds */
+            uptime_seconds: number;
+            /** Scheduler Jobs */
+            scheduler_jobs: components["schemas"]["SchedulerJobRead"][];
+        };
+        /** CleanupReport */
+        CleanupReport: {
+            /** Expired Queries Deleted */
+            expired_queries_deleted: number;
+            /** History Records Deleted */
+            history_records_deleted: number;
+            /** Cascade Label Records Deleted */
+            cascade_label_records_deleted: number;
+            /** Cascade Analyses Deleted */
+            cascade_analyses_deleted: number;
+            /** Dry Run */
+            dry_run: boolean;
+        };
+        /** CleanupRequest */
+        CleanupRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** ColumnRead */
+        ColumnRead: {
+            /** Name */
+            name: string;
+            /** Sql Type */
+            sql_type: string;
+            /**
+             * Inferred Type
+             * @enum {string}
+             */
+            inferred_type: "text" | "integer" | "float" | "boolean" | "json" | "timestamp" | "binary" | "unknown";
+        };
         /** ConnectionCreate */
         ConnectionCreate: {
             /** Name */
@@ -203,6 +388,69 @@ export interface components {
             /** Default Row Limit */
             default_row_limit?: number | null;
         };
+        /** ExecuteRequest */
+        ExecuteRequest: {
+            /** Connection Id */
+            connection_id: number;
+            /** Sql */
+            sql: string;
+            /**
+             * Save As Temporary
+             * @default true
+             */
+            save_as_temporary: boolean;
+            /** Timeout */
+            timeout?: number | null;
+            /** Row Limit */
+            row_limit?: number | null;
+        };
+        /** ExecutionInfo */
+        ExecutionInfo: {
+            /**
+             * Executed At
+             * Format: date-time
+             */
+            executed_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Row Count */
+            row_count: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ExecutionResult */
+        ExecutionResult: {
+            /** Query Id */
+            query_id: number;
+            /** Is Temporary */
+            is_temporary: boolean;
+            execution: components["schemas"]["ExecutionInfo"];
+            /** Columns */
+            columns: components["schemas"]["ColumnRead"][];
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Suggested Field Renders */
+            suggested_field_renders: {
+                [key: string]: components["schemas"]["FieldRender"];
+            };
+            /** Warnings */
+            warnings: components["schemas"]["WarningRead"][];
+        };
+        /** FieldRender */
+        FieldRender: {
+            /** Type */
+            type: string;
+            /** Collapsed */
+            collapsed?: boolean | null;
+            /** Format */
+            format?: string | null;
+            /** Language */
+            language?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -219,6 +467,72 @@ export interface components {
             /** Uptime Seconds */
             uptime_seconds: number;
         };
+        /** NamedQueryCreate */
+        NamedQueryCreate: {
+            /** Connection Id */
+            connection_id: number;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Sql Text */
+            sql_text: string;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /** NamedQueryListResponse */
+        NamedQueryListResponse: {
+            /** Items */
+            items: components["schemas"]["NamedQueryRead"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** NamedQueryPromote */
+        NamedQueryPromote: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /** NamedQueryRead */
+        NamedQueryRead: {
+            /** Id */
+            id: number;
+            /** Connection Id */
+            connection_id: number;
+            /** Name */
+            name: string | null;
+            /** Description */
+            description: string | null;
+            /** Sql Text */
+            sql_text: string;
+            /** Is Named */
+            is_named: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Last Executed At */
+            last_executed_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+        };
+        /** NamedQueryUpdate */
+        NamedQueryUpdate: {
+            /** Name */
+            name?: string;
+            /** Description */
+            description?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
         /** Pagination */
         Pagination: {
             /** Page */
@@ -229,6 +543,54 @@ export interface components {
             total: number;
             /** Total Pages */
             total_pages: number;
+        };
+        /** QueryExecuteRequest */
+        QueryExecuteRequest: {
+            /** Timeout */
+            timeout?: number | null;
+            /** Row Limit */
+            row_limit?: number | null;
+        };
+        /** QueryHistoryListResponse */
+        QueryHistoryListResponse: {
+            /** Items */
+            items: components["schemas"]["QueryHistoryRead"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** QueryHistoryRead */
+        QueryHistoryRead: {
+            /** Id */
+            id: number;
+            /** Connection Id */
+            connection_id: number;
+            /** Sql Text */
+            sql_text: string;
+            /** Row Count */
+            row_count: number | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Status */
+            status: string;
+            /** Error Message */
+            error_message: string | null;
+            /**
+             * Executed At
+             * Format: date-time
+             */
+            executed_at: string;
+            /** Query Id */
+            query_id: number | null;
+        };
+        /** SchedulerJobRead */
+        SchedulerJobRead: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Trigger */
+            trigger: string;
+            /** Next Run Time */
+            next_run_time: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -243,6 +605,17 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WarningRead */
+        WarningRead: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -252,6 +625,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    run_cleanup_api_v1_admin_cleanup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_info_api_v1_admin_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminInfoResponse"];
+                };
+            };
+        };
+    };
     list_connections_api_v1_connections_get: {
         parameters: {
             query?: {
@@ -443,6 +869,39 @@ export interface operations {
             };
         };
     };
+    execute_sql_api_v1_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_check_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -459,6 +918,274 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    list_queries_api_v1_queries_get: {
+        parameters: {
+            query?: {
+                connection_id?: number | null;
+                is_named?: boolean | null;
+                search?: string | null;
+                include_expired?: boolean;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedQueryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_query_api_v1_queries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamedQueryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedQueryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_query_api_v1_queries__query_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedQueryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_query_api_v1_queries__query_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_query_api_v1_queries__query_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamedQueryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedQueryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_query_api_v1_queries__query_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamedQueryPromote"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedQueryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_query_api_v1_queries__query_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["QueryExecuteRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_query_history_api_v1_query_history_get: {
+        parameters: {
+            query?: {
+                connection_id?: number | null;
+                page?: number;
+                page_size?: number;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryHistoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -46,6 +46,7 @@ pip-delete-this-directory.txt
 htmlcov/
 .tox/
 .nox/
+.agentlens-test-data/
 .coverage
 .coverage.*
 .cache

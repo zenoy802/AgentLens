@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Database, HomeIcon } from "lucide-react";
+import { Database, HomeIcon, ListChecks } from "lucide-react";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { Home } from "@/pages/Home";
+import { QueryPlaceholder } from "@/pages/QueryPlaceholder";
+import { Queries } from "@/pages/Queries";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +23,13 @@ function Sidebar() {
         >
           <HomeIcon className="h-4 w-4" aria-hidden="true" />
           Home
+        </Link>
+        <Link
+          to="/queries"
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          <ListChecks className="h-4 w-4" aria-hidden="true" />
+          Queries
         </Link>
       </nav>
     </aside>
@@ -45,6 +54,9 @@ function AppShell() {
         <main className="flex-1 px-4 py-6 md:px-8">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/queries" element={<Queries />} />
+            <Route path="/query" element={<QueryPlaceholder mode="new" />} />
+            <Route path="/query/:queryId" element={<QueryPlaceholder mode="detail" />} />
           </Routes>
         </main>
       </div>
