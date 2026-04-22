@@ -218,6 +218,9 @@ __marimo__/
 
 # Codex
 AGENTS.md
+.mcp.json
+scripts/codex-playwright-mcp.sh
+docs/testing-playwright-mcp.md
 
 # Claude Code
 CLAUDE.md
