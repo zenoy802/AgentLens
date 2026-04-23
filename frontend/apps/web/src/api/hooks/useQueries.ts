@@ -50,7 +50,7 @@ export function useQueries(params: QueryListParams = {}) {
   });
 }
 
-export function useQuery_Q(id: number) {
+export function useQueryById(id: number) {
   return useQuery({
     queryKey: queryKeys.detail(id),
     enabled: Number.isFinite(id) && id > 0,
@@ -60,7 +60,7 @@ export function useQuery_Q(id: number) {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to load query: ${JSON.stringify(error)}`);
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to load query with status ${response.status}`);
@@ -70,6 +70,8 @@ export function useQuery_Q(id: number) {
     },
   });
 }
+
+export const useQuery_Q = useQueryById;
 
 export function useDeleteQuery() {
   const queryClient = useQueryClient();
