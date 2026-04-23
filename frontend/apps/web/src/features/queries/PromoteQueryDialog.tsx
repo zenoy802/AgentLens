@@ -6,13 +6,24 @@ import type { NamedQueryRead } from "@/api/hooks/useQueries";
 import { usePromoteQuery } from "@/api/hooks/useQueries";
 import { Button } from "@/components/ui/button";
 
+export type PromotableQuery = Pick<
+  NamedQueryRead,
+  "id" | "name" | "description" | "expires_at"
+>;
+
 type PromoteQueryDialogProps = {
   open: boolean;
-  query: NamedQueryRead | null;
+  query: PromotableQuery | null;
   onOpenChange: (open: boolean) => void;
+  onPromoted?: (query: NamedQueryRead) => void;
 };
 
-export function PromoteQueryDialog({ open, query, onOpenChange }: PromoteQueryDialogProps) {
+export function PromoteQueryDialog({
+  open,
+  query,
+  onOpenChange,
+  onPromoted,
+}: PromoteQueryDialogProps) {
   const promoteQuery = usePromoteQuery();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -38,7 +49,7 @@ export function PromoteQueryDialog({ open, query, onOpenChange }: PromoteQueryDi
     }
 
     try {
-      await promoteQuery.mutateAsync({
+      const promotedQuery = await promoteQuery.mutateAsync({
         id: query.id,
         payload: {
           name: name.trim(),
@@ -46,6 +57,7 @@ export function PromoteQueryDialog({ open, query, onOpenChange }: PromoteQueryDi
           expires_at: expiresAt ? `${expiresAt}T00:00:00.000Z` : null,
         },
       });
+      onPromoted?.(promotedQuery);
       toast.success("查询已保存");
       onOpenChange(false);
     } catch (error) {
@@ -110,7 +122,7 @@ export function PromoteQueryDialog({ open, query, onOpenChange }: PromoteQueryDi
           </label>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               取消
             </Button>
             <Button type="submit" disabled={promoteQuery.isPending || name.trim().length === 0}>

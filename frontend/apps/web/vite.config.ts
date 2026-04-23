@@ -5,6 +5,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    exclude: ["monaco-editor"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
