@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/api/client";
-import type { components } from "@/api/types.gen";
+import type { QueryHistoryListResponse, QueryHistoryRead } from "@/api/types";
 
-export type QueryHistoryRead = components["schemas"]["QueryHistoryRead"];
-export type QueryHistoryListResponse = components["schemas"]["QueryHistoryListResponse"];
+export type { QueryHistoryListResponse, QueryHistoryRead };
 
 export type QueryHistoryParams = {
   connection_id?: number;

@@ -1,13 +1,7 @@
 import { create } from "zustand";
 
-import type { components } from "@/api/types.gen";
-
-export type Column = components["schemas"]["ColumnRead"];
-export type ExecutionInfo = components["schemas"]["ExecutionInfo"];
-export type ExecutionResult = components["schemas"]["ExecutionResult"];
-export type FieldRender = components["schemas"]["FieldRender"];
-export type Row = ExecutionResult["rows"][number];
-export type Warning = components["schemas"]["WarningRead"];
+import type { Column, ExecutionInfo, ExecutionResult, FieldRender, Row, Warning } from "@/api/types";
+export type { Column, ExecutionInfo, ExecutionResult, FieldRender, Row, Warning } from "@/api/types";
 
 export interface QueryState {
   connectionId: number | null;

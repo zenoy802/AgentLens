@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/api/client";
-import type { components } from "@/api/types.gen";
+import type { ConnectionListResponse, ConnectionRead } from "@/api/types";
 
-export type ConnectionRead = components["schemas"]["ConnectionRead"];
-export type ConnectionListResponse = components["schemas"]["ConnectionListResponse"];
+export type { ConnectionListResponse, ConnectionRead };
 
 const CONNECTION_PAGE_SIZE = 100;
 
