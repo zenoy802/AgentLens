@@ -2,13 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiClient } from "@/api/client";
-import type { components } from "@/api/types.gen";
+import type { ExecuteRequest, ExecutionResult } from "@/api/types";
 import { queryHistoryKeys } from "@/api/hooks/useQueryHistory";
 import { queryKeys } from "@/api/hooks/useQueries";
 import { formatApiError } from "@/lib/formatApiError";
 
-export type ExecuteRequest = components["schemas"]["ExecuteRequest"];
-export type ExecutionResult = components["schemas"]["ExecutionResult"];
+export type { ExecuteRequest, ExecutionResult };
 
 export function useExecute() {
   const queryClient = useQueryClient();
@@ -24,7 +23,7 @@ export function useExecute() {
         throw new Error(`执行失败，HTTP ${response.status}`);
       }
 
-      return data;
+      return data as ExecutionResult;
     },
     onSuccess: async () => {
       await Promise.all([

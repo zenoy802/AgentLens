@@ -4,6 +4,7 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 
 import { useExecute } from "@/api/hooks/useExecute";
 import { useQueryById } from "@/api/hooks/useQueries";
+import type { Row } from "@/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
@@ -12,6 +13,8 @@ import {
   PromoteQueryDialog,
   type PromotableQuery,
 } from "@/features/queries/PromoteQueryDialog";
+import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
+import { RowTable } from "@/features/row-view/RowTable";
 import { cn } from "@/lib/utils";
 import { useQueryStore } from "@/stores/queryStore";
 
@@ -37,6 +40,7 @@ export function Query() {
   const connectionId = useQueryStore((state) => state.connectionId);
   const sql = useQueryStore((state) => state.sql);
   const queryId = useQueryStore((state) => state.queryId);
+  const columns = useQueryStore((state) => state.columns);
   const rows = useQueryStore((state) => state.rows);
   const execution = useQueryStore((state) => state.execution);
   const isExecuting = useQueryStore((state) => state.isExecuting);
@@ -50,6 +54,7 @@ export function Query() {
   const [lastError, setLastError] = useState<unknown>(null);
   const [autoEditorHeight, setAutoEditorHeight] = useState(200);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const hydratedQueryIdRef = useRef<number | null>(null);
 
@@ -66,6 +71,7 @@ export function Query() {
     setActiveQuery(null);
     setLastError(null);
     setManualEditorHeight(null);
+    setDetailRow(null);
 
     if (initialConnectionId !== null) {
       setConnectionId(initialConnectionId);
@@ -99,6 +105,7 @@ export function Query() {
     });
     setLastError(null);
     setManualEditorHeight(null);
+    setDetailRow(null);
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
 
   async function handleRun() {
@@ -123,6 +130,7 @@ export function Query() {
       }
 
       setResult(result);
+      setDetailRow(null);
       setActiveQuery({
         id: result.query_id,
         name: null,
@@ -161,6 +169,7 @@ export function Query() {
 
   function clearCurrentQueryIdentity() {
     setLastError(null);
+    setDetailRow(null);
     setActiveQuery(null);
     setPromoteTarget(null);
     useQueryStore.setState({
@@ -292,10 +301,25 @@ export function Query() {
             error={lastError}
             isExecuting={isExecuting}
             execution={execution}
+            columns={columns}
+            rows={rows}
             returnedRows={rows.length}
+            onRowClick={setDetailRow}
           />
         </div>
       </section>
+
+      <RowDetailSheet
+        open={detailRow !== null}
+        row={detailRow}
+        columns={columns}
+        rowNumber={getRowNumber(rows, detailRow)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailRow(null);
+          }
+        }}
+      />
 
       <PromoteQueryDialog
         open={promoteTarget !== null}
@@ -324,14 +348,20 @@ type ResultPlaceholderProps = {
   error: unknown;
   isExecuting: boolean;
   execution: ReturnType<typeof useQueryStore.getState>["execution"];
+  columns: ReturnType<typeof useQueryStore.getState>["columns"];
+  rows: Row[];
   returnedRows: number;
+  onRowClick: (row: Row) => void;
 };
 
 function ResultPlaceholder({
   error,
   isExecuting,
   execution,
+  columns,
+  rows,
   returnedRows,
+  onRowClick,
 }: ResultPlaceholderProps) {
   if (isExecuting) {
     return (
@@ -347,6 +377,10 @@ function ResultPlaceholder({
   }
 
   if (execution !== null) {
+    if (rows.length > 0) {
+      return <RowTable columns={columns} rows={rows} onRowClick={onRowClick} />;
+    }
+
     return (
       <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
         已返回 {returnedRows} 行
@@ -381,4 +415,13 @@ function getInitialSql(locationState: unknown): string | null {
   }
 
   return null;
+}
+
+function getRowNumber(rows: Row[], row: Row | null): number | null {
+  if (row === null) {
+    return null;
+  }
+
+  const index = rows.indexOf(row);
+  return index === -1 ? null : index + 1;
 }

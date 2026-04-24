@@ -7,11 +7,9 @@ import { apiClient } from "@/api/client";
 import { useConnections } from "@/api/hooks/useConnections";
 import type { QueryHistoryRead } from "@/api/hooks/useQueryHistory";
 import { useQueryHistory } from "@/api/hooks/useQueryHistory";
-import type { components } from "@/api/types.gen";
+import type { HealthResponse } from "@/api/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-type HealthResponse = components["schemas"]["HealthResponse"];
 
 async function fetchHealth(): Promise<HealthResponse> {
   const { data, error, response } = await apiClient.GET("/health");

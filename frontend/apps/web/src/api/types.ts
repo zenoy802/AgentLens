@@ -1,0 +1,38 @@
+import type { components, operations, paths } from "@/api/types.gen";
+
+export type { components, operations, paths };
+
+type Schemas = components["schemas"];
+
+export type AdminInfoResponse = Schemas["AdminInfoResponse"];
+export type CleanupReport = Schemas["CleanupReport"];
+export type CleanupRequest = Schemas["CleanupRequest"];
+export type Column = Schemas["ColumnRead"];
+export type ConnectionCreate = Schemas["ConnectionCreate"];
+export type ConnectionListResponse = Schemas["ConnectionListResponse"];
+export type ConnectionRead = Schemas["ConnectionRead"];
+export type ConnectionTestResponse = Schemas["ConnectionTestResponse"];
+export type ConnectionUpdate = Schemas["ConnectionUpdate"];
+export type ExecuteRequest = Schemas["ExecuteRequest"];
+export type ExecutionInfo = Schemas["ExecutionInfo"];
+export type FieldRender = Schemas["FieldRender"];
+export type HealthResponse = Schemas["HealthResponse"];
+export type HTTPValidationError = Schemas["HTTPValidationError"];
+export type NamedQueryCreate = Schemas["NamedQueryCreate"];
+export type NamedQueryListResponse = Schemas["NamedQueryListResponse"];
+export type NamedQueryPromote = Schemas["NamedQueryPromote"];
+export type NamedQueryRead = Schemas["NamedQueryRead"];
+export type NamedQueryUpdate = Schemas["NamedQueryUpdate"];
+export type Pagination = Schemas["Pagination"];
+export type QueryExecuteRequest = Schemas["QueryExecuteRequest"];
+export type QueryHistoryListResponse = Schemas["QueryHistoryListResponse"];
+export type QueryHistoryRead = Schemas["QueryHistoryRead"];
+export type SchedulerJobRead = Schemas["SchedulerJobRead"];
+export type ValidationError = Schemas["ValidationError"];
+export type Warning = Schemas["WarningRead"];
+export type WarningRead = Schemas["WarningRead"];
+
+export type Row = Record<string, unknown>;
+export type ExecutionResult = Omit<Schemas["ExecutionResult"], "rows"> & {
+  rows: Row[];
+};

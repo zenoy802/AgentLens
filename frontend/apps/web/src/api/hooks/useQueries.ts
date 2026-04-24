@@ -1,12 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "@/api/client";
-import type { components } from "@/api/types.gen";
+import type {
+  NamedQueryListResponse,
+  NamedQueryPromote,
+  NamedQueryRead,
+  NamedQueryUpdate,
+} from "@/api/types";
 
-export type NamedQueryRead = components["schemas"]["NamedQueryRead"];
-export type NamedQueryUpdate = components["schemas"]["NamedQueryUpdate"];
-export type NamedQueryPromote = components["schemas"]["NamedQueryPromote"];
-export type NamedQueryListResponse = components["schemas"]["NamedQueryListResponse"];
+export type {
+  NamedQueryListResponse,
+  NamedQueryPromote,
+  NamedQueryRead,
+  NamedQueryUpdate,
+};
 
 export type QueryListParams = {
   connection_id?: number;
