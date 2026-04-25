@@ -14,6 +14,7 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnSizingState,
   type Row as TableRow,
   type Table,
 } from "@tanstack/react-table";
@@ -76,6 +77,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
+  const setColumnWidth = useQueryStore((state) => state.setColumnWidth);
   const visibleColumns = useMemo(
     () => columns.filter((column) => !tableConfig.hidden_columns.includes(column.name)),
     [columns, tableConfig.hidden_columns],
@@ -85,6 +87,18 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     [rows, tableConfig.sort],
   );
   const rowHeightConfig = getRowHeightConfig(tableConfig.row_height, tableConfig.rich_preview);
+  const columnSizing = useMemo<ColumnSizingState>(
+    () => ({
+      [ROW_NUMBER_COLUMN_ID]: ROW_NUMBER_COLUMN_WIDTH,
+      ...Object.fromEntries(
+        visibleColumns.map((column) => [
+          getDataColumnId(column.name),
+          tableConfig.column_widths[column.name] ?? DEFAULT_DATA_COLUMN_WIDTH,
+        ]),
+      ),
+    }),
+    [tableConfig.column_widths, visibleColumns],
+  );
   useEffect(() => {
     tableContainerRef.current?.scrollTo({ top: 0 });
   }, [rowHeightConfig.mode, tableConfig.rich_preview]);
@@ -126,12 +140,18 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
             </CopyableCell>
           );
         },
-        size: DEFAULT_DATA_COLUMN_WIDTH,
+        size: tableConfig.column_widths[column.name] ?? DEFAULT_DATA_COLUMN_WIDTH,
         minSize: 60,
         enableResizing: true,
       })),
     ],
-    [fieldRenders, rowHeightConfig.previewLines, tableConfig.rich_preview, visibleColumns],
+    [
+      fieldRenders,
+      rowHeightConfig.previewLines,
+      tableConfig.column_widths,
+      tableConfig.rich_preview,
+      visibleColumns,
+    ],
   );
 
   const table = useReactTable({
@@ -140,6 +160,16 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
     columnResizeMode: "onEnd",
+    state: { columnSizing },
+    onColumnSizingChange: (updater) => {
+      const nextSizing = typeof updater === "function" ? updater(columnSizing) : updater;
+      for (const [columnId, width] of Object.entries(nextSizing)) {
+        const columnName = getDataColumnName(columnId);
+        if (columnName !== null && columnSizing[columnId] !== width) {
+          setColumnWidth(columnName, Math.round(width));
+        }
+      }
+    },
     getRowId: (row, index) => `${getStableRowIdentity(row, columns, index)}:${index}`,
   });
 

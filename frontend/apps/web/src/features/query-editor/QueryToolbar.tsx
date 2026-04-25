@@ -11,6 +11,7 @@ type QueryToolbarProps = {
   isNamed: boolean;
   execution: ExecutionInfo | null;
   isExecuting: boolean;
+  runDisabled?: boolean;
   onConnectionChange: (id: number | null) => void;
   onRun: () => void;
   onSaveAs: () => void;
@@ -23,11 +24,13 @@ export function QueryToolbar({
   isNamed,
   execution,
   isExecuting,
+  runDisabled: runBlocked = false,
   onConnectionChange,
   onRun,
   onSaveAs,
 }: QueryToolbarProps) {
-  const runDisabled = connectionId === null || sql.trim().length === 0 || isExecuting;
+  const runDisabled =
+    connectionId === null || sql.trim().length === 0 || isExecuting || runBlocked;
   const saveDisabled = queryId === null || isNamed || isExecuting;
 
   return (

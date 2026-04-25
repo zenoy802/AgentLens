@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ArrowLeft, GripHorizontal, Loader2 } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 
-import { useExecute } from "@/api/hooks/useExecute";
+import { useExecute, useExecuteQuery } from "@/api/hooks/useExecute";
 import { useQueryById } from "@/api/hooks/useQueries";
+import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
 import type { Row } from "@/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
@@ -13,14 +14,22 @@ import {
   MIN_EDITOR_HEIGHT,
   SqlEditor,
 } from "@/features/query-editor/SqlEditor";
+import { ViewConfigBar } from "@/features/query-editor/ViewConfigBar";
 import {
   PromoteQueryDialog,
   type PromotableQuery,
 } from "@/features/queries/PromoteQueryDialog";
 import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
-import { initialTableConfig, useQueryStore } from "@/stores/queryStore";
+import {
+  getViewConfigPayloadFromState,
+  initialTableConfig,
+  useQueryStore,
+  viewConfigIsEmpty,
+  viewConfigPayloadMatchesState,
+} from "@/stores/queryStore";
 
 type ActiveQuery = PromotableQuery & {
   is_named: boolean;
@@ -30,6 +39,13 @@ type DragState = {
   pointerId: number;
   startY: number;
   startHeight: number;
+};
+
+type ExecutionGuard = {
+  connectionId: number;
+  sql: string;
+  routeQueryId: number | null;
+  queryIdAfterClear: number | null;
 };
 
 export function Query() {
@@ -48,9 +64,12 @@ export function Query() {
   const rows = useQueryStore((state) => state.rows);
   const execution = useQueryStore((state) => state.execution);
   const isExecuting = useQueryStore((state) => state.isExecuting);
+  const isDirty = useQueryStore((state) => state.isDirty);
   const setConnectionId = useQueryStore((state) => state.setConnectionId);
   const setSql = useQueryStore((state) => state.setSql);
   const setResult = useQueryStore((state) => state.setResult);
+  const applyViewConfig = useQueryStore((state) => state.applyViewConfig);
+  const mergeSuggestedRenders = useQueryStore((state) => state.mergeSuggestedRenders);
   const reset = useQueryStore((state) => state.reset);
 
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
@@ -62,9 +81,51 @@ export function Query() {
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const hydratedQueryIdRef = useRef<number | null>(null);
+  const appliedForQueryIdRef = useRef<number | null>(null);
+  const previousRouteQueryIdRef = useRef<number | null | undefined>(undefined);
+  const routeQueryIdRef = useRef<number | null>(routeQueryId);
+  routeQueryIdRef.current = routeQueryId;
 
   const queryDetail = useQueryById(routeQueryId ?? 0);
+  const {
+    data: viewConfig,
+    isLoading: viewConfigLoading,
+    isSuccess: viewConfigLoaded,
+  } = useViewConfig(routeQueryId);
   const execute = useExecute();
+  const executeQuery = useExecuteQuery();
+  const saveViewConfig = useSaveViewConfig();
+  const runBlockedByViewConfigLoad = routeQueryId !== null && viewConfigLoading;
+
+  useBeforeUnloadGuard(isDirty);
+
+  useEffect(() => {
+    const previousRouteQueryId = previousRouteQueryIdRef.current;
+    previousRouteQueryIdRef.current = routeQueryId;
+
+    if (previousRouteQueryId !== undefined && previousRouteQueryId !== routeQueryId) {
+      useQueryStore.getState().reset();
+    }
+  }, [routeQueryId]);
+
+  useEffect(() => {
+    appliedForQueryIdRef.current = null;
+  }, [routeQueryId]);
+
+  useEffect(() => {
+    if (
+      routeQueryId === null ||
+      !viewConfigLoaded ||
+      viewConfig === undefined ||
+      queryId !== routeQueryId ||
+      appliedForQueryIdRef.current === routeQueryId
+    ) {
+      return;
+    }
+
+    applyViewConfig(viewConfig);
+    appliedForQueryIdRef.current = routeQueryId;
+  }, [applyViewConfig, queryId, routeQueryId, viewConfig, viewConfigLoaded]);
 
   useEffect(() => {
     if (routeQueryId !== null) {
@@ -116,38 +177,104 @@ export function Query() {
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
 
   async function handleRun() {
-    if (connectionId === null || sql.trim().length === 0 || isExecuting) {
+    if (
+      connectionId === null ||
+      sql.trim().length === 0 ||
+      isExecuting ||
+      runBlockedByViewConfigLoad
+    ) {
       return;
     }
 
     const executionConnectionId = connectionId;
     const executionSql = sql;
-    clearCurrentQueryIdentity({ preserveViewConfig: true });
+    const executeSavedQuery = shouldExecuteSavedQuery();
+    const wasDirtyBeforeRun = useQueryStore.getState().isDirty;
+    const persistedViewConfigUnknown = executeSavedQuery && !viewConfigLoaded;
+    const persistedViewConfigWasEmpty = executeSavedQuery
+      ? viewConfigLoaded && viewConfig !== undefined && viewConfigIsEmpty(viewConfig)
+      : true;
+    const executionGuard: ExecutionGuard = {
+      connectionId: executionConnectionId,
+      sql: executionSql,
+      routeQueryId,
+      queryIdAfterClear: executeSavedQuery ? routeQueryId : null,
+    };
+
+    clearCurrentQueryIdentity({
+      preserveQueryIdentity: executeSavedQuery,
+      preserveViewConfig: true,
+    });
     useQueryStore.setState({ isExecuting: true });
 
     try {
-      const result = await execute.mutateAsync({
-        connection_id: executionConnectionId,
-        sql: executionSql,
-        save_as_temporary: true,
-      });
-      if (!executionStillMatches(executionConnectionId, executionSql)) {
+      const result = executeSavedQuery
+        ? await executeQuery.mutateAsync({ queryId: routeQueryId! })
+        : await execute.mutateAsync({
+            connection_id: executionConnectionId,
+            sql: executionSql,
+            save_as_temporary: true,
+          });
+      if (!executionStillMatches(executionGuard)) {
         useQueryStore.setState({ isExecuting: false });
         return;
       }
 
       setResult(result);
+      mergeSuggestedRenders(result.suggested_field_renders);
+      if (
+        !wasDirtyBeforeRun &&
+        persistedViewConfigUnknown &&
+        Object.keys(result.suggested_field_renders).length > 0
+      ) {
+        useQueryStore.getState().markDirty();
+      }
       setDetailRow(null);
       setDetailRowNumber(null);
-      setActiveQuery({
-        id: result.query_id,
-        name: null,
-        description: null,
-        expires_at: null,
-        is_named: !result.is_temporary,
-      });
+      if (executeSavedQuery && activeQuery !== null) {
+        setActiveQuery({
+          ...activeQuery,
+          is_named: !result.is_temporary,
+        });
+      } else {
+        setActiveQuery({
+          id: result.query_id,
+          name: null,
+          description: null,
+          expires_at: null,
+          is_named: !result.is_temporary,
+        });
+      }
+
+      if (
+        !wasDirtyBeforeRun &&
+        persistedViewConfigWasEmpty &&
+        Object.keys(result.suggested_field_renders).length > 0 &&
+        result.query_id > 0
+      ) {
+        const payload = getViewConfigPayloadFromState(useQueryStore.getState());
+        try {
+          const saved = await saveViewConfig.mutateAsync({
+            queryId: result.query_id,
+            payload,
+          });
+          if (
+            executionStillMatchesAfterResult(executionGuard, result.query_id) &&
+            viewConfigPayloadMatchesState(payload, useQueryStore.getState())
+          ) {
+            useQueryStore.getState().applyViewConfig(saved);
+          }
+        } catch {
+          if (
+            executionStillMatchesAfterResult(executionGuard, result.query_id) &&
+            viewConfigPayloadMatchesState(payload, useQueryStore.getState())
+          ) {
+            useQueryStore.getState().markDirty();
+          }
+        }
+      }
     } catch (error) {
-      if (!executionStillMatches(executionConnectionId, executionSql)) {
+      if (!executionStillMatches(executionGuard)) {
         useQueryStore.setState({ isExecuting: false });
         return;
       }
@@ -175,14 +302,23 @@ export function Query() {
     clearCurrentQueryIdentity();
   }
 
-  function clearCurrentQueryIdentity(options?: { preserveViewConfig?: boolean }) {
+  function shouldExecuteSavedQuery(): boolean {
+    return (
+      routeQueryId !== null &&
+      queryId === routeQueryId &&
+      queryDetail.data?.id === routeQueryId &&
+      sql === queryDetail.data.sql_text
+    );
+  }
+
+  function clearCurrentQueryIdentity(options?: {
+    preserveQueryIdentity?: boolean;
+    preserveViewConfig?: boolean;
+  }) {
     setLastError(null);
     setDetailRow(null);
-    setActiveQuery(null);
-    setPromoteTarget(null);
     setDetailRowNumber(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
-      queryId: null,
       columns: [],
       rows: [],
       execution: null,
@@ -190,19 +326,44 @@ export function Query() {
       warnings: [],
     };
 
+    if (options?.preserveQueryIdentity !== true) {
+      nextState.queryId = null;
+      setActiveQuery(null);
+      setPromoteTarget(null);
+    }
+
     if (options?.preserveViewConfig !== true) {
       nextState.fieldRenders = {};
       nextState.manualFieldRenderColumns = [];
       nextState.tableConfig = initialTableConfig;
+      nextState.trajectoryConfig = null;
+      nextState.rowIdentityColumn = null;
+      nextState.isDirty = false;
     }
 
     useQueryStore.setState(nextState);
   }
 
-  function executionStillMatches(executionConnectionId: number, executionSql: string): boolean {
+  function executionStillMatches(guard: ExecutionGuard): boolean {
     const currentState = useQueryStore.getState();
     return (
-      currentState.connectionId === executionConnectionId && currentState.sql === executionSql
+      routeQueryIdRef.current === guard.routeQueryId &&
+      currentState.connectionId === guard.connectionId &&
+      currentState.sql === guard.sql &&
+      currentState.queryId === guard.queryIdAfterClear
+    );
+  }
+
+  function executionStillMatchesAfterResult(
+    guard: ExecutionGuard,
+    resultQueryId: number,
+  ): boolean {
+    const currentState = useQueryStore.getState();
+    return (
+      routeQueryIdRef.current === guard.routeQueryId &&
+      currentState.connectionId === guard.connectionId &&
+      currentState.sql === guard.sql &&
+      currentState.queryId === resultQueryId
     );
   }
 
@@ -290,6 +451,7 @@ export function Query() {
           isNamed={activeQuery?.is_named ?? false}
           execution={execution}
           isExecuting={isExecuting}
+          runDisabled={runBlockedByViewConfigLoad}
           onConnectionChange={handleConnectionChange}
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
@@ -317,6 +479,8 @@ export function Query() {
             <GripHorizontal className="h-4 w-4" aria-hidden="true" />
           </div>
         </div>
+
+        <ViewConfigBar queryId={queryId} />
 
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
           <ResultPlaceholder

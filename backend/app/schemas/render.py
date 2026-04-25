@@ -1,35 +1,44 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Literal, TypeAlias
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 
-class FieldRender(BaseModel):
+class RenderBase(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    type: str = Field(min_length=1)
-    collapsed: bool | None = None
-    format: str | None = None
-    language: str | None = None
+
+class TextRender(RenderBase):
+    type: Literal["text"] = "text"
 
 
-class TextRender(FieldRender):
-    type: str = "text"
+class MarkdownRender(RenderBase):
+    type: Literal["markdown"] = "markdown"
 
 
-class MarkdownRender(FieldRender):
-    type: str = "markdown"
-
-
-class JsonRender(FieldRender):
-    type: str = "json"
+class JsonRender(RenderBase):
+    type: Literal["json"] = "json"
     collapsed: bool = True
 
 
-class CodeRender(FieldRender):
-    type: str = "code"
+class CodeRender(RenderBase):
+    type: Literal["code"] = "code"
     language: str = "plain"
 
 
-class TimestampRender(FieldRender):
-    type: str = "timestamp"
+class TimestampRender(RenderBase):
+    type: Literal["timestamp"] = "timestamp"
     format: str = "YYYY-MM-DD HH:mm:ss"
+
+
+class TagRender(RenderBase):
+    type: Literal["tag"] = "tag"
+
+
+FieldRender: TypeAlias = Annotated[
+    TextRender | MarkdownRender | JsonRender | CodeRender | TimestampRender | TagRender,
+    Field(discriminator="type"),
+]
+
+field_render_adapter: TypeAdapter[FieldRender] = TypeAdapter(FieldRender)
