@@ -146,6 +146,50 @@ class QueryService:
             warnings=warnings,
         )
 
+    def execute_readonly(
+        self,
+        query: NamedQuery,
+        *,
+        timeout: int,
+        row_limit: int,
+    ) -> ExecutionOutcome:
+        connection = self._get_connection_or_raise(query.connection_id)
+        view_config = self._get_or_create_view_config(query)
+
+        try:
+            execution_result = self._executor_service.execute(
+                connection,
+                query.sql_text,
+                timeout=timeout,
+                row_limit=row_limit,
+            )
+            warnings: list[WarningRead] = []
+            self._append_row_identity_config_warnings(
+                view_config,
+                execution_result,
+                warnings,
+            )
+            row_identities = [
+                compute(row, view_config.row_identity_column) for row in execution_result.rows
+            ]
+            self._append_duplicate_row_identity_warning(row_identities, warnings)
+            suggested_field_renders = suggest(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
+        except Exception:
+            self.session.rollback()
+            raise
+
+        return ExecutionOutcome(
+            execution_result=execution_result,
+            suggested_field_renders=suggested_field_renders,
+            row_identities=row_identities,
+            executed_at=_utcnow(),
+            warnings=warnings,
+        )
+
     def get(self, query_id: int) -> NamedQuery:
         query = self.session.get(NamedQuery, query_id)
         if query is None:

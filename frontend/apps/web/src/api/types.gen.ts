@@ -214,6 +214,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/trajectories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aggregate Query Trajectories */
+        post: operations["aggregate_query_trajectories_api_v1_queries__query_id__trajectories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/view-config": {
         parameters: {
             query?: never;
@@ -698,6 +715,31 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** Trajectory */
+        Trajectory: {
+            /** Group Key */
+            group_key: string;
+            /** Message Count */
+            message_count: number;
+            /** Messages */
+            messages: components["schemas"]["TrajectoryMessage"][];
+        };
+        /** TrajectoryAggregateRequest */
+        TrajectoryAggregateRequest: {
+            /**
+             * Use Saved Config
+             * @default true
+             */
+            use_saved_config: boolean;
+            trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+        };
+        /** TrajectoryAggregateResponse */
+        TrajectoryAggregateResponse: {
+            /** Trajectories */
+            trajectories: components["schemas"]["Trajectory"][];
+            /** Warnings */
+            warnings: components["schemas"]["WarningRead"][];
+        };
         /** TrajectoryConfig */
         TrajectoryConfig: {
             /** Group By */
@@ -716,6 +758,21 @@ export interface components {
              * @enum {string}
              */
             order_direction: "asc" | "desc";
+        };
+        /** TrajectoryMessage */
+        TrajectoryMessage: {
+            /** Row Identity */
+            row_identity: string;
+            /** Role */
+            role: string;
+            /** Content */
+            content: unknown;
+            /** Tool Calls */
+            tool_calls?: unknown | null;
+            /** Raw */
+            raw: {
+                [key: string]: unknown;
+            };
         };
         /** ValidationError */
         ValidationError: {
@@ -1331,6 +1388,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryHistoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aggregate_query_trajectories_api_v1_queries__query_id__trajectories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TrajectoryAggregateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrajectoryAggregateResponse"];
                 };
             };
             /** @description Validation Error */

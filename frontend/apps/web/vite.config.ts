@@ -23,6 +23,10 @@ export default defineConfig({
         __dirname,
         "../../packages/viewers/markdown-renderer/src",
       ),
+      "@agentlens/trajectory-viewer": path.resolve(
+        __dirname,
+        "../../packages/viewers/trajectory-viewer/src",
+      ),
     },
   },
   server: {

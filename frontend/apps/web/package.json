@@ -15,6 +15,7 @@
     "@agentlens/code-renderer": "workspace:*",
     "@agentlens/json-renderer": "workspace:*",
     "@agentlens/markdown-renderer": "workspace:*",
+    "@agentlens/trajectory-viewer": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",

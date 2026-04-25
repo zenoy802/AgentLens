@@ -1,0 +1,204 @@
+.agentlens-trajectory-viewer {
+  --trajectory-bg: #f8fafc;
+  --trajectory-panel: #ffffff;
+  --trajectory-border: #d7dee8;
+  --trajectory-text: #172033;
+  --trajectory-muted: #667085;
+  --trajectory-user-bg: #dbeafe;
+  --trajectory-user-border: #93c5fd;
+  --trajectory-assistant-bg: #f8fff8;
+  --trajectory-assistant-border: #86efac;
+  --trajectory-system-bg: #f1f5f9;
+  --trajectory-system-border: #cbd5e1;
+  --trajectory-tool-bg: #faf5ff;
+  --trajectory-tool-border: #c084fc;
+  --trajectory-unknown-bg: #fffbeb;
+  --trajectory-unknown-border: #f59e0b;
+  --trajectory-other-bg: #f8fafc;
+  --trajectory-other-border: #cbd5e1;
+
+  border: 1px solid var(--trajectory-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 16px 16px, rgb(148 163 184 / 18%) 1px, transparent 1px),
+    var(--trajectory-bg);
+  background-size: 24px 24px, auto;
+  color: var(--trajectory-text);
+  overflow: hidden;
+}
+
+.agentlens-trajectory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--trajectory-border);
+  background: rgb(255 255 255 / 86%);
+  padding: 16px 18px;
+  backdrop-filter: blur(8px);
+}
+
+.agentlens-trajectory-eyebrow {
+  color: var(--trajectory-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.agentlens-trajectory-title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.agentlens-trajectory-count {
+  border: 1px solid var(--trajectory-border);
+  border-radius: 999px;
+  background: var(--trajectory-panel);
+  color: var(--trajectory-muted);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 10px;
+}
+
+.agentlens-trajectory-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.agentlens-trajectory-message {
+  display: flex;
+  width: 100%;
+}
+
+.agentlens-trajectory-message--user {
+  justify-content: flex-end;
+}
+
+.agentlens-trajectory-message--assistant,
+.agentlens-trajectory-message--tool,
+.agentlens-trajectory-message--other {
+  justify-content: flex-start;
+}
+
+.agentlens-trajectory-message--system,
+.agentlens-trajectory-message--unknown {
+  justify-content: center;
+}
+
+.agentlens-trajectory-bubble {
+  border: 1px solid var(--trajectory-other-border);
+  border-radius: 16px;
+  background: var(--trajectory-other-bg);
+  box-shadow: 0 10px 24px rgb(15 23 42 / 8%);
+  max-width: min(760px, 86%);
+  padding: 12px 14px;
+}
+
+.agentlens-trajectory-message--user .agentlens-trajectory-bubble {
+  border-color: var(--trajectory-user-border);
+  background: var(--trajectory-user-bg);
+}
+
+.agentlens-trajectory-message--assistant .agentlens-trajectory-bubble {
+  border-color: var(--trajectory-assistant-border);
+  background: var(--trajectory-assistant-bg);
+}
+
+.agentlens-trajectory-message--system .agentlens-trajectory-bubble {
+  border-color: var(--trajectory-system-border);
+  background: var(--trajectory-system-bg);
+  box-shadow: none;
+  max-width: min(620px, 92%);
+  text-align: center;
+}
+
+.agentlens-trajectory-message--tool .agentlens-trajectory-bubble {
+  border-color: var(--trajectory-tool-border);
+  background: var(--trajectory-tool-bg);
+}
+
+.agentlens-trajectory-message--unknown .agentlens-trajectory-bubble {
+  border-color: var(--trajectory-unknown-border);
+  background: var(--trajectory-unknown-bg);
+  box-shadow: none;
+  max-width: min(620px, 92%);
+  text-align: center;
+}
+
+.agentlens-trajectory-message-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.agentlens-trajectory-message--system .agentlens-trajectory-message-header,
+.agentlens-trajectory-message--unknown .agentlens-trajectory-message-header {
+  justify-content: center;
+}
+
+.agentlens-trajectory-role-label {
+  border-radius: 999px;
+  background: rgb(15 23 42 / 9%);
+  color: var(--trajectory-text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 5px 8px;
+  text-transform: uppercase;
+}
+
+.agentlens-trajectory-meta-line {
+  color: var(--trajectory-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.agentlens-trajectory-content {
+  overflow-wrap: anywhere;
+}
+
+.agentlens-trajectory-content > .agentlens-json-renderer,
+.agentlens-trajectory-tool-calls-body > .agentlens-json-renderer {
+  margin-top: 4px;
+}
+
+.agentlens-trajectory-tool-calls {
+  margin-top: 10px;
+}
+
+.agentlens-trajectory-tool-calls > summary {
+  color: var(--trajectory-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.agentlens-trajectory-tool-calls-body {
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .agentlens-trajectory-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agentlens-trajectory-stream {
+    padding: 12px;
+  }
+
+  .agentlens-trajectory-bubble {
+    max-width: 96%;
+  }
+}
