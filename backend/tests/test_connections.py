@@ -541,3 +541,239 @@ async def test_test_connection_failure_returns_ok_false(
         assert connection.last_tested_at is not None
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_create_and_read() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "boundary-test",
+                "db_type": "mysql",
+                "database": "testdb",
+                "default_timeout": 1,
+                "default_row_limit": 1,
+            },
+        )
+        assert resp.status_code == HTTP_CREATED
+        data = resp.json()
+        assert "password" not in data
+        assert data["name"] == "boundary-test"
+        assert data["default_timeout"] == 1
+        assert data["default_row_limit"] == 1
+
+        get_resp = await client.get(f"/api/v1/connections/{data['id']}")
+        assert get_resp.status_code == HTTP_OK
+        assert get_resp.json() == data
+
+
+@pytest.mark.asyncio
+async def test_list_pagination() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for i in range(5):
+            await client.post(
+                "/api/v1/connections",
+                json={"name": f"page-test-{i}", "db_type": "mysql", "database": "db"},
+            )
+
+        p1 = await client.get("/api/v1/connections?page=1&page_size=2")
+        assert p1.status_code == HTTP_OK
+        d1 = p1.json()
+        assert len(d1["items"]) == 2
+        assert d1["pagination"]["total"] == 5
+        assert d1["pagination"]["total_pages"] == 3
+        assert all("password" not in item for item in d1["items"])
+
+        p2 = await client.get("/api/v1/connections?page=2&page_size=2")
+        assert p2.status_code == HTTP_OK
+        assert len(p2.json()["items"]) == 2
+
+        p3 = await client.get("/api/v1/connections?page=3&page_size=2")
+        assert p3.status_code == HTTP_OK
+        assert len(p3.json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_partial() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "partial-update",
+                "db_type": "mysql",
+                "database": "db",
+                "default_timeout": 30,
+                "default_row_limit": 5000,
+            },
+        )
+        cid = resp.json()["id"]
+
+        patch = await client.patch(
+            f"/api/v1/connections/{cid}",
+            json={"name": "partial-updated", "default_row_limit": 100},
+        )
+        assert patch.status_code == HTTP_OK
+        patched = patch.json()
+        assert "password" not in patched
+        assert patched["name"] == "partial-updated"
+        assert patched["default_row_limit"] == 100
+        assert patched["default_timeout"] == 30
+        assert patched["database"] == "db"
+
+
+@pytest.mark.asyncio
+async def test_delete_cascade() -> None:
+    initialize_metadata_database()
+
+    session = get_session_factory()()
+    try:
+        conn = Connection(name="cascade-test", db_type="mysql", database="db")
+        session.add(conn)
+        session.flush()
+
+        from app.models.named_query import NamedQuery
+
+        nq = NamedQuery(connection_id=conn.id, sql_text="SELECT 1")
+        session.add(nq)
+        session.commit()
+        conn_id = conn.id
+        nq_id = nq.id
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.delete(f"/api/v1/connections/{conn_id}")
+        assert resp.status_code == HTTP_NO_CONTENT
+
+        get_resp = await client.get(f"/api/v1/connections/{conn_id}")
+        assert get_resp.status_code == HTTP_NOT_FOUND
+
+    session2 = get_session_factory()()
+    try:
+        from app.models.named_query import NamedQuery
+
+        nq_check = session2.get(NamedQuery, nq_id)
+        assert nq_check is None
+    finally:
+        session2.close()
+
+
+@pytest.mark.asyncio
+async def test_patch_not_found() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.patch(
+            "/api/v1/connections/99999",
+            json={"name": "does-not-exist"},
+        )
+        assert resp.status_code == HTTP_NOT_FOUND
+        assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_delete_not_found() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.delete("/api/v1/connections/99999")
+        assert resp.status_code == HTTP_NOT_FOUND
+        assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_get_not_found_standalone() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.get("/api/v1/connections/99999")
+        assert resp.status_code == HTTP_NOT_FOUND
+        assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_test_connection_not_found() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post("/api/v1/connections/99999/test")
+        assert resp.status_code == HTTP_NOT_FOUND
+        assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_update_name_conflict() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        r1 = await client.post(
+            "/api/v1/connections",
+            json={"name": "conflict-a", "db_type": "mysql", "database": "db"},
+        )
+        assert r1.status_code == HTTP_CREATED
+        cid_a = r1.json()["id"]
+
+        r2 = await client.post(
+            "/api/v1/connections",
+            json={"name": "conflict-b", "db_type": "mysql", "database": "db"},
+        )
+        assert r2.status_code == HTTP_CREATED
+        cid_b = r2.json()["id"]
+
+        resp = await client.patch(
+            f"/api/v1/connections/{cid_b}",
+            json={"name": "conflict-a"},
+        )
+        assert resp.status_code == HTTP_CONFLICT
+        payload = resp.json()
+        assert payload["error"]["code"] == "CONN_NAME_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_update_password_clearing() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "password-test",
+                "db_type": "mysql",
+                "database": "db",
+                "password": "original-secret",
+            },
+        )
+        assert resp.status_code == HTTP_CREATED
+        cid = resp.json()["id"]
+
+        patch = await client.patch(
+            f"/api/v1/connections/{cid}",
+            json={"name": "password-test-renamed"},
+        )
+        assert patch.status_code == HTTP_OK
+
+    session = get_session_factory()()
+    try:
+        conn = session.get(Connection, cid)
+        assert conn is not None
+        assert conn.password_enc is not None
+        assert decrypt_secret(conn.password_enc) == "original-secret"
+    finally:
+        session.close()

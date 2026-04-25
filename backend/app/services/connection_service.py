@@ -191,7 +191,7 @@ class ConnectionService:
             extra_params = self._load_extra_params(connection.extra_params)
             try:
                 password = decrypt_secret(connection.password_enc)
-            except (InvalidToken, ValueError):
+            except InvalidToken:
                 return ConnectionTestResult(
                     ok=False,
                     latency_ms=None,
