@@ -16,7 +16,7 @@ const queryClient = new QueryClient();
 function Sidebar() {
   const items = [
     { to: "/", label: "Home", icon: HomeIcon },
-    { to: "/connections", label: "Connections", icon: Database },
+    { to: "/connections", label: "连接管理", icon: Database },
     { to: "/queries", label: "Queries", icon: ListChecks },
     { to: "/settings", label: "Settings", icon: SettingsIcon },
   ];
