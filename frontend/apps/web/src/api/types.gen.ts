@@ -214,6 +214,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/view-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get View Config */
+        get: operations["get_view_config_api_v1_queries__query_id__view_config_get"];
+        /** Put View Config */
+        put: operations["put_view_config_api_v1_queries__query_id__view_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -251,6 +269,21 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+        };
+        /** CodeRender */
+        CodeRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "code";
+            /**
+             * Language
+             * @default plain
+             */
+            language: string;
+        } & {
+            [key: string]: unknown;
         };
         /** ColumnRead */
         ColumnRead: {
@@ -433,23 +466,10 @@ export interface components {
             }[];
             /** Suggested Field Renders */
             suggested_field_renders: {
-                [key: string]: components["schemas"]["FieldRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
             };
             /** Warnings */
             warnings: components["schemas"]["WarningRead"][];
-        };
-        /** FieldRender */
-        FieldRender: {
-            /** Type */
-            type: string;
-            /** Collapsed */
-            collapsed?: boolean | null;
-            /** Format */
-            format?: string | null;
-            /** Language */
-            language?: string | null;
-        } & {
-            [key: string]: unknown;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -466,6 +486,31 @@ export interface components {
             metadata_db: string;
             /** Uptime Seconds */
             uptime_seconds: number;
+        };
+        /** JsonRender */
+        JsonRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "json";
+            /**
+             * Collapsed
+             * @default true
+             */
+            collapsed: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MarkdownRender */
+        MarkdownRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "markdown";
+        } & {
+            [key: string]: unknown;
         };
         /** NamedQueryCreate */
         NamedQueryCreate: {
@@ -592,6 +637,86 @@ export interface components {
             /** Next Run Time */
             next_run_time: string | null;
         };
+        /** SortConfig */
+        SortConfig: {
+            /** Column */
+            column: string;
+            /**
+             * Direction
+             * @default asc
+             * @enum {string}
+             */
+            direction: "asc" | "desc";
+        };
+        /** TableConfig */
+        TableConfig: {
+            /** Column Widths */
+            column_widths?: {
+                [key: string]: number;
+            };
+            /** Hidden Columns */
+            hidden_columns?: string[];
+            /** Frozen Columns */
+            frozen_columns?: string[];
+            /** Sort */
+            sort?: components["schemas"]["SortConfig"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TagRender */
+        TagRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tag";
+        } & {
+            [key: string]: unknown;
+        };
+        /** TextRender */
+        TextRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        } & {
+            [key: string]: unknown;
+        };
+        /** TimestampRender */
+        TimestampRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "timestamp";
+            /**
+             * Format
+             * @default YYYY-MM-DD HH:mm:ss
+             */
+            format: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TrajectoryConfig */
+        TrajectoryConfig: {
+            /** Group By */
+            group_by: string;
+            /** Role Column */
+            role_column: string;
+            /** Content Column */
+            content_column: string;
+            /** Tool Calls Column */
+            tool_calls_column?: string | null;
+            /** Order By */
+            order_by?: string | null;
+            /**
+             * Order Direction
+             * @default asc
+             * @enum {string}
+             */
+            order_direction: "asc" | "desc";
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -604,6 +729,35 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** ViewConfigPayload */
+        ViewConfigPayload: {
+            /** Field Renders */
+            field_renders?: {
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            };
+            table_config?: components["schemas"]["TableConfig"];
+            trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Row Identity Column */
+            row_identity_column?: string | null;
+        };
+        /** ViewConfigRead */
+        ViewConfigRead: {
+            /** Field Renders */
+            field_renders?: {
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            };
+            table_config?: components["schemas"]["TableConfig"];
+            trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Row Identity Column */
+            row_identity_column?: string | null;
+            /** Query Id */
+            query_id: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** WarningRead */
         WarningRead: {
@@ -1177,6 +1331,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryHistoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_view_config_api_v1_queries__query_id__view_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewConfigRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_view_config_api_v1_queries__query_id__view_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ViewConfigPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewConfigRead"];
                 };
             };
             /** @description Validation Error */

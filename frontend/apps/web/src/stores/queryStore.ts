@@ -1,7 +1,26 @@
 import { create } from "zustand";
 
-import type { Column, ExecutionInfo, ExecutionResult, FieldRender, Row, Warning } from "@/api/types";
-export type { Column, ExecutionInfo, ExecutionResult, FieldRender, Row, Warning } from "@/api/types";
+import type {
+  Column,
+  ExecutionInfo,
+  ExecutionResult,
+  FieldRender,
+  Row,
+  ViewConfigPayload,
+  ViewConfigRead,
+  Warning,
+} from "@/api/types";
+
+export type {
+  Column,
+  ExecutionInfo,
+  ExecutionResult,
+  FieldRender,
+  Row,
+  ViewConfigPayload,
+  ViewConfigRead,
+  Warning,
+} from "@/api/types";
 
 export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
@@ -13,6 +32,7 @@ export interface SortConfig {
 }
 
 export interface TableConfig {
+  [key: string]: unknown;
   column_widths: Record<string, number>;
   hidden_columns: string[];
   frozen_columns: string[];
@@ -20,6 +40,15 @@ export interface TableConfig {
   row_height: RowHeightMode;
   rich_preview: boolean;
   sort: SortConfig[];
+}
+
+export interface TrajectoryConfig {
+  group_by: string;
+  role_column: string;
+  content_column: string;
+  tool_calls_column?: string | null;
+  order_by?: string | null;
+  order_direction: SortDirection;
 }
 
 export interface QueryState {
@@ -33,17 +62,29 @@ export interface QueryState {
   fieldRenders: Record<string, FieldRender>;
   manualFieldRenderColumns: string[];
   tableConfig: TableConfig;
+  trajectoryConfig: TrajectoryConfig | null;
+  rowIdentityColumn: string | null;
   warnings: Warning[];
   isExecuting: boolean;
+  isDirty: boolean;
   setConnectionId(id: number | null): void;
   setSql(sql: string): void;
   setResult(result: ExecutionResult): void;
+  markDirty(): void;
+  markClean(): void;
   setFieldRender(col: string, render: FieldRender): void;
+  removeFieldRender(col: string): void;
   toggleHiddenColumn(col: string): void;
+  setColumnWidth(col: string, width: number): void;
+  toggleFrozenColumn(col: string): void;
   setColumnPin(col: string, dir: ColumnPinDirection | null): void;
   setRowHeight(mode: RowHeightMode): void;
   setRichPreview(enabled: boolean): void;
   setSort(col: string, dir: SortDirection | null): void;
+  setTrajectoryConfig(cfg: TrajectoryConfig | null): void;
+  setRowIdentityColumn(col: string | null): void;
+  applyViewConfig(vc: ViewConfigRead): void;
+  mergeSuggestedRenders(suggested: Record<string, FieldRender>): void;
   reset(): void;
 }
 
@@ -66,10 +107,13 @@ const initialResultState = {
   fieldRenders: {} as Record<string, FieldRender>,
   manualFieldRenderColumns: [] as string[],
   tableConfig: initialTableConfig,
+  trajectoryConfig: null as TrajectoryConfig | null,
+  rowIdentityColumn: null as string | null,
   warnings: [] as Warning[],
+  isDirty: false,
 };
 
-export const useQueryStore = create<QueryState>((set) => ({
+export const useQueryStore = create<QueryState>((set, get) => ({
   connectionId: null,
   sql: "",
   ...initialResultState,
@@ -88,17 +132,19 @@ export const useQueryStore = create<QueryState>((set) => ({
         rows: result.rows,
         execution: result.execution,
         suggestedRenders: result.suggested_field_renders,
-        fieldRenders: mergeFieldRenders(result, state.fieldRenders, state.manualFieldRenderColumns),
-        manualFieldRenderColumns: filterManualFieldRenderColumns(
-          result,
+        fieldRenders: filterFieldRenders(state.fieldRenders, result.columns),
+        manualFieldRenderColumns: filterColumnNames(
           state.manualFieldRenderColumns,
+          result.columns,
         ),
         tableConfig: filterTableConfig(state.tableConfig, result.columns),
         warnings: result.warnings,
         isExecuting: false,
       };
     }),
-  setFieldRender: (col, render) =>
+  markDirty: () => set({ isDirty: true }),
+  markClean: () => set({ isDirty: false }),
+  setFieldRender: (col, render) => {
     set((state) => ({
       fieldRenders: {
         ...state.fieldRenders,
@@ -107,8 +153,24 @@ export const useQueryStore = create<QueryState>((set) => ({
       manualFieldRenderColumns: state.manualFieldRenderColumns.includes(col)
         ? state.manualFieldRenderColumns
         : [...state.manualFieldRenderColumns, col],
-    })),
-  toggleHiddenColumn: (col) =>
+    }));
+    get().markDirty();
+  },
+  removeFieldRender: (col) => {
+    set((state) => {
+      const fieldRenders = { ...state.fieldRenders };
+      delete fieldRenders[col];
+
+      return {
+        fieldRenders,
+        manualFieldRenderColumns: state.manualFieldRenderColumns.filter(
+          (columnName) => columnName !== col,
+        ),
+      };
+    });
+    get().markDirty();
+  },
+  toggleHiddenColumn: (col) => {
     set((state) => {
       const hidden = new Set(state.tableConfig.hidden_columns);
       if (hidden.has(col)) {
@@ -123,8 +185,45 @@ export const useQueryStore = create<QueryState>((set) => ({
           hidden_columns: Array.from(hidden),
         },
       };
-    }),
-  setColumnPin: (col, dir) =>
+    });
+    get().markDirty();
+  },
+  setColumnWidth: (col, width) => {
+    set((state) => ({
+      tableConfig: {
+        ...state.tableConfig,
+        column_widths: {
+          ...state.tableConfig.column_widths,
+          [col]: width,
+        },
+      },
+    }));
+    get().markDirty();
+  },
+  toggleFrozenColumn: (col) => {
+    set((state) => {
+      const frozenColumns = new Set(state.tableConfig.frozen_columns);
+      const pinnedColumns = { ...state.tableConfig.pinned_columns };
+
+      if (frozenColumns.has(col)) {
+        frozenColumns.delete(col);
+        delete pinnedColumns[col];
+      } else {
+        frozenColumns.add(col);
+        pinnedColumns[col] = "left";
+      }
+
+      return {
+        tableConfig: {
+          ...state.tableConfig,
+          frozen_columns: Array.from(frozenColumns),
+          pinned_columns: pinnedColumns,
+        },
+      };
+    });
+    get().markDirty();
+  },
+  setColumnPin: (col, dir) => {
     set((state) => {
       const pinnedColumns = { ...state.tableConfig.pinned_columns };
       const frozenColumns = new Set(state.tableConfig.frozen_columns);
@@ -148,28 +247,69 @@ export const useQueryStore = create<QueryState>((set) => ({
           frozen_columns: Array.from(frozenColumns),
         },
       };
-    }),
-  setSort: (col, dir) =>
+    });
+    get().markDirty();
+  },
+  setSort: (col, dir) => {
     set((state) => ({
       tableConfig: {
         ...state.tableConfig,
         sort: dir === null ? [] : [{ column: col, direction: dir }],
       },
-    })),
-  setRowHeight: (mode) =>
+    }));
+    get().markDirty();
+  },
+  setRowHeight: (mode) => {
     set((state) => ({
       tableConfig: {
         ...state.tableConfig,
         row_height: mode,
       },
-    })),
-  setRichPreview: (enabled) =>
+    }));
+    get().markDirty();
+  },
+  setRichPreview: (enabled) => {
     set((state) => ({
       tableConfig: {
         ...state.tableConfig,
         rich_preview: enabled,
       },
-    })),
+    }));
+    get().markDirty();
+  },
+  setTrajectoryConfig: (cfg) => {
+    set({ trajectoryConfig: cfg });
+    get().markDirty();
+  },
+  setRowIdentityColumn: (col) => {
+    set({ rowIdentityColumn: col });
+    get().markDirty();
+  },
+  applyViewConfig: (vc) => {
+    const fieldRenders = vc.field_renders ?? {};
+    set({
+      fieldRenders,
+      manualFieldRenderColumns: Object.keys(fieldRenders),
+      tableConfig: normalizeTableConfig(vc.table_config),
+      trajectoryConfig: vc.trajectory_config ?? null,
+      rowIdentityColumn: vc.row_identity_column ?? null,
+    });
+    get().markClean();
+  },
+  mergeSuggestedRenders: (suggested) =>
+    set((state) => {
+      let changed = false;
+      const fieldRenders = { ...state.fieldRenders };
+
+      for (const [columnName, render] of Object.entries(suggested)) {
+        if (fieldRenders[columnName] === undefined) {
+          fieldRenders[columnName] = render;
+          changed = true;
+        }
+      }
+
+      return changed ? { fieldRenders } : {};
+    }),
   reset: () =>
     set({
       connectionId: null,
@@ -196,29 +336,19 @@ function isSameResult(state: QueryState, result: ExecutionResult): boolean {
   );
 }
 
-function mergeFieldRenders(
-  result: ExecutionResult,
-  previousFieldRenders: Record<string, FieldRender>,
-  manualColumns: string[],
+function filterFieldRenders(
+  fieldRenders: Record<string, FieldRender>,
+  columns: Column[],
 ): Record<string, FieldRender> {
-  const nextFieldRenders = { ...result.suggested_field_renders };
-  const returnedColumns = new Set(result.columns.map((column) => column.name));
-
-  for (const columnName of manualColumns) {
-    if (returnedColumns.has(columnName) && previousFieldRenders[columnName] !== undefined) {
-      nextFieldRenders[columnName] = previousFieldRenders[columnName];
-    }
-  }
-
-  return nextFieldRenders;
+  const returnedColumns = new Set(columns.map((column) => column.name));
+  return Object.fromEntries(
+    Object.entries(fieldRenders).filter(([columnName]) => returnedColumns.has(columnName)),
+  );
 }
 
-function filterManualFieldRenderColumns(
-  result: ExecutionResult,
-  manualColumns: string[],
-): string[] {
-  const returnedColumns = new Set(result.columns.map((column) => column.name));
-  return manualColumns.filter((columnName) => returnedColumns.has(columnName));
+function filterColumnNames(columnNames: string[], columns: Column[]): string[] {
+  const returnedColumns = new Set(columns.map((column) => column.name));
+  return columnNames.filter((columnName) => returnedColumns.has(columnName));
 }
 
 function filterTableConfig(tableConfig: TableConfig, columns: Column[]): TableConfig {
@@ -246,4 +376,168 @@ function filterTableConfig(tableConfig: TableConfig, columns: Column[]): TableCo
     rich_preview: tableConfig.rich_preview,
     sort: tableConfig.sort.filter((sortConfig) => returnedColumns.has(sortConfig.column)),
   };
+}
+
+function normalizeTableConfig(tableConfig: ViewConfigRead["table_config"]): TableConfig {
+  if (!isRecord(tableConfig)) {
+    return initialTableConfig;
+  }
+
+  const source = tableConfig;
+
+  return {
+    column_widths: normalizeNumberRecord(source.column_widths),
+    hidden_columns: normalizeStringArray(source.hidden_columns),
+    frozen_columns: normalizeStringArray(source.frozen_columns),
+    pinned_columns: normalizePinnedColumns(source.pinned_columns),
+    row_height: normalizeRowHeight(source.row_height),
+    rich_preview:
+      typeof source.rich_preview === "boolean"
+        ? source.rich_preview
+        : initialTableConfig.rich_preview,
+    sort: normalizeSortConfig(source.sort),
+  };
+}
+
+function normalizeNumberRecord(value: unknown): Record<string, number> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, number] => {
+      const [, width] = entry;
+      return typeof width === "number" && Number.isFinite(width);
+    }),
+  );
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function normalizePinnedColumns(value: unknown): Record<string, ColumnPinDirection> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, ColumnPinDirection] => {
+      const [, direction] = entry;
+      return direction === "left" || direction === "right";
+    }),
+  );
+}
+
+function normalizeRowHeight(value: unknown): RowHeightMode {
+  if (value === "compact" || value === "medium" || value === "large" || value === "tall") {
+    return value;
+  }
+
+  return initialTableConfig.row_height;
+}
+
+function normalizeSortConfig(value: unknown): SortConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+
+    const { column, direction } = item;
+    if (typeof column !== "string" || (direction !== "asc" && direction !== "desc")) {
+      return [];
+    }
+
+    return [{ column, direction }];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function getViewConfigPayloadFromState(state: QueryState): ViewConfigPayload {
+  return {
+    field_renders: state.fieldRenders,
+    table_config: state.tableConfig,
+    trajectory_config: state.trajectoryConfig,
+    row_identity_column: state.rowIdentityColumn,
+  };
+}
+
+export function viewConfigPayloadMatchesState(
+  payload: ViewConfigPayload,
+  state: QueryState,
+): boolean {
+  return JSON.stringify(payload) === JSON.stringify(getViewConfigPayloadFromState(state));
+}
+
+export function viewConfigIsEmpty(viewConfig: ViewConfigRead): boolean {
+  return (
+    Object.keys(viewConfig.field_renders ?? {}).length === 0 &&
+    tableConfigIsEmpty(viewConfig.table_config) &&
+    viewConfig.trajectory_config == null &&
+    viewConfig.row_identity_column == null
+  );
+}
+
+function tableConfigIsEmpty(tableConfig: ViewConfigRead["table_config"]): boolean {
+  if (!isRecord(tableConfig)) {
+    return true;
+  }
+
+  const knownKeys = new Set([
+    "column_widths",
+    "hidden_columns",
+    "frozen_columns",
+    "sort",
+    "pinned_columns",
+    "row_height",
+    "rich_preview",
+  ]);
+  const knownValuesAreEmpty =
+    objectIsEmpty(tableConfig.column_widths) &&
+    arrayIsEmpty(tableConfig.hidden_columns) &&
+    arrayIsEmpty(tableConfig.frozen_columns) &&
+    arrayIsEmpty(tableConfig.sort) &&
+    objectIsEmpty(tableConfig.pinned_columns) &&
+    (tableConfig.row_height == null || tableConfig.row_height === initialTableConfig.row_height) &&
+    (tableConfig.rich_preview == null ||
+      tableConfig.rich_preview === initialTableConfig.rich_preview);
+
+  return (
+    knownValuesAreEmpty &&
+    Object.entries(tableConfig).every(
+      ([key, value]) => knownKeys.has(key) || viewConfigValueIsEmpty(value),
+    )
+  );
+}
+
+function viewConfigValueIsEmpty(value: unknown): boolean {
+  if (value == null || value === false) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  if (isRecord(value)) {
+    return Object.keys(value).length === 0;
+  }
+  return false;
+}
+
+function objectIsEmpty(value: unknown): boolean {
+  return !isRecord(value) || Object.keys(value).length === 0;
+}
+
+function arrayIsEmpty(value: unknown): boolean {
+  return !Array.isArray(value) || value.length === 0;
 }

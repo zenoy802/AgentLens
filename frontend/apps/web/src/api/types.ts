@@ -15,7 +15,13 @@ export type ConnectionTestResponse = Schemas["ConnectionTestResponse"];
 export type ConnectionUpdate = Schemas["ConnectionUpdate"];
 export type ExecuteRequest = Schemas["ExecuteRequest"];
 export type ExecutionInfo = Schemas["ExecutionInfo"];
-export type FieldRender = Schemas["FieldRender"];
+export type FieldRender =
+  | Schemas["TextRender"]
+  | Schemas["MarkdownRender"]
+  | Schemas["JsonRender"]
+  | Schemas["CodeRender"]
+  | Schemas["TimestampRender"]
+  | Schemas["TagRender"];
 export type HealthResponse = Schemas["HealthResponse"];
 export type HTTPValidationError = Schemas["HTTPValidationError"];
 export type NamedQueryCreate = Schemas["NamedQueryCreate"];
@@ -29,6 +35,8 @@ export type QueryHistoryListResponse = Schemas["QueryHistoryListResponse"];
 export type QueryHistoryRead = Schemas["QueryHistoryRead"];
 export type SchedulerJobRead = Schemas["SchedulerJobRead"];
 export type ValidationError = Schemas["ValidationError"];
+export type ViewConfigPayload = Schemas["ViewConfigPayload"];
+export type ViewConfigRead = Schemas["ViewConfigRead"];
 export type Warning = Schemas["WarningRead"];
 export type WarningRead = Schemas["WarningRead"];
 

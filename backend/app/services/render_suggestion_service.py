@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.models.misc import GlobalRenderRule
 from app.schemas.common import WarningRead
-from app.schemas.render import FieldRender, JsonRender, MarkdownRender, TextRender, TimestampRender
+from app.schemas.render import (
+    FieldRender,
+    JsonRender,
+    MarkdownRender,
+    TextRender,
+    TimestampRender,
+    field_render_adapter,
+)
 from app.services.query_executor import Column
 
 
@@ -86,7 +93,7 @@ def _load_rule_render_config(
         )
         return None
     try:
-        return FieldRender.model_validate(raw_config)
+        return field_render_adapter.validate_python(raw_config)
     except PydanticValidationError as exc:
         _warn_invalid_rule(
             rule,
