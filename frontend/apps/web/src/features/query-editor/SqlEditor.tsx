@@ -3,7 +3,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 
 import { cn } from "@/lib/utils";
 
-const MIN_EDITOR_HEIGHT = 200;
+export const MIN_EDITOR_HEIGHT = 120;
 
 type SqlEditorProps = {
   value: string;

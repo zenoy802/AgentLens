@@ -8,7 +8,11 @@ import type { Row } from "@/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
-import { clampEditorHeight, SqlEditor } from "@/features/query-editor/SqlEditor";
+import {
+  clampEditorHeight,
+  MIN_EDITOR_HEIGHT,
+  SqlEditor,
+} from "@/features/query-editor/SqlEditor";
 import {
   PromoteQueryDialog,
   type PromotableQuery,
@@ -52,7 +56,7 @@ export function Query() {
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
   const [lastError, setLastError] = useState<unknown>(null);
-  const [autoEditorHeight, setAutoEditorHeight] = useState(200);
+  const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
