@@ -11,6 +11,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "@agentlens/code-renderer": path.resolve(
+        __dirname,
+        "../../packages/viewers/code-renderer/src",
+      ),
+      "@agentlens/json-renderer": path.resolve(
+        __dirname,
+        "../../packages/viewers/json-renderer/src",
+      ),
+      "@agentlens/markdown-renderer": path.resolve(
+        __dirname,
+        "../../packages/viewers/markdown-renderer/src",
+      ),
     },
   },
   server: {

@@ -42,6 +42,7 @@ def test_default_suggestions_use_inferred_type() -> None:
             [
                 Column(name="payload", sql_type="JSON", inferred_type="json"),
                 Column(name="created_at", sql_type="DATETIME", inferred_type="timestamp"),
+                Column(name="started_at", sql_type="VARCHAR", inferred_type="text"),
                 Column(name="content", sql_type="TEXT", inferred_type="text"),
             ],
             session,
@@ -53,7 +54,9 @@ def test_default_suggestions_use_inferred_type() -> None:
     assert result["payload"].collapsed is True
     assert result["created_at"].type == "timestamp"
     assert result["created_at"].format == "YYYY-MM-DD HH:mm:ss"
-    assert result["content"].type == "text"
+    assert result["started_at"].type == "timestamp"
+    assert result["started_at"].format == "YYYY-MM-DD HH:mm:ss"
+    assert result["content"].type == "markdown"
 
 
 @pytest.mark.parametrize(
@@ -164,7 +167,7 @@ def test_invalid_regex_rule_is_skipped_with_warning() -> None:
         session.close()
 
     assert result["payload"].type == "json"
-    assert result["content"].type == "text"
+    assert result["content"].type == "markdown"
     assert [warning.code for warning in warnings] == ["RENDER_RULE_INVALID"]
     assert warnings[0].detail is not None
     assert warnings[0].detail["rule_id"] == 1
