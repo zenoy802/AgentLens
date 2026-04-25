@@ -133,7 +133,7 @@ export function ConnectionFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5" aria-hidden="true" />
