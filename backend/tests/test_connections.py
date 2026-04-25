@@ -12,6 +12,7 @@ from app.core.crypto import decrypt_secret
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
 from app.models.connection import Connection
+from app.models.named_query import NamedQuery
 
 HTTP_CREATED = status.HTTP_201_CREATED
 HTTP_OK = status.HTTP_200_OK
@@ -21,6 +22,12 @@ HTTP_CONFLICT = status.HTTP_409_CONFLICT
 HTTP_UNPROCESSABLE_ENTITY = status.HTTP_422_UNPROCESSABLE_CONTENT
 MYSQL_TEST_PORT = 3307
 PASSWORD_DECRYPT_ERROR = "Unable to decrypt connection password. Please update the saved password."
+PAGINATION_PAGE_SIZE = 2
+PAGINATION_TOTAL_ITEMS = 5
+PAGINATION_TOTAL_PAGES = 3
+PAGINATION_LAST_PAGE_ITEMS = 1
+PARTIAL_UPDATE_ROW_LIMIT = 100
+PARTIAL_UPDATE_TIMEOUT = 30
 
 
 class FakeCursor:
@@ -577,27 +584,27 @@ async def test_list_pagination() -> None:
 
     transport = httpx.ASGITransport(app=cast(Any, app))
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        for i in range(5):
+        for i in range(PAGINATION_TOTAL_ITEMS):
             await client.post(
                 "/api/v1/connections",
                 json={"name": f"page-test-{i}", "db_type": "mysql", "database": "db"},
             )
 
-        p1 = await client.get("/api/v1/connections?page=1&page_size=2")
+        p1 = await client.get(f"/api/v1/connections?page=1&page_size={PAGINATION_PAGE_SIZE}")
         assert p1.status_code == HTTP_OK
         d1 = p1.json()
-        assert len(d1["items"]) == 2
-        assert d1["pagination"]["total"] == 5
-        assert d1["pagination"]["total_pages"] == 3
+        assert len(d1["items"]) == PAGINATION_PAGE_SIZE
+        assert d1["pagination"]["total"] == PAGINATION_TOTAL_ITEMS
+        assert d1["pagination"]["total_pages"] == PAGINATION_TOTAL_PAGES
         assert all("password" not in item for item in d1["items"])
 
-        p2 = await client.get("/api/v1/connections?page=2&page_size=2")
+        p2 = await client.get(f"/api/v1/connections?page=2&page_size={PAGINATION_PAGE_SIZE}")
         assert p2.status_code == HTTP_OK
-        assert len(p2.json()["items"]) == 2
+        assert len(p2.json()["items"]) == PAGINATION_PAGE_SIZE
 
-        p3 = await client.get("/api/v1/connections?page=3&page_size=2")
+        p3 = await client.get(f"/api/v1/connections?page=3&page_size={PAGINATION_PAGE_SIZE}")
         assert p3.status_code == HTTP_OK
-        assert len(p3.json()["items"]) == 1
+        assert len(p3.json()["items"]) == PAGINATION_LAST_PAGE_ITEMS
 
 
 @pytest.mark.asyncio
@@ -626,8 +633,8 @@ async def test_update_partial() -> None:
         patched = patch.json()
         assert "password" not in patched
         assert patched["name"] == "partial-updated"
-        assert patched["default_row_limit"] == 100
-        assert patched["default_timeout"] == 30
+        assert patched["default_row_limit"] == PARTIAL_UPDATE_ROW_LIMIT
+        assert patched["default_timeout"] == PARTIAL_UPDATE_TIMEOUT
         assert patched["database"] == "db"
 
 
@@ -640,8 +647,6 @@ async def test_delete_cascade() -> None:
         conn = Connection(name="cascade-test", db_type="mysql", database="db")
         session.add(conn)
         session.flush()
-
-        from app.models.named_query import NamedQuery
 
         nq = NamedQuery(connection_id=conn.id, sql_text="SELECT 1")
         session.add(nq)
@@ -661,8 +666,6 @@ async def test_delete_cascade() -> None:
 
     session2 = get_session_factory()()
     try:
-        from app.models.named_query import NamedQuery
-
         nq_check = session2.get(NamedQuery, nq_id)
         assert nq_check is None
     finally:
@@ -727,7 +730,6 @@ async def test_update_name_conflict() -> None:
             json={"name": "conflict-a", "db_type": "mysql", "database": "db"},
         )
         assert r1.status_code == HTTP_CREATED
-        cid_a = r1.json()["id"]
 
         r2 = await client.post(
             "/api/v1/connections",
