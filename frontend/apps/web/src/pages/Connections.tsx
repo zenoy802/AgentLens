@@ -1,11 +1,49 @@
-import { Link } from "react-router-dom";
+import { Database } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { useConnections } from "@/api/hooks/useConnections";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useConnections, useTestConnection } from "@/api/hooks/useConnections";
+import type { ConnectionRead } from "@/api/hooks/useConnections";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ConnectionFormDialog } from "@/features/connections/ConnectionFormDialog";
+import { DeleteConnectionDialog } from "@/features/connections/DeleteConnectionDialog";
+import { formatApiError } from "@/lib/formatApiError";
 
 export function Connections() {
   const connections = useConnections();
+  const testConnection = useTestConnection();
+
+  const [formTarget, setFormTarget] = useState<ConnectionRead | null | undefined>(
+    undefined,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<ConnectionRead | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
+
+  async function handleTest(connection: ConnectionRead) {
+    setTestingId(connection.id);
+    try {
+      const result = await testConnection.mutateAsync(connection.id);
+      if (result.ok) {
+        toast.success(
+          `连接成功 — ${result.server_version ?? "unknown"} (${result.latency_ms}ms)`,
+        );
+      } else {
+        toast.error(`连接失败: ${result.error ?? "未知错误"}`);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally {
+      setTestingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -13,13 +51,31 @@ export function Connections() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">连接管理</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            管理 AgentLens 只读连接的数据源。完整创建/编辑表单会在后续任务实现。
+            管理 AgentLens 只读连接的数据源。
           </p>
         </div>
-        <Link to="/query" className={cn(buttonVariants({ variant: "outline" }))}>
-          去新建查询
-        </Link>
+        <Button
+          className="shrink-0"
+          onClick={() => setFormTarget(null)}
+        >
+          新建连接
+        </Button>
       </div>
+
+      <ConnectionFormDialog
+        open={formTarget !== undefined}
+        connection={formTarget ?? null}
+        onOpenChange={(open) => {
+          if (!open) setFormTarget(undefined);
+        }}
+      />
+      <DeleteConnectionDialog
+        open={deleteTarget !== null}
+        connection={deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      />
 
       <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
         {connections.isLoading ? (
@@ -27,47 +83,114 @@ export function Connections() {
         ) : connections.isError ? (
           <div className="flex items-center justify-between gap-3 p-6 text-sm text-destructive">
             <span>
-              {connections.error instanceof Error ? connections.error.message : "连接加载失败"}
+              {formatApiError(connections.error)}
             </span>
-            <Button variant="outline" size="sm" onClick={() => void connections.refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void connections.refetch()}
+            >
               重试
             </Button>
           </div>
         ) : (connections.data?.items ?? []).length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">暂无连接。</div>
+          <div className="flex flex-col items-center justify-center gap-3 px-4 py-14 text-center">
+            <Database className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+            <div className="text-base font-medium">暂无连接</div>
+            <div className="max-w-sm text-sm text-muted-foreground">
+              创建你的第一个数据源连接，开始分析 Agent trajectory 数据。
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setFormTarget(null)}
+            >
+              新建你的第一个连接
+            </Button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-sm">
-              <thead className="bg-muted/60 text-left text-xs font-medium uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Host</th>
-                  <th className="px-4 py-3">Database</th>
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="min-w-[960px]">
+              <TableHeader>
+                <TableRow className="border-none">
+                  <TableHead>ID</TableHead>
+                  <TableHead>名称</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>主机</TableHead>
+                  <TableHead>数据库</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {(connections.data?.items ?? []).map((connection) => (
-                  <tr key={connection.id} className="border-t">
-                    <td className="px-4 py-3 font-medium">{connection.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{connection.db_type}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {connection.host ?? "localhost"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{connection.database}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        to={`/query?connection_id=${connection.id}`}
-                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                      >
-                        用此连接查询
-                      </Link>
-                    </td>
-                  </tr>
+                  <TableRow key={connection.id}>
+                    <TableCell className="text-muted-foreground">
+                      {connection.id}
+                    </TableCell>
+                    <TableCell className="font-medium">{connection.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {connection.db_type}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {connection.host ?? "localhost"}:{connection.port ?? 3306}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {connection.database}
+                    </TableCell>
+                    <TableCell>
+                      {connection.last_test_ok === true ? (
+                        <span
+                          role="img"
+                          aria-label="连接成功"
+                          title={connection.last_tested_at ?? undefined}
+                        >
+                          ✅
+                        </span>
+                      ) : connection.last_test_ok === false ? (
+                        <span
+                          role="img"
+                          aria-label="连接失败"
+                          title={connection.last_tested_at ?? undefined}
+                        >
+                          ❌
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground" aria-label="未测试">
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleTest(connection)}
+                          disabled={testingId !== null}
+                        >
+                          {testingId === connection.id ? "测试中..." : "测试"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setFormTarget(connection)}
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(connection)}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
