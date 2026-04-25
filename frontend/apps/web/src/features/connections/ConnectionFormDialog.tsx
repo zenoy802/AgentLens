@@ -61,7 +61,7 @@ export function ConnectionFormDialog({
       setExtraParamsText(
         connection.extra_params
           ? JSON.stringify(connection.extra_params, null, 2)
-          : DEFAULT_EXTRA_PARAMS,
+          : "",
       );
       setDefaultTimeout(connection.default_timeout);
       setDefaultRowLimit(connection.default_row_limit);
@@ -224,7 +224,6 @@ export function ConnectionFormDialog({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={isEditMode ? "留空则不修改密码" : undefined}
-                required={!isEditMode}
               />
             </label>
           </div>
