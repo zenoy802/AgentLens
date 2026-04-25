@@ -4,8 +4,9 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 
 import { useExecute, useExecuteQuery } from "@/api/hooks/useExecute";
 import { useQueryById } from "@/api/hooks/useQueries";
+import { useTrajectories } from "@/api/hooks/useTrajectories";
 import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
-import type { Row } from "@/api/types";
+import type { Row, Trajectory, Warning } from "@/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
@@ -21,6 +22,7 @@ import {
 } from "@/features/queries/PromoteQueryDialog";
 import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
+import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
 import {
@@ -34,6 +36,8 @@ import {
 type ActiveQuery = PromotableQuery & {
   is_named: boolean;
 };
+
+type ResultView = "row" | "trajectory";
 
 type DragState = {
   pointerId: number;
@@ -63,6 +67,7 @@ export function Query() {
   const columns = useQueryStore((state) => state.columns);
   const rows = useQueryStore((state) => state.rows);
   const execution = useQueryStore((state) => state.execution);
+  const trajectoryConfig = useQueryStore((state) => state.trajectoryConfig);
   const isExecuting = useQueryStore((state) => state.isExecuting);
   const isDirty = useQueryStore((state) => state.isDirty);
   const setConnectionId = useQueryStore((state) => state.setConnectionId);
@@ -75,13 +80,16 @@ export function Query() {
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
   const [lastError, setLastError] = useState<unknown>(null);
+  const [activeResultView, setActiveResultView] = useState<ResultView>("row");
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
+  const [trajectoryLoadedKey, setTrajectoryLoadedKey] = useState<string | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const hydratedQueryIdRef = useRef<number | null>(null);
   const appliedForQueryIdRef = useRef<number | null>(null);
+  const trajectoryRequestedKeyRef = useRef<string | null>(null);
   const previousRouteQueryIdRef = useRef<number | null | undefined>(undefined);
   const routeQueryIdRef = useRef<number | null>(routeQueryId);
   routeQueryIdRef.current = routeQueryId;
@@ -95,9 +103,78 @@ export function Query() {
   const execute = useExecute();
   const executeQuery = useExecuteQuery();
   const saveViewConfig = useSaveViewConfig();
+  const aggregateTrajectories = useTrajectories(queryId ?? 0);
   const runBlockedByViewConfigLoad = routeQueryId !== null && viewConfigLoading;
+  const trajectoryConfigComplete = isTrajectoryConfigComplete(trajectoryConfig);
+  const trajectoryTabDisabled = !trajectoryConfigComplete || rows.length === 0 || queryId === null;
+  const trajectoryRequestKey =
+    queryId !== null && trajectoryConfig !== null
+      ? getTrajectoryRequestKey(
+          queryId,
+          execution?.executed_at ?? "no-execution",
+          trajectoryConfig,
+        )
+      : null;
+  const trajectoryDataIsCurrent =
+    trajectoryRequestKey !== null && trajectoryLoadedKey === trajectoryRequestKey;
+  const trajectoryRequestIsCurrent =
+    trajectoryRequestKey !== null &&
+    trajectoryRequestedKeyRef.current === trajectoryRequestKey;
 
   useBeforeUnloadGuard(isDirty);
+
+  useEffect(() => {
+    if (activeResultView !== "trajectory") {
+      trajectoryRequestedKeyRef.current = null;
+    }
+  }, [activeResultView]);
+
+  useEffect(() => {
+    if (activeResultView === "trajectory" && trajectoryTabDisabled) {
+      setActiveResultView("row");
+    }
+  }, [activeResultView, trajectoryTabDisabled]);
+
+  useEffect(() => {
+    if (
+      activeResultView !== "trajectory" ||
+      queryId === null ||
+      trajectoryConfig === null ||
+      !trajectoryConfigComplete ||
+      rows.length === 0
+    ) {
+      return;
+    }
+
+    const requestKey = getTrajectoryRequestKey(
+      queryId,
+      execution?.executed_at ?? "no-execution",
+      trajectoryConfig,
+    );
+    if (trajectoryLoadedKey === requestKey || trajectoryRequestedKeyRef.current === requestKey) {
+      return;
+    }
+
+    trajectoryRequestedKeyRef.current = requestKey;
+    aggregateTrajectories.mutate(
+      {
+        useSavedConfig: false,
+        config: trajectoryConfig,
+      },
+      {
+        onSuccess: () => setTrajectoryLoadedKey(requestKey),
+      },
+    );
+  }, [
+    activeResultView,
+    aggregateTrajectories,
+    execution?.executed_at,
+    queryId,
+    rows.length,
+    trajectoryConfig,
+    trajectoryConfigComplete,
+    trajectoryLoadedKey,
+  ]);
 
   useEffect(() => {
     const previousRouteQueryId = previousRouteQueryIdRef.current;
@@ -316,6 +393,9 @@ export function Query() {
     preserveViewConfig?: boolean;
   }) {
     setLastError(null);
+    setActiveResultView("row");
+    trajectoryRequestedKeyRef.current = null;
+    setTrajectoryLoadedKey(null);
     setDetailRow(null);
     setDetailRowNumber(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
@@ -483,6 +563,16 @@ export function Query() {
         <ViewConfigBar queryId={queryId} />
 
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
+          <ResultViewTabs
+            activeView={activeResultView}
+            trajectoryDisabled={trajectoryTabDisabled}
+            trajectoryDisabledReason={getTrajectoryDisabledReason({
+              configComplete: trajectoryConfigComplete,
+              hasRows: rows.length > 0,
+              hasQueryId: queryId !== null,
+            })}
+            onChange={setActiveResultView}
+          />
           <ResultPlaceholder
             error={lastError}
             isExecuting={isExecuting}
@@ -490,6 +580,15 @@ export function Query() {
             columns={columns}
             rows={rows}
             returnedRows={rows.length}
+            activeView={activeResultView}
+            trajectoryError={trajectoryRequestIsCurrent ? aggregateTrajectories.error : null}
+            trajectoryLoading={trajectoryRequestIsCurrent && aggregateTrajectories.isPending}
+            trajectories={
+              trajectoryDataIsCurrent ? aggregateTrajectories.data?.trajectories : undefined
+            }
+            trajectoryWarnings={
+              trajectoryDataIsCurrent ? aggregateTrajectories.data?.warnings : undefined
+            }
             onRowClick={handleRowClick}
           />
         </div>
@@ -538,8 +637,63 @@ type ResultPlaceholderProps = {
   columns: ReturnType<typeof useQueryStore.getState>["columns"];
   rows: Row[];
   returnedRows: number;
+  activeView: ResultView;
+  trajectoryError: unknown;
+  trajectoryLoading: boolean;
+  trajectories: Trajectory[] | undefined;
+  trajectoryWarnings: Warning[] | undefined;
   onRowClick: (row: Row, rowNumber: number) => void;
 };
+
+type ResultViewTabsProps = {
+  activeView: ResultView;
+  trajectoryDisabled: boolean;
+  trajectoryDisabledReason: string;
+  onChange: (view: ResultView) => void;
+};
+
+function ResultViewTabs({
+  activeView,
+  trajectoryDisabled,
+  trajectoryDisabledReason,
+  onChange,
+}: ResultViewTabsProps) {
+  return (
+    <div className="mb-3 flex items-center gap-2" role="tablist" aria-label="结果视图">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeView === "row"}
+        className={cn(
+          "rounded-md border px-3 py-1.5 text-sm font-medium",
+          activeView === "row"
+            ? "border-primary bg-primary text-primary-foreground"
+            : "bg-background text-muted-foreground hover:text-foreground",
+        )}
+        onClick={() => onChange("row")}
+      >
+        行级表格
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeView === "trajectory"}
+        disabled={trajectoryDisabled}
+        title={trajectoryDisabled ? trajectoryDisabledReason : "查看 Trajectory 气泡流"}
+        className={cn(
+          "rounded-md border px-3 py-1.5 text-sm font-medium",
+          activeView === "trajectory"
+            ? "border-primary bg-primary text-primary-foreground"
+            : "bg-background text-muted-foreground hover:text-foreground",
+          trajectoryDisabled && "cursor-not-allowed opacity-50 hover:text-muted-foreground",
+        )}
+        onClick={() => onChange("trajectory")}
+      >
+        Trajectory
+      </button>
+    </div>
+  );
+}
 
 function ResultPlaceholder({
   error,
@@ -548,6 +702,11 @@ function ResultPlaceholder({
   columns,
   rows,
   returnedRows,
+  activeView,
+  trajectoryError,
+  trajectoryLoading,
+  trajectories,
+  trajectoryWarnings,
   onRowClick,
 }: ResultPlaceholderProps) {
   if (isExecuting) {
@@ -564,6 +723,17 @@ function ResultPlaceholder({
   }
 
   if (execution !== null) {
+    if (activeView === "trajectory") {
+      return (
+        <TrajectoryResult
+          isLoading={trajectoryLoading}
+          error={trajectoryError}
+          trajectories={trajectories}
+          warnings={trajectoryWarnings}
+        />
+      );
+    }
+
     if (rows.length > 0) {
       return <RowTable columns={columns} rows={rows} onRowClick={onRowClick} />;
     }
@@ -578,6 +748,65 @@ function ResultPlaceholder({
   return (
     <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
       运行 SQL 看结果
+    </div>
+  );
+}
+
+interface TrajectoryResultProps {
+  isLoading: boolean;
+  error: unknown;
+  trajectories: Trajectory[] | undefined;
+  warnings: Warning[] | undefined;
+}
+
+function TrajectoryResult({
+  isLoading,
+  error,
+  trajectories,
+  warnings,
+}: TrajectoryResultProps) {
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+        正在聚合 Trajectory...
+      </div>
+    );
+  }
+
+  if (error !== null && error !== undefined) {
+    return <ErrorAlert error={error} />;
+  }
+
+  if (trajectories === undefined) {
+    return (
+      <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
+        切换到 Trajectory 后开始聚合
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {warnings !== undefined && warnings.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-medium">聚合 warning</div>
+          <ul className="mt-1 space-y-1">
+            {warnings.map((warning, index) => (
+              <li key={`${warning.code}:${index}`}>
+                {warning.code}: {warning.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {trajectories.length === 1 ? (
+        <SingleTrajectoryView trajectory={trajectories[0]} />
+      ) : (
+        <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
+          检测到 {trajectories.length} 条 trajectories
+        </div>
+      )}
     </div>
   );
 }
@@ -602,4 +831,44 @@ function getInitialSql(locationState: unknown): string | null {
   }
 
   return null;
+}
+
+function isTrajectoryConfigComplete(
+  config: ReturnType<typeof useQueryStore.getState>["trajectoryConfig"],
+): boolean {
+  return (
+    config !== null &&
+    config.group_by.trim().length > 0 &&
+    config.role_column.trim().length > 0 &&
+    config.content_column.trim().length > 0
+  );
+}
+
+function getTrajectoryRequestKey(
+  queryId: number,
+  executedAt: string,
+  config: NonNullable<ReturnType<typeof useQueryStore.getState>["trajectoryConfig"]>,
+): string {
+  return [queryId, executedAt, JSON.stringify(config)].join(":");
+}
+
+function getTrajectoryDisabledReason({
+  configComplete,
+  hasRows,
+  hasQueryId,
+}: {
+  configComplete: boolean;
+  hasRows: boolean;
+  hasQueryId: boolean;
+}): string {
+  if (!configComplete) {
+    return "请先配置 group_by / role_column / content_column";
+  }
+  if (!hasRows) {
+    return "请先执行查询并返回结果行";
+  }
+  if (!hasQueryId) {
+    return "当前查询结果缺少 query_id";
+  }
+  return "";
 }

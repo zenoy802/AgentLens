@@ -19,6 +19,9 @@ importers:
       '@agentlens/markdown-renderer':
         specifier: workspace:*
         version: link:../../packages/viewers/markdown-renderer
+      '@agentlens/trajectory-viewer':
+        specifier: workspace:*
+        version: link:../../packages/viewers/trajectory-viewer
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -177,7 +180,21 @@ importers:
         specifier: ^18.3.12
         version: 18.3.28
 
-  packages/viewers/trajectory-viewer: {}
+  packages/viewers/trajectory-viewer:
+    dependencies:
+      '@agentlens/json-renderer':
+        specifier: workspace:*
+        version: link:../json-renderer
+      '@agentlens/markdown-renderer':
+        specifier: workspace:*
+        version: link:../markdown-renderer
+      react:
+        specifier: '>=18'
+        version: 18.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.28
 
 packages:
 

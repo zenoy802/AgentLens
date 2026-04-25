@@ -8,6 +8,7 @@ import {
   waitForPendingViewConfigSave,
 } from "@/api/hooks/useViewConfig";
 import { Button } from "@/components/ui/button";
+import { TrajectoryConfigPanel } from "@/features/view-config/TrajectoryConfigPanel";
 import {
   getViewConfigPayloadFromState,
   useQueryStore,
@@ -101,6 +102,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
         )}
       </div>
       <div className="flex items-center gap-2">
+        <TrajectoryConfigPanel />
         <Button
           variant="ghost"
           size="sm"
