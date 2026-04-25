@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.misc import GlobalRenderRule
 from app.schemas.common import WarningRead
-from app.schemas.render import FieldRender, JsonRender, TextRender, TimestampRender
+from app.schemas.render import FieldRender, JsonRender, MarkdownRender, TextRender, TimestampRender
 from app.services.query_executor import Column
 
 
@@ -103,7 +103,25 @@ def _default_render_for_column(column: Column) -> FieldRender:
         return JsonRender()
     if column.inferred_type == "timestamp":
         return TimestampRender()
+    if column.inferred_type == "text" and _looks_like_timestamp_column(column.name):
+        return TimestampRender()
+    if column.inferred_type == "text" and _looks_like_markdown_column(column.name):
+        return MarkdownRender()
     return TextRender()
+
+
+def _looks_like_timestamp_column(name: str) -> bool:
+    normalized = name.lower()
+    return normalized in {"timestamp", "time", "date", "datetime"} or normalized.endswith(
+        ("_at", "_time", "_timestamp", "_date", "_datetime")
+    )
+
+
+def _looks_like_markdown_column(name: str) -> bool:
+    normalized = name.lower()
+    return normalized in {"content", "markdown", "md"} or normalized.endswith(
+        ("_content", "_markdown", "_md")
+    )
 
 
 def _match_pattern(

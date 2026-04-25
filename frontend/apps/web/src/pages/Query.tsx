@@ -16,7 +16,7 @@ import {
 import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
 import { cn } from "@/lib/utils";
-import { useQueryStore } from "@/stores/queryStore";
+import { initialTableConfig, useQueryStore } from "@/stores/queryStore";
 
 type ActiveQuery = PromotableQuery & {
   is_named: boolean;
@@ -55,6 +55,7 @@ export function Query() {
   const [autoEditorHeight, setAutoEditorHeight] = useState(200);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const hydratedQueryIdRef = useRef<number | null>(null);
 
@@ -72,6 +73,7 @@ export function Query() {
     setLastError(null);
     setManualEditorHeight(null);
     setDetailRow(null);
+    setDetailRowNumber(null);
 
     if (initialConnectionId !== null) {
       setConnectionId(initialConnectionId);
@@ -106,6 +108,7 @@ export function Query() {
     setLastError(null);
     setManualEditorHeight(null);
     setDetailRow(null);
+    setDetailRowNumber(null);
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
 
   async function handleRun() {
@@ -115,7 +118,7 @@ export function Query() {
 
     const executionConnectionId = connectionId;
     const executionSql = sql;
-    clearCurrentQueryIdentity();
+    clearCurrentQueryIdentity({ preserveViewConfig: true });
     useQueryStore.setState({ isExecuting: true });
 
     try {
@@ -131,6 +134,7 @@ export function Query() {
 
       setResult(result);
       setDetailRow(null);
+      setDetailRowNumber(null);
       setActiveQuery({
         id: result.query_id,
         name: null,
@@ -167,19 +171,28 @@ export function Query() {
     clearCurrentQueryIdentity();
   }
 
-  function clearCurrentQueryIdentity() {
+  function clearCurrentQueryIdentity(options?: { preserveViewConfig?: boolean }) {
     setLastError(null);
     setDetailRow(null);
     setActiveQuery(null);
     setPromoteTarget(null);
-    useQueryStore.setState({
+    setDetailRowNumber(null);
+    const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
       queryId: null,
       columns: [],
       rows: [],
       execution: null,
       suggestedRenders: {},
       warnings: [],
-    });
+    };
+
+    if (options?.preserveViewConfig !== true) {
+      nextState.fieldRenders = {};
+      nextState.manualFieldRenderColumns = [];
+      nextState.tableConfig = initialTableConfig;
+    }
+
+    useQueryStore.setState(nextState);
   }
 
   function executionStillMatches(executionConnectionId: number, executionSql: string): boolean {
@@ -195,6 +208,11 @@ export function Query() {
     }
 
     setPromoteTarget(activeQuery);
+  }
+
+  function handleRowClick(row: Row, rowNumber: number) {
+    setDetailRow(row);
+    setDetailRowNumber(rowNumber);
   }
 
   function handleDividerPointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -304,7 +322,7 @@ export function Query() {
             columns={columns}
             rows={rows}
             returnedRows={rows.length}
-            onRowClick={setDetailRow}
+            onRowClick={handleRowClick}
           />
         </div>
       </section>
@@ -313,10 +331,11 @@ export function Query() {
         open={detailRow !== null}
         row={detailRow}
         columns={columns}
-        rowNumber={getRowNumber(rows, detailRow)}
+        rowNumber={detailRowNumber}
         onOpenChange={(open) => {
           if (!open) {
             setDetailRow(null);
+            setDetailRowNumber(null);
           }
         }}
       />
@@ -351,7 +370,7 @@ type ResultPlaceholderProps = {
   columns: ReturnType<typeof useQueryStore.getState>["columns"];
   rows: Row[];
   returnedRows: number;
-  onRowClick: (row: Row) => void;
+  onRowClick: (row: Row, rowNumber: number) => void;
 };
 
 function ResultPlaceholder({
@@ -415,13 +434,4 @@ function getInitialSql(locationState: unknown): string | null {
   }
 
   return null;
-}
-
-function getRowNumber(rows: Row[], row: Row | null): number | null {
-  if (row === null) {
-    return null;
-  }
-
-  const index = rows.indexOf(row);
-  return index === -1 ? null : index + 1;
 }

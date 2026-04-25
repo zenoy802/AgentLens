@@ -1,4 +1,4 @@
-import type { Column, Row } from "@/api/types";
+import type { Column, FieldRender, Row } from "@/api/types";
 import {
   Sheet,
   SheetContent,
@@ -6,7 +6,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { CellDispatcher } from "@/features/row-view/cells/CellDispatcher";
 import { getRowIdentityValue } from "@/features/row-view/rowIdentity";
+import { useQueryStore } from "@/stores/queryStore";
 
 interface RowDetailSheetProps {
   open: boolean;
@@ -23,6 +25,8 @@ export function RowDetailSheet({
   rowNumber,
   onOpenChange,
 }: RowDetailSheetProps) {
+  const fieldRenders = useQueryStore((state) => state.fieldRenders);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
@@ -36,9 +40,18 @@ export function RowDetailSheet({
         {row !== null ? (
           <div className="space-y-6 py-6">
             {columns.map((column) => (
-              <FieldValue key={column.name} label={column.name} value={row[column.name]} />
+              <FieldValue
+                key={column.name}
+                label={column.name}
+                value={row[column.name]}
+                render={fieldRenders[column.name] ?? getDefaultRender(row[column.name])}
+              />
             ))}
-            <FieldValue label="Row Identity" value={getRowIdentityValue(row, columns)} />
+            <FieldValue
+              label="Row Identity"
+              value={getRowIdentityValue(row, columns)}
+              render={{ type: "text" }}
+            />
           </div>
         ) : null}
       </SheetContent>
@@ -46,45 +59,28 @@ export function RowDetailSheet({
   );
 }
 
-function FieldValue({ label, value }: { label: string; value: unknown }) {
+function FieldValue({
+  label,
+  value,
+  render,
+}: {
+  label: string;
+  value: unknown;
+  render: FieldRender;
+}) {
   return (
     <div className="space-y-2">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className="h-px bg-border" />
-      <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed text-foreground">
-        {formatDetailValue(value)}
-      </pre>
+      <div className="min-w-0 rounded-md bg-muted/40 p-3 text-sm text-foreground">
+        <CellDispatcher value={value} render={render} presentation="detail" />
+      </div>
     </div>
   );
 }
 
-function formatDetailValue(value: unknown): string {
-  if (value == null) {
-    return "NULL";
-  }
-
-  if (typeof value === "object") {
-    try {
-      const json = JSON.stringify(value, bigintReplacer, 2);
-      return json ?? safeString(value);
-    } catch {
-      return safeString(value);
-    }
-  }
-
-  return safeString(value);
-}
-
-function bigintReplacer(_key: string, value: unknown): unknown {
-  return typeof value === "bigint" ? value.toString() : value;
-}
-
-function safeString(value: unknown): string {
-  try {
-    return String(value);
-  } catch {
-    return "[unserializable value]";
-  }
+function getDefaultRender(value: unknown): FieldRender {
+  return typeof value === "object" && value !== null ? { type: "json", collapsed: false } : { type: "text" };
 }

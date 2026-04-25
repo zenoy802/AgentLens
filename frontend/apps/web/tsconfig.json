@@ -18,9 +18,12 @@
     "baseUrl": ".",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@agentlens/code-renderer": ["../../packages/viewers/code-renderer/src"],
+      "@agentlens/json-renderer": ["../../packages/viewers/json-renderer/src"],
+      "@agentlens/markdown-renderer": ["../../packages/viewers/markdown-renderer/src"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../../packages/viewers/*/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

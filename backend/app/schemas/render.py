@@ -16,9 +16,18 @@ class TextRender(FieldRender):
     type: str = "text"
 
 
+class MarkdownRender(FieldRender):
+    type: str = "markdown"
+
+
 class JsonRender(FieldRender):
     type: str = "json"
     collapsed: bool = True
+
+
+class CodeRender(FieldRender):
+    type: str = "code"
+    language: str = "plain"
 
 
 class TimestampRender(FieldRender):

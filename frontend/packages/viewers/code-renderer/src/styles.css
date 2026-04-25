@@ -1,0 +1,24 @@
+@import "highlight.js/styles/github.css";
+
+.agentlens-code-renderer pre {
+  line-height: 1.55;
+}
+
+.agentlens-code-renderer code {
+  display: block;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.agentlens-code-line {
+  display: table-row;
+}
+
+.agentlens-code-line-number {
+  color: #94a3b8;
+  display: table-cell;
+  min-width: 2.5rem;
+  padding-right: 1rem;
+  text-align: right;
+  user-select: none;
+}
