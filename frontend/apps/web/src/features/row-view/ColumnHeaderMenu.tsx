@@ -21,9 +21,10 @@ interface ColumnHeaderMenuProps {
 
 const CODE_LANGUAGES = ["sql", "python", "javascript", "typescript", "json", "plain"];
 const TIMESTAMP_FORMATS = ["YYYY-MM-DD HH:mm:ss", "YYYY-MM-DD", "HH:mm:ss"];
+const DEFAULT_FIELD_RENDER: FieldRender = { type: "text" };
 
 export function ColumnHeaderMenu({ columnName }: ColumnHeaderMenuProps) {
-  const render = useQueryStore((state) => state.fieldRenders[columnName] ?? { type: "text" });
+  const render = useQueryStore((state) => state.fieldRenders[columnName] ?? DEFAULT_FIELD_RENDER);
   const tableConfig = useQueryStore((state) => state.tableConfig);
   const setFieldRender = useQueryStore((state) => state.setFieldRender);
   const toggleHiddenColumn = useQueryStore((state) => state.toggleHiddenColumn);

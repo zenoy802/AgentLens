@@ -15,6 +15,11 @@ AgentLens/
 └── README.md
 ```
 
+## Prerequisites
+
+- Python 3.11 or newer for the FastAPI backend. The current local workflow uses `venv` + `pip`; backend environment management is planned to move to `uv` in a later phase.
+- Node.js 20 or newer and pnpm 8 or newer for the React frontend workspace.
+
 ## Local Development
 
 ### Backend

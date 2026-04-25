@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ArrowDown, ArrowUp, Columns3, Copy, Rows3 } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, Copy, Maximize2, Rows3 } from "lucide-react";
 import {
   flexRender,
   getCoreRowModel,
@@ -20,6 +20,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type { Column, FieldRender, Row } from "@/api/types";
+import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -50,6 +51,7 @@ interface RowTableProps {
   columns: Column[];
   rows: Row[];
   onRowClick?: (row: Row, rowNumber: number) => void;
+  isFullscreen?: boolean;
 }
 
 const ROW_NUMBER_COLUMN_WIDTH = 56;
@@ -70,7 +72,7 @@ const ROW_HEIGHT_OPTIONS: Array<{
 ];
 const RICH_PREVIEW_ROW_HEIGHT = 220;
 
-function RowTableComponent({ columns, rows, onRowClick }: RowTableProps) {
+function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: RowTableProps) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
@@ -143,22 +145,55 @@ function RowTableComponent({ columns, rows, onRowClick }: RowTableProps) {
 
   const tableRows = table.getRowModel().rows;
 
+  const resultSummary = `${rows.length} 行 / ${columns.length} 列`;
+
   return (
-    <div className="overflow-hidden rounded-lg border bg-background shadow-sm">
-      <div className="flex h-10 items-center justify-between border-b bg-muted/40 px-3">
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border bg-background shadow-sm",
+        isFullscreen && "flex h-full min-h-0 flex-col",
+      )}
+    >
+      <div className="flex min-h-10 items-center justify-between gap-2 border-b bg-muted/40 px-3 py-1.5">
         <div className="text-xs font-medium text-muted-foreground">
-          {rows.length} 行 / {columns.length} 列
+          {resultSummary}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <RowHeightControl value={rowHeightConfig.mode} />
           <RichPreviewToggle enabled={tableConfig.rich_preview} />
           <ColumnVisibilityMenu columns={columns} tableConfig={tableConfig} />
+          {!isFullscreen ? (
+            <FullscreenViewDialog
+              title="查询结果"
+              description={resultSummary}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="全屏查看查询结果"
+                  title="全屏"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              }
+            >
+              <RowTable
+                columns={columns}
+                rows={rows}
+                onRowClick={onRowClick}
+                isFullscreen
+              />
+            </FullscreenViewDialog>
+          ) : null}
         </div>
       </div>
       <div
         ref={tableContainerRef}
         data-row-table-container
-        className="h-[520px] min-h-[260px] overflow-auto"
+        className={cn(
+          "min-h-[260px] overflow-auto",
+          isFullscreen ? "min-h-0 flex-1" : "h-[520px]",
+        )}
       >
         <table
           className="grid min-w-full border-collapse text-left text-sm"
