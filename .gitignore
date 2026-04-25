@@ -223,4 +223,5 @@ scripts/codex-playwright-mcp.sh
 docs/testing-playwright-mcp.md
 
 # Claude Code
+.claude/
 CLAUDE.md
