@@ -145,6 +145,7 @@ export function useDeleteConnection() {
 }
 
 export function useTestConnection() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
       const { data, error, response } = await apiClient.POST("/connections/{connection_id}/test", {
@@ -157,6 +158,9 @@ export function useTestConnection() {
         throw new Error(`Failed to test connection with status ${response.status}`);
       }
       return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: connectionKeys.all });
     },
   });
 }
