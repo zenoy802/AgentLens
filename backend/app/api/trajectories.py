@@ -31,8 +31,16 @@ def aggregate_query_trajectories(
     connection = query.connection
     outcome = service.execute_readonly(
         query,
-        timeout=connection.default_timeout,
-        row_limit=connection.default_row_limit,
+        timeout=(
+            active_payload.timeout
+            if active_payload.timeout is not None
+            else connection.default_timeout
+        ),
+        row_limit=(
+            active_payload.row_limit
+            if active_payload.row_limit is not None
+            else connection.default_row_limit
+        ),
     )
     row_identity_key = _select_row_identity_key(outcome.execution_result.rows)
     rows = _attach_row_identities(

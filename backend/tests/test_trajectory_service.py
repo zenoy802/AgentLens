@@ -97,6 +97,25 @@ def test_null_group_key_does_not_merge_with_literal_null_sentinel() -> None:
     ]
 
 
+def test_non_null_group_values_with_same_display_string_do_not_merge() -> None:
+    rows: list[dict[str, Any]] = [
+        {"_row_identity": "int", "session_id": 1, "role": "user", "content": "int group"},
+        {
+            "_row_identity": "str",
+            "session_id": "1",
+            "role": "assistant",
+            "content": "string group",
+        },
+    ]
+
+    trajectories, warnings = aggregate(rows, _config())
+
+    assert warnings == []
+    assert len(trajectories) == EXPECTED_TWO
+    assert [trajectory.group_key for trajectory in trajectories] == ["1", "1"]
+    assert [trajectory.messages[0].row_identity for trajectory in trajectories] == ["int", "str"]
+
+
 def test_null_role_becomes_unknown_and_warns() -> None:
     rows: list[dict[str, Any]] = [
         {"_row_identity": "a", "session_id": "s1", "role": None, "content": "one"},

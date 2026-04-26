@@ -10,7 +10,7 @@ from app.schemas.view_config import TrajectoryConfig
 
 _ROW_IDENTITY_KEY = "_row_identity"
 _NULL_GROUP_KEY = "__null__"
-_GroupBucketKey: TypeAlias = tuple[bool, str]
+_GroupBucketKey: TypeAlias = tuple[str, str, str]
 
 
 def aggregate(
@@ -89,13 +89,20 @@ def _group_rows(
             )
 
         group_value = row[group_by]
-        group_key = _NULL_GROUP_KEY if group_value is None else str(group_value)
-        grouped_rows.setdefault((group_value is None, group_key), []).append(row)
+        group_bucket_key = _group_bucket_key(group_value)
+        grouped_rows.setdefault(group_bucket_key, []).append(row)
     return grouped_rows
 
 
+def _group_bucket_key(value: Any) -> _GroupBucketKey:
+    if value is None:
+        return ("null", "NoneType", _NULL_GROUP_KEY)
+
+    return (type(value).__module__, type(value).__qualname__, str(value))
+
+
 def _display_group_key(group_bucket_key: _GroupBucketKey) -> str:
-    return group_bucket_key[1]
+    return group_bucket_key[2]
 
 
 def _sort_group_rows(
