@@ -222,7 +222,10 @@ async def test_aggregate_trajectories_with_inline_config(
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             f"/api/v1/queries/{query_id}/trajectories",
-            json={"use_saved_config": False, "trajectory_config": _trajectory_config()},
+            json={
+                "use_saved_config": False,
+                "trajectory_config": _trajectory_config(order_by=None),
+            },
         )
 
     assert response.status_code == HTTP_OK

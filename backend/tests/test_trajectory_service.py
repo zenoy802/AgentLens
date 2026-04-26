@@ -75,6 +75,28 @@ def test_multiple_groups_keep_first_seen_group_order() -> None:
     assert [trajectory.message_count for trajectory in trajectories] == [2, 1]
 
 
+def test_null_group_key_does_not_merge_with_literal_null_sentinel() -> None:
+    rows: list[dict[str, Any]] = [
+        {"_row_identity": "null", "session_id": None, "role": "user", "content": "null group"},
+        {
+            "_row_identity": "literal",
+            "session_id": "__null__",
+            "role": "assistant",
+            "content": "literal sentinel group",
+        },
+    ]
+
+    trajectories, warnings = aggregate(rows, _config())
+
+    assert warnings == []
+    assert len(trajectories) == EXPECTED_TWO
+    assert [trajectory.group_key for trajectory in trajectories] == ["__null__", "__null__"]
+    assert [trajectory.messages[0].row_identity for trajectory in trajectories] == [
+        "null",
+        "literal",
+    ]
+
+
 def test_null_role_becomes_unknown_and_warns() -> None:
     rows: list[dict[str, Any]] = [
         {"_row_identity": "a", "session_id": "s1", "role": None, "content": "one"},
@@ -97,7 +119,13 @@ def test_missing_order_by_column_keeps_input_order() -> None:
 
     trajectories, warnings = aggregate(rows, _config(order_by="created_at"))
 
-    assert warnings == []
+    assert len(warnings) == 1
+    assert warnings[0].code == "MISSING_ORDER_COLUMN"
+    assert warnings[0].detail == {
+        "group_key": "s1",
+        "column": "created_at",
+        "count": EXPECTED_TWO,
+    }
     assert [message.row_identity for message in trajectories[0].messages] == ["b", "a"]
 
 

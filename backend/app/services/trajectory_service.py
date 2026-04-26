@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, TypeAlias
 
 from app.core.errors import ValidationError
 from app.schemas.common import WarningRead
@@ -10,6 +10,7 @@ from app.schemas.view_config import TrajectoryConfig
 
 _ROW_IDENTITY_KEY = "_row_identity"
 _NULL_GROUP_KEY = "__null__"
+_GroupBucketKey: TypeAlias = tuple[bool, str]
 
 
 def aggregate(
@@ -26,7 +27,8 @@ def aggregate(
     warnings: list[WarningRead] = []
     trajectories: list[Trajectory] = []
 
-    for group_key, group_rows in grouped_rows.items():
+    for group_bucket_key, group_rows in grouped_rows.items():
+        group_key = _display_group_key(group_bucket_key)
         sorted_rows = _sort_group_rows(group_rows, group_key, config, warnings)
         messages, missing_role_count = _build_messages(
             sorted_rows,
@@ -76,8 +78,8 @@ def _validate_required_columns(
 def _group_rows(
     rows: list[dict[str, Any]],
     group_by: str,
-) -> dict[str, list[dict[str, Any]]]:
-    grouped_rows: dict[str, list[dict[str, Any]]] = {}
+) -> dict[_GroupBucketKey, list[dict[str, Any]]]:
+    grouped_rows: dict[_GroupBucketKey, list[dict[str, Any]]] = {}
     for index, row in enumerate(rows):
         if group_by not in row:
             raise ValidationError(
@@ -88,8 +90,12 @@ def _group_rows(
 
         group_value = row[group_by]
         group_key = _NULL_GROUP_KEY if group_value is None else str(group_value)
-        grouped_rows.setdefault(group_key, []).append(row)
+        grouped_rows.setdefault((group_value is None, group_key), []).append(row)
     return grouped_rows
+
+
+def _display_group_key(group_bucket_key: _GroupBucketKey) -> str:
+    return group_bucket_key[1]
 
 
 def _sort_group_rows(
@@ -99,7 +105,22 @@ def _sort_group_rows(
     warnings: list[WarningRead],
 ) -> list[dict[str, Any]]:
     order_by = config.order_by
-    if order_by is None or not all(order_by in row for row in rows):
+    if order_by is None:
+        return rows
+
+    missing_order_count = sum(1 for row in rows if order_by not in row)
+    if missing_order_count > 0:
+        warnings.append(
+            WarningRead(
+                code="MISSING_ORDER_COLUMN",
+                message=f"列 '{order_by}' 在部分行缺失, 保持输入顺序",
+                detail={
+                    "group_key": group_key,
+                    "column": order_by,
+                    "count": missing_order_count,
+                },
+            )
+        )
         return rows
 
     try:
