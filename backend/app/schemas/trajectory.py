@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import WarningRead
 from app.schemas.view_config import TrajectoryConfig
@@ -25,6 +25,8 @@ class Trajectory(BaseModel):
 class TrajectoryAggregateRequest(BaseModel):
     use_saved_config: bool = True
     trajectory_config: TrajectoryConfig | None = None
+    timeout: int | None = Field(default=None, ge=1, le=300)
+    row_limit: int | None = Field(default=None, ge=1, le=100000)
 
 
 class TrajectoryAggregateResponse(BaseModel):

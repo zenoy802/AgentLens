@@ -11,6 +11,8 @@ import { formatApiError } from "@/lib/formatApiError";
 export interface UseTrajectoriesOptions {
   useSavedConfig?: boolean;
   config?: TrajectoryConfig;
+  timeout?: number | null;
+  rowLimit?: number | null;
 }
 
 export function useTrajectories(queryId: number, options?: UseTrajectoriesOptions) {
@@ -27,6 +29,8 @@ export function useTrajectories(queryId: number, options?: UseTrajectoriesOption
           body: {
             use_saved_config: useSavedConfig,
             trajectory_config: activeOptions.config ?? null,
+            timeout: activeOptions.timeout ?? null,
+            row_limit: activeOptions.rowLimit ?? null,
           },
         },
       );

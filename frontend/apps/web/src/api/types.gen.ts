@@ -732,6 +732,10 @@ export interface components {
              */
             use_saved_config: boolean;
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Timeout */
+            timeout?: number | null;
+            /** Row Limit */
+            row_limit?: number | null;
         };
         /** TrajectoryAggregateResponse */
         TrajectoryAggregateResponse: {

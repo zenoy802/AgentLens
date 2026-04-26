@@ -82,6 +82,9 @@ def _create_query(
 def _patch_executor(
     monkeypatch: pytest.MonkeyPatch,
     result: ExecutorResult,
+    *,
+    expected_timeout: int = DEFAULT_TIMEOUT,
+    expected_row_limit: int = DEFAULT_ROW_LIMIT,
 ) -> None:
     def fake_execute(
         self: ExecutorService,
@@ -93,8 +96,8 @@ def _patch_executor(
     ) -> ExecutorResult:
         assert isinstance(self, ExecutorService)
         assert connection.id > 0
-        assert timeout == DEFAULT_TIMEOUT
-        assert row_limit == DEFAULT_ROW_LIMIT
+        assert timeout == expected_timeout
+        assert row_limit == expected_row_limit
         validate_sql(sql)
         return result
 
@@ -331,3 +334,46 @@ async def test_aggregate_trajectories_propagates_readonly_execution_warnings(
     warning_codes = {warning["code"] for warning in response.json()["warnings"]}
     assert "ROW_IDENTITY_COLUMN_MISSING" in warning_codes
     assert "RESULT_TRUNCATED" in warning_codes
+
+
+@pytest.mark.asyncio
+async def test_aggregate_trajectories_uses_request_execution_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        query_id = _create_query(
+            session,
+            connection_id=connection_id,
+            trajectory_config=_trajectory_config(tool_calls_column=None, order_by=None),
+        )
+    finally:
+        session.close()
+
+    _patch_executor(
+        monkeypatch,
+        ExecutorResult(
+            columns=[
+                Column(name="session_id", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="role", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="content", sql_type="VAR_STRING", inferred_type="text"),
+            ],
+            rows=[{"session_id": "s1", "role": "user", "content": "hello"}],
+            duration_ms=5,
+            truncated=False,
+        ),
+        expected_timeout=7,
+        expected_row_limit=42,
+    )
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            f"/api/v1/queries/{query_id}/trajectories",
+            json={"timeout": 7, "row_limit": 42},
+        )
+
+    assert response.status_code == HTTP_OK
+    assert response.json()["trajectories"][0]["message_count"] == 1
