@@ -13,6 +13,7 @@ const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms
 
 export function SingleTrajectoryView({ trajectory, className }: SingleTrajectoryViewProps) {
   const roles = useMemo(() => getRoles(trajectory), [trajectory]);
+  const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>(roles);
   const activeRoles = selectedRoles.length === roles.length ? undefined : selectedRoles;
 
@@ -71,7 +72,7 @@ export function SingleTrajectoryView({ trajectory, className }: SingleTrajectory
           trajectory={trajectory}
           filterRoles={activeRoles}
           showMetaLine
-          metaFields={DEFAULT_META_FIELDS}
+          metaFields={metaFields}
         />
       </div>
     </div>
@@ -87,4 +88,20 @@ function getRoles(trajectory: Trajectory): string[] {
     }
   }
   return Array.from(roles.values());
+}
+
+function getMetaFields(trajectory: Trajectory): string[] {
+  const fields = new Set(DEFAULT_META_FIELDS);
+  for (const message of trajectory.messages) {
+    for (const field of Object.keys(message.raw)) {
+      if (isTimestampMetaField(field)) {
+        fields.add(field);
+      }
+    }
+  }
+  return Array.from(fields);
+}
+
+function isTimestampMetaField(field: string): boolean {
+  return /_at$/i.test(field);
 }

@@ -4,6 +4,7 @@ import type { TrajectoryConfig } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -60,7 +61,7 @@ export function TrajectoryConfigPanel() {
         <DialogHeader>
           <DialogTitle>Trajectory 配置</DialogTitle>
           <DialogDescription>
-            字段变更会标记当前视图为未保存；点击“保存视图”后才会持久化。
+            选择字段后点击“确定”返回查询页；字段变更会标记当前视图为未保存，需要再点击“保存视图”才会持久化。
           </DialogDescription>
         </DialogHeader>
 
@@ -127,6 +128,9 @@ export function TrajectoryConfigPanel() {
           >
             清空配置
           </Button>
+          <DialogClose asChild>
+            <Button type="button">确定</Button>
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

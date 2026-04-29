@@ -134,7 +134,16 @@ export function Queries() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-sm">
+            <table className="w-full min-w-[1080px] table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-[260px]" />
+                <col className="w-[170px]" />
+                <col className="w-[300px]" />
+                <col className="w-[100px]" />
+                <col className="w-[150px]" />
+                <col className="w-[150px]" />
+                <col className="w-[170px]" />
+              </colgroup>
               <thead className="bg-muted/60 text-left text-xs font-medium uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Name</th>
@@ -149,20 +158,26 @@ export function Queries() {
               <tbody>
                 {items.map((query) => (
                   <tr key={query.id} className="border-t">
-                    <td className="max-w-[180px] px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       {query.name === null ? (
                         <span className="text-muted-foreground">（临时）</span>
                       ) : (
-                        <span className="font-medium">{query.name}</span>
+                        <span className="block break-all font-medium leading-5">
+                          {query.name}
+                        </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {connectionNames.get(query.connection_id) ?? `#${query.connection_id}`}
+                    <td className="px-4 py-3 align-top text-muted-foreground">
+                      <span className="block truncate" title={connectionNames.get(query.connection_id)}>
+                        {connectionNames.get(query.connection_id) ?? `#${query.connection_id}`}
+                      </span>
                     </td>
-                    <td className="max-w-[300px] px-4 py-3 font-mono text-xs">
-                      {previewSql(query.sql_text)}
+                    <td className="px-4 py-3 align-top font-mono text-xs">
+                      <span className="block truncate" title={query.sql_text}>
+                        {previewSql(query.sql_text)}
+                      </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <span
                         className={cn(
                           "inline-flex rounded-md border px-2 py-1 text-xs font-medium",
@@ -174,13 +189,13 @@ export function Queries() {
                         {query.is_named ? "Named" : "Temporary"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="px-4 py-3 align-top text-muted-foreground">
                       {formatDateTime(query.last_executed_at)}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="px-4 py-3 align-top text-muted-foreground">
                       {query.expires_at === null ? "永不过期" : formatDateTime(query.expires_at)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <div className="flex justify-end gap-2">
                         <Link
                           to={`/query/${query.id}`}

@@ -100,11 +100,15 @@ function getMetaItems(message: TrajectoryMessage, fields: string[]): string[] {
     if (value === undefined || value === null || value === "") {
       return [];
     }
-    return [`${field}: ${formatMetaValue(value)}`];
+    return [`${field}: ${formatMetaValue(field, value)}`];
   });
 }
 
-function formatMetaValue(value: unknown): string {
+function formatMetaValue(field: string, value: unknown): string {
+  if (typeof value === "string" && isTimestampMetaField(field)) {
+    return formatTimestampMeta(value);
+  }
+
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
@@ -114,6 +118,53 @@ function formatMetaValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function isTimestampMetaField(field: string): boolean {
+  return /_at$/i.test(field);
+}
+
+function formatTimestampMeta(value: string): string {
+  const normalized = normalizeIsoTimestamp(value);
+  const timestamp = Date.parse(normalized);
+  if (Number.isNaN(timestamp)) {
+    return value;
+  }
+
+  const date = new Date(timestamp);
+  return [
+    pad(date.getUTCFullYear(), 4),
+    pad(date.getUTCMonth() + 1, 2),
+    pad(date.getUTCDate(), 2),
+  ].join("-") + ` ${[
+    pad(date.getUTCHours(), 2),
+    pad(date.getUTCMinutes(), 2),
+    pad(date.getUTCSeconds(), 2),
+  ].join(":")}`;
+}
+
+function normalizeIsoTimestamp(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return value;
+  }
+
+  const normalized = trimmed.replace(/\s+/, "T");
+  if (hasExplicitTimeZone(normalized)) {
+    return normalized;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return `${normalized}T00:00:00Z`;
+  }
+  return `${normalized}Z`;
+}
+
+function hasExplicitTimeZone(value: string): boolean {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+}
+
+function pad(value: number, length: number): string {
+  return String(value).padStart(length, "0");
 }
 
 function joinClassNames(...names: Array<string | undefined | false>): string {
