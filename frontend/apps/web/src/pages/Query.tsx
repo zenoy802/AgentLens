@@ -506,15 +506,20 @@ export function Query() {
     );
   }
 
+  const displayedQueryId = routeQueryId ?? activeQuery?.id ?? null;
+  const pageTitle = getQueryPageTitle(displayedQueryId, queryDetail.data?.name ?? activeQuery?.name);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {routeQueryId === null ? "新建查询" : `查询 #${routeQueryId}`}
+        <div className="min-w-0">
+          <h1 className="max-w-4xl break-words text-2xl font-semibold tracking-tight">
+            {pageTitle}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            编写 SQL，选择连接后运行。打开已有查询时不会自动执行。
+            {displayedQueryId === null
+              ? "编写 SQL，选择连接后运行。打开已有查询时不会自动执行。"
+              : `查询 #${displayedQueryId}。打开已有查询时不会自动执行。`}
           </p>
         </div>
         <Link to="/queries" className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
@@ -831,6 +836,15 @@ function getInitialSql(locationState: unknown): string | null {
   }
 
   return null;
+}
+
+function getQueryPageTitle(queryId: number | null, queryName: string | null | undefined): string {
+  if (queryId === null) {
+    return "新建查询";
+  }
+
+  const normalizedName = queryName?.trim();
+  return normalizedName ? normalizedName : `查询 #${queryId}`;
 }
 
 function isTrajectoryConfigComplete(
