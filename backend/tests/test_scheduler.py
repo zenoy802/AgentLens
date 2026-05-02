@@ -13,7 +13,7 @@ from app.core.config import Settings
 
 @dataclass
 class _PendingJob:
-    id: str = "cleanup_expired_data"
+    id: str = "cleanup"
     name: str = "Cleanup expired queries and query history"
     trigger: str = "cron[hour='3', minute='0']"
 
@@ -32,8 +32,8 @@ def test_scheduler_jobs_handles_pending_jobs_without_next_run_time() -> None:
     jobs = _scheduler_jobs(_PendingScheduler())
 
     assert len(jobs) == 1
-    assert jobs[0].id == "cleanup_expired_data"
-    assert jobs[0].next_run_time is None
+    assert jobs[0].id == "cleanup"
+    assert jobs[0].next_run is None
 
 
 def test_reload_flag_skips_main_process_but_starts_child(

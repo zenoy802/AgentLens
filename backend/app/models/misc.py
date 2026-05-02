@@ -16,9 +16,7 @@ if TYPE_CHECKING:
 
 class GlobalRenderRule(Base, TimestampMixin):
     __tablename__ = "global_render_rules"
-    __table_args__ = (
-        Index("idx_grr_enabled_priority", "enabled", "priority"),
-    )
+    __table_args__ = (Index("idx_grr_enabled_priority", "enabled", "priority"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     match_pattern: Mapped[str] = mapped_column(String(200), nullable=False)

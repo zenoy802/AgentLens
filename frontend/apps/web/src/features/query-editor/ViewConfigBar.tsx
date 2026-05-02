@@ -51,10 +51,8 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
         viewConfigPayloadMatchesState(payload, currentState)
       ) {
         applyViewConfig(saved);
-        toast.success("视图已保存");
-      } else {
-        toast.success("视图已保存，本地还有未保存的变更");
       }
+      toast.success("视图已保存");
     } catch {
       // useSaveViewConfig already reports API errors.
     }

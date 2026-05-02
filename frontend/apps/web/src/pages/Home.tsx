@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { AlertCircle, CheckCircle2, Database, ListChecks, Plus, Terminal } from "lucide-react";
+import { CheckCircle2, Clock3, Database, ListChecks, Plus, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "@/api/client";
@@ -8,6 +8,9 @@ import { useConnections } from "@/api/hooks/useConnections";
 import type { QueryHistoryRead } from "@/api/hooks/useQueryHistory";
 import { useQueryHistory } from "@/api/hooks/useQueryHistory";
 import type { HealthResponse } from "@/api/types";
+import { EmptyState } from "@/components/common/EmptyState";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +18,7 @@ async function fetchHealth(): Promise<HealthResponse> {
   const { data, error, response } = await apiClient.GET("/health");
 
   if (error !== undefined) {
-    throw new Error(`Health check failed: ${JSON.stringify(error)}`);
+    throw { data, error, response };
   }
   if (!response.ok || data === undefined) {
     throw new Error(`Health check failed with status ${response.status}`);
@@ -70,15 +73,17 @@ export function Home() {
 
       <div className="rounded-lg border bg-card p-5 text-card-foreground shadow-sm">
         {healthQuery.isLoading ? (
-          <div className="text-sm text-muted-foreground">Checking backend status...</div>
+          <LoadingState label="Checking backend status..." rows={2} className="border-0 p-0" />
         ) : healthQuery.isError || health === undefined ? (
-          <div className="flex items-center gap-3 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            <span>Backend status unavailable</span>
-            <Button variant="outline" size="sm" onClick={() => void healthQuery.refetch()}>
-              Retry
-            </Button>
-          </div>
+          <ErrorState
+            title="Backend status unavailable"
+            error={healthQuery.error}
+            action={
+              <Button variant="outline" size="sm" onClick={() => void healthQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          />
         ) : (
           <div className="flex items-center gap-2 text-sm">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
@@ -102,18 +107,29 @@ export function Home() {
         </div>
 
         {history.isLoading ? (
-          <div className="p-5 text-sm text-muted-foreground">正在加载最近查询...</div>
+          <LoadingState label="正在加载最近查询..." rows={5} className="rounded-none border-0" />
         ) : history.isError ? (
-          <div className="flex items-center justify-between gap-3 p-5 text-sm text-destructive">
-            <span>{history.error instanceof Error ? history.error.message : "最近查询加载失败"}</span>
-            <Button variant="outline" size="sm" onClick={() => void history.refetch()}>
-              重试
-            </Button>
-          </div>
+          <ErrorState
+            error={history.error}
+            className="m-4"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void history.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : recentHistory.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            暂无查询历史，先从新建查询开始。
-          </div>
+          <EmptyState
+            icon={<Clock3 className="h-6 w-6" aria-hidden="true" />}
+            title="暂无查询历史"
+            description="运行第一条 SQL 后，这里会显示最近执行记录。"
+            className="m-4"
+            action={
+              <Link to="/query" className={cn(buttonVariants({ variant: "outline" }))}>
+                新建查询
+              </Link>
+            }
+          />
         ) : (
           <div className="divide-y">
             {recentHistory.map((item) => (

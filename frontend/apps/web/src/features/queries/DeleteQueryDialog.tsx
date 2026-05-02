@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { NamedQueryRead } from "@/api/hooks/useQueries";
 import { useDeleteQuery } from "@/api/hooks/useQueries";
 import { Button } from "@/components/ui/button";
+import { formatApiError } from "@/lib/formatApiError";
 
 type DeleteQueryDialogProps = {
   open: boolean;
@@ -30,7 +31,7 @@ export function DeleteQueryDialog({ open, query, onOpenChange }: DeleteQueryDial
       toast.success("查询已删除");
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "删除查询失败");
+      toast.error(formatApiError(error));
     }
   }
 

@@ -46,7 +46,7 @@ export function useQueries(params: QueryListParams = {}) {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to load queries: ${JSON.stringify(error)}`);
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to load queries with status ${response.status}`);
@@ -90,7 +90,7 @@ export function useDeleteQuery() {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to delete query: ${JSON.stringify(error)}`);
+        throw { error, response };
       }
       if (!response.ok) {
         throw new Error(`Failed to delete query with status ${response.status}`);
@@ -113,7 +113,7 @@ export function useUpdateQuery() {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to update query: ${JSON.stringify(error)}`);
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to update query with status ${response.status}`);
@@ -141,7 +141,7 @@ export function usePromoteQuery() {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to promote query: ${JSON.stringify(error)}`);
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to promote query with status ${response.status}`);

@@ -88,7 +88,7 @@ export function ConnectionFormDialog({
       try {
         extraParams = JSON.parse(trimmedExtra) as Record<string, string | number | boolean | null>;
       } catch {
-        toast.error("extra_params JSON 格式无效");
+        toast.error("VALIDATION_ERROR: extra_params JSON 格式无效");
         return;
       }
     }

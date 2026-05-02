@@ -11,9 +11,17 @@ type SqlEditorProps = {
   onRun: () => void;
   height?: number;
   onHeightChange?: (height: number) => void;
+  framed?: boolean;
 };
 
-export function SqlEditor({ value, onChange, onRun, height, onHeightChange }: SqlEditorProps) {
+export function SqlEditor({
+  value,
+  onChange,
+  onRun,
+  height,
+  onHeightChange,
+  framed = true,
+}: SqlEditorProps) {
   const [autoHeight, setAutoHeight] = useState(MIN_EDITOR_HEIGHT);
   const onRunRef = useRef(onRun);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -46,7 +54,7 @@ export function SqlEditor({ value, onChange, onRun, height, onHeightChange }: Sq
   const editorHeight = clampEditorHeight(height ?? autoHeight);
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
+    <div className={cn(framed && "overflow-hidden rounded-lg border bg-card")}>
       <Editor
         className={cn("font-mono")}
         height={editorHeight}

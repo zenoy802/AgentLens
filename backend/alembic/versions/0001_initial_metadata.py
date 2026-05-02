@@ -357,4 +357,3 @@ def downgrade() -> None:
     op.drop_table("llm_providers")
     op.drop_index("idx_connections_name", table_name="connections")
     op.drop_table("connections")
-

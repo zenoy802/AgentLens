@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { ArrowLeft, GripHorizontal, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, DatabaseZap, GripHorizontal } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import { useExecute, useExecuteQuery } from "@/api/hooks/useExecute";
 import { useQueryById } from "@/api/hooks/useQueries";
 import { useTrajectories } from "@/api/hooks/useTrajectories";
 import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
 import type { Row, Trajectory, Warning } from "@/api/types";
-import { buttonVariants } from "@/components/ui/button";
-import { ErrorAlert } from "@/components/common/ErrorAlert";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { EmptyState } from "@/components/common/EmptyState";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
 import {
   clampEditorHeight,
@@ -52,6 +55,13 @@ type ExecutionGuard = {
   queryIdAfterClear: number | null;
 };
 
+const SQL_EDITOR_COLLAPSED_KEY = "agentlens.query.sqlEditorCollapsed";
+const QUERY_TEMPLATE_SQL = `-- 从这里开始：按 session_id 和时间顺序查询一条或多条 trajectory
+-- SELECT session_id, role, content, created_at
+-- FROM agent_messages
+-- ORDER BY session_id, created_at;
+`;
+
 export function Query() {
   const { queryId: queryIdParam } = useParams();
   const location = useLocation();
@@ -81,6 +91,7 @@ export function Query() {
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
   const [lastError, setLastError] = useState<unknown>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
+  const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
@@ -122,6 +133,39 @@ export function Query() {
     trajectoryRequestedKeyRef.current === trajectoryRequestKey;
 
   useBeforeUnloadGuard(isDirty);
+
+  useEffect(() => {
+    window.localStorage.setItem(SQL_EDITOR_COLLAPSED_KEY, String(editorCollapsed));
+  }, [editorCollapsed]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        void handleRun();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void handleSaveViewConfig();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setPromoteTarget(null);
+        setDetailRow(null);
+        setDetailRowNumber(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   useEffect(() => {
     if (activeResultView !== "trajectory") {
@@ -361,6 +405,27 @@ export function Query() {
     }
   }
 
+  async function handleSaveViewConfig() {
+    if (queryId === null || !isDirty || saveViewConfig.isPending) {
+      return;
+    }
+
+    const payload = getViewConfigPayloadFromState(useQueryStore.getState());
+    try {
+      const saved = await saveViewConfig.mutateAsync({
+        queryId,
+        payload,
+      });
+      const currentState = useQueryStore.getState();
+      if (currentState.queryId === queryId && viewConfigPayloadMatchesState(payload, currentState)) {
+        applyViewConfig(saved);
+      }
+      toast.success("视图已保存");
+    } catch {
+      // useSaveViewConfig reports API errors with the shared toast formatter.
+    }
+  }
+
   function handleConnectionChange(id: number | null) {
     if (id === useQueryStore.getState().connectionId) {
       return;
@@ -455,6 +520,14 @@ export function Query() {
     setPromoteTarget(activeQuery);
   }
 
+  function handleUseSqlTemplate() {
+    const currentSql = useQueryStore.getState().sql;
+    const nextSql =
+      currentSql.trim().length === 0 ? QUERY_TEMPLATE_SQL : `${currentSql}\n${QUERY_TEMPLATE_SQL}`;
+    setSql(nextSql);
+    clearCurrentQueryIdentity();
+  }
+
   function handleRowClick(row: Row, rowNumber: number) {
     setDetailRow(row);
     setDetailRowNumber(rowNumber);
@@ -486,12 +559,7 @@ export function Query() {
   }
 
   if (routeQueryId !== null && queryDetail.isLoading) {
-    return (
-      <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-        正在加载查询...
-      </div>
-    );
+    return <LoadingState label="正在加载查询..." rows={5} />;
   }
 
   if (routeQueryId !== null && queryDetail.isError) {
@@ -501,7 +569,7 @@ export function Query() {
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           返回查询列表
         </Link>
-        <ErrorAlert error={queryDetail.error} />
+        <ErrorState error={queryDetail.error} />
       </div>
     );
   }
@@ -540,44 +608,69 @@ export function Query() {
           onConnectionChange={handleConnectionChange}
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
+          resultTabs={
+            <ResultViewTabs
+              activeView={activeResultView}
+              trajectoryDisabled={trajectoryTabDisabled}
+              trajectoryDisabledReason={getTrajectoryDisabledReason({
+                configComplete: trajectoryConfigComplete,
+                hasRows: rows.length > 0,
+                hasQueryId: queryId !== null,
+              })}
+              onChange={setActiveResultView}
+            />
+          }
         />
 
         <div className="bg-background p-4">
-          <SqlEditor
-            value={sql}
-            onChange={handleSqlChange}
-            onRun={() => void handleRun()}
-            height={manualEditorHeight ?? undefined}
-            onHeightChange={setAutoEditorHeight}
-          />
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="调整 SQL 编辑器高度"
-            className="mt-2 flex h-4 cursor-row-resize items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-            onPointerDown={handleDividerPointerDown}
-            onPointerMove={handleDividerPointerMove}
-            onPointerUp={handleDividerPointerUp}
-            onPointerCancel={handleDividerPointerUp}
-            onDoubleClick={() => setManualEditorHeight(null)}
-          >
-            <GripHorizontal className="h-4 w-4" aria-hidden="true" />
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+              <div className="text-sm font-medium">SQL Editor</div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setEditorCollapsed((current) => !current)}
+              >
+                {editorCollapsed ? (
+                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {editorCollapsed ? "Expand" : "Collapse"}
+              </Button>
+            </div>
+            {!editorCollapsed ? (
+              <>
+                <SqlEditor
+                  value={sql}
+                  onChange={handleSqlChange}
+                  onRun={() => void handleRun()}
+                  height={manualEditorHeight ?? undefined}
+                  onHeightChange={setAutoEditorHeight}
+                  framed={false}
+                />
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="调整 SQL 编辑器高度"
+                  className="flex h-4 cursor-row-resize items-center justify-center text-muted-foreground hover:bg-accent"
+                  onPointerDown={handleDividerPointerDown}
+                  onPointerMove={handleDividerPointerMove}
+                  onPointerUp={handleDividerPointerUp}
+                  onPointerCancel={handleDividerPointerUp}
+                  onDoubleClick={() => setManualEditorHeight(null)}
+                >
+                  <GripHorizontal className="h-4 w-4" aria-hidden="true" />
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
 
         <ViewConfigBar queryId={queryId} />
 
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
-          <ResultViewTabs
-            activeView={activeResultView}
-            trajectoryDisabled={trajectoryTabDisabled}
-            trajectoryDisabledReason={getTrajectoryDisabledReason({
-              configComplete: trajectoryConfigComplete,
-              hasRows: rows.length > 0,
-              hasQueryId: queryId !== null,
-            })}
-            onChange={setActiveResultView}
-          />
           <ResultPlaceholder
             error={lastError}
             isExecuting={isExecuting}
@@ -595,6 +688,7 @@ export function Query() {
               trajectoryDataIsCurrent ? aggregateTrajectories.data?.warnings : undefined
             }
             onRowClick={handleRowClick}
+            onUseSqlTemplate={handleUseSqlTemplate}
           />
         </div>
       </section>
@@ -648,6 +742,7 @@ type ResultPlaceholderProps = {
   trajectories: Trajectory[] | undefined;
   trajectoryWarnings: Warning[] | undefined;
   onRowClick: (row: Row, rowNumber: number) => void;
+  onUseSqlTemplate: () => void;
 };
 
 type ResultViewTabsProps = {
@@ -664,7 +759,7 @@ function ResultViewTabs({
   onChange,
 }: ResultViewTabsProps) {
   return (
-    <div className="mb-3 flex items-center gap-2" role="tablist" aria-label="结果视图">
+    <div className="flex items-center gap-2" role="tablist" aria-label="结果视图">
       <button
         type="button"
         role="tab"
@@ -677,7 +772,7 @@ function ResultViewTabs({
         )}
         onClick={() => onChange("row")}
       >
-        行级表格
+        Table
       </button>
       <button
         type="button"
@@ -713,18 +808,14 @@ function ResultPlaceholder({
   trajectories,
   trajectoryWarnings,
   onRowClick,
+  onUseSqlTemplate,
 }: ResultPlaceholderProps) {
   if (isExecuting) {
-    return (
-      <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-        正在执行 SQL...
-      </div>
-    );
+    return <LoadingState label="正在执行 SQL..." rows={6} />;
   }
 
   if (error !== null) {
-    return <ErrorAlert error={error} />;
+    return <ErrorState error={error} />;
   }
 
   if (execution !== null) {
@@ -744,16 +835,21 @@ function ResultPlaceholder({
     }
 
     return (
-      <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-        已返回 {returnedRows} 行
-      </div>
+      <EmptyState title={`已返回 ${returnedRows} 行`} description="当前 SQL 没有结果行。" />
     );
   }
 
   return (
-    <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-      运行 SQL 看结果
-    </div>
+    <EmptyState
+      icon={<DatabaseZap className="h-6 w-6" aria-hidden="true" />}
+      title="还没有执行结果"
+      description="选择连接并运行 SQL 后，可以在 Table 和 Trajectory 视图之间切换。"
+      action={
+        <Button variant="outline" onClick={onUseSqlTemplate}>
+          从模板开始
+        </Button>
+      }
+    />
   );
 }
 
@@ -771,23 +867,16 @@ function TrajectoryResult({
   warnings,
 }: TrajectoryResultProps) {
   if (isLoading) {
-    return (
-      <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-        正在聚合 Trajectory...
-      </div>
-    );
+    return <LoadingState label="正在聚合 Trajectory..." rows={5} />;
   }
 
   if (error !== null && error !== undefined) {
-    return <ErrorAlert error={error} />;
+    return <ErrorState error={error} />;
   }
 
   if (trajectories === undefined) {
     return (
-      <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-        切换到 Trajectory 后开始聚合
-      </div>
+      <EmptyState title="Trajectory 未聚合" description="切换到 Trajectory 后开始聚合。" />
     );
   }
 
@@ -814,6 +903,10 @@ function TrajectoryResult({
       )}
     </div>
   );
+}
+
+function readEditorCollapsedPreference(): boolean {
+  return window.localStorage.getItem(SQL_EDITOR_COLLAPSED_KEY) === "true";
 }
 
 function parsePositiveInt(value: string | null | undefined): number | null {

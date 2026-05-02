@@ -1,46 +1,50 @@
 # AgentLens
 
-AgentLens is a SQL-query-based LLM trajectory visualization, labeling, and analysis tool for agent developers. It connects to existing MySQL databases in read-only mode, queries arbitrary trajectory schemas, and renders results as row tables, single trajectory views, and comparison views.
+## LLM Trajectory Analyzer
 
-## Repository Layout
+AgentLens is a local-first SQL query and visualization tool for Agent developers. It connects to an existing MySQL database with read-only access, runs SELECT-only SQL, and renders the result as a row table or a trajectory view without requiring any Agent code changes.
 
-```text
-AgentLens/
-├── backend/                  # FastAPI API service and local SQLite metadata store
-├── frontend/                 # pnpm workspace for the React web app and viewer packages
-│   ├── apps/web/             # Vite + React + TypeScript application
-│   └── packages/viewers/     # Placeholder renderer packages for later phases
-├── Dockerfile                # Production image build
-├── docker-compose.yml        # Single-service production compose entry
-└── README.md
+## 核心特性
+
+- 只读连接已有 MySQL 数据库，不侵入 Agent 运行时代码。
+- SQL 查询任意 trajectory schema，并自动保存临时查询历史。
+- 行级表格支持 text、markdown、JSON、code、timestamp 等字段渲染。
+- ViewConfig 可保存列渲染、表格配置和 Trajectory 聚合配置。
+- Trajectory 视图按 group/role/content/order 字段聚合并渲染对话流。
+
+## 截图
+
+> TODO: 添加连接管理页面截图。
+
+> TODO: 添加 SQL 查询 + 表格视图截图。
+
+> TODO: 添加 Trajectory 单视图截图。
+
+## 快速开始
+
+### Docker 方式
+
+```bash
+docker compose up -d
 ```
 
-## Prerequisites
+打开 http://localhost:8000。
 
-- Python 3.11 or newer for the FastAPI backend. The current local workflow uses `venv` + `pip`; backend environment management is planned to move to `uv` in a later phase.
-- Node.js 20 or newer and pnpm 8 or newer for the React frontend workspace.
+数据会保存在 Docker volume `agentlens-data` 中，容器内路径为 `/data`。
 
-## Local Development
+### 本地开发方式
 
-### Backend
+后端：
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+AGENTLENS_DATA_DIR="$HOME/.agentlens" python -m uvicorn app.main:app --reload
 ```
 
-Verify the API:
-
-```bash
-curl http://localhost:8000/api/v1/health
-```
-
-### Frontend
-
-Use pnpm 8 or newer.
+前端：
 
 ```bash
 cd frontend
@@ -48,51 +52,36 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:5173`. The Vite dev server proxies `/api` requests to `http://localhost:8000`.
+本地开发时后端默认 http://127.0.0.1:8000，前端默认 http://localhost:5173。
 
-Generate OpenAPI types after the backend is running:
+## 数据源准备
 
-```bash
-cd frontend
-pnpm gen:api
+建议为 AgentLens 单独创建只读 MySQL 账号：
+
+```sql
+CREATE USER 'agentlens_ro'@'%' IDENTIFIED BY 'change-me';
+GRANT SELECT ON your_database.* TO 'agentlens_ro'@'%';
+FLUSH PRIVILEGES;
 ```
 
-Run checks:
+不要使用有写权限的生产账号。AgentLens 后端也会拦截非 SELECT/WITH SQL，但数据库账号仍应遵循最小权限原则。
 
-```bash
-cd frontend
-pnpm --filter web typecheck
-pnpm build
-```
+Windows 用户本地数据目录可使用 `%USERPROFILE%\.agentlens`；macOS/Linux 可使用 `$HOME/.agentlens`。
 
-### One-shot Validation
+## FAQ
 
-From the repository root, this starts the backend in the background, waits for it to be ready, runs frontend checks, and stops the backend when the shell exits:
+**AgentLens 会修改我的业务数据库吗？**
+不会。它只保存连接、查询、视图配置等 metadata 到本地 SQLite；对业务数据库只执行 SELECT-only 查询。
 
-```bash
-(cd backend && AGENTLENS_DATA_DIR=/tmp/agentlens-dev python -m uvicorn app.main:app --host 127.0.0.1 --port 8000) &
-BACKEND_PID=$!
-trap 'kill "$BACKEND_PID" 2>/dev/null || true' EXIT
+**目前支持哪些数据库？**
+MVP 只支持 MySQL。PostgreSQL、SQLite、ClickHouse 属于后续扩展。
 
-until curl -fs http://127.0.0.1:8000/api/v1/health >/dev/null 2>&1; do
-  sleep 0.5
-done
+**为什么 Trajectory 视图需要配置字段？**
+Agent trajectory 的 schema 不固定，需要指定 `group_by`、`role_column`、`content_column` 和可选排序字段，AgentLens 才能把 SQL 行聚合成对话流。
 
-cd frontend
-pnpm install
-pnpm gen:api
-pnpm --filter web typecheck
-pnpm lint
-pnpm build
-pnpm dev
-```
+## 更多文档
 
-## Docker
-
-Build and start the production container:
-
-```bash
-docker compose up --build
-```
-
-The app listens on `http://localhost:8000`. The compose file mounts `~/.agentlens` into the container for AgentLens metadata, logs, and encrypted local secrets.
+- [Getting Started](docs/getting-started.md)
+- [SQL Tips](docs/sql-tips.md)
+- [MVP Manual Checklist](docs/mvp-checklist.md)
+- [贡献指南](docs/contributing.md)

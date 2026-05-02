@@ -51,8 +51,15 @@ def _build_openapi_schema(app: FastAPI) -> dict[str, Any]:
     return schema
 
 
+def _default_static_dir() -> Path:
+    app_static_dir = Path(__file__).parent / "static"
+    if app_static_dir.exists():
+        return app_static_dir
+    return Path.cwd() / "static"
+
+
 def mount_static_frontend(app: FastAPI, static_dir: Path | None = None) -> None:
-    resolved_static_dir = (static_dir or Path.cwd() / "static").resolve()
+    resolved_static_dir = (static_dir or _default_static_dir()).resolve()
     index_path = resolved_static_dir / "index.html"
     if not index_path.is_file():
         return
@@ -81,13 +88,27 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        startup_started = time.perf_counter()
         settings.ensure_directories()
         setup_logging()
+        logger.info(
+            "AgentLens Backend starting...\n"
+            "  data dir: {}\n"
+            "  metadata db: {}\n"
+            "  host: {} port: {}\n"
+            "  cleanup scheduler: enabled (daily 03:00)",
+            settings.data_dir,
+            settings.metadata_db_path,
+            settings.host,
+            settings.port,
+        )
         initialize_metadata_database()
+        logger.info("Database schema up to date.")
         scheduler = start_scheduler(settings)
         app.state.scheduler = scheduler
         app.state.started_at = time.monotonic()
-        logger.info("AgentLens API startup complete.")
+        startup_ms = int((time.perf_counter() - startup_started) * 1000)
+        logger.info("Startup complete in {} ms.", startup_ms)
         yield
         shutdown_scheduler(getattr(app.state, "scheduler", None))
         dispose_engine()

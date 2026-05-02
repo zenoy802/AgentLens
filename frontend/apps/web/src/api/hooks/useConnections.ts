@@ -52,7 +52,7 @@ async function fetchConnectionPage(page: number): Promise<ConnectionListResponse
   });
 
   if (error !== undefined) {
-    throw error;
+    throw { data, error, response };
   }
   if (!response.ok || data === undefined) {
     throw new Error(`Failed to load connections with status ${response.status}`);
@@ -70,7 +70,7 @@ export function useConnection(id: number) {
         params: { path: { connection_id: id } },
       });
       if (error !== undefined) {
-        throw error;
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to load connection with status ${response.status}`);
@@ -86,7 +86,7 @@ export function useCreateConnection() {
     mutationFn: async (payload: ConnectionCreate) => {
       const { data, error, response } = await apiClient.POST("/connections", { body: payload });
       if (error !== undefined) {
-        throw error;
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to create connection with status ${response.status}`);
@@ -108,7 +108,7 @@ export function useUpdateConnection() {
         body: payload,
       });
       if (error !== undefined) {
-        throw error;
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to update connection with status ${response.status}`);
@@ -132,7 +132,7 @@ export function useDeleteConnection() {
         params: { path: { connection_id: id } },
       });
       if (error !== undefined) {
-        throw error;
+        throw { error, response };
       }
       if (!response.ok) {
         throw new Error(`Failed to delete connection with status ${response.status}`);
@@ -152,7 +152,7 @@ export function useTestConnection() {
         params: { path: { connection_id: id } },
       });
       if (error !== undefined) {
-        throw error;
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to test connection with status ${response.status}`);
