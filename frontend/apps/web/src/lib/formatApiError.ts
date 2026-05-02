@@ -9,14 +9,14 @@ export type ApiErrorBody = {
 export function formatApiError(err: unknown): string {
   const apiError = getApiError(err);
   if (apiError !== null) {
-    return apiError.error.message;
+    return `${apiError.error.code}: ${apiError.error.message}`;
   }
 
   if (err instanceof Error && err.message.length > 0) {
-    return err.message;
+    return `UNKNOWN_ERROR: ${err.message}`;
   }
 
-  return "未知错误";
+  return "UNKNOWN_ERROR: 未知错误";
 }
 
 export function getApiError(err: unknown): ApiErrorBody | null {

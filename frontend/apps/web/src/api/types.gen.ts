@@ -265,6 +265,10 @@ export interface components {
             uptime_seconds: number;
             /** Scheduler Jobs */
             scheduler_jobs: components["schemas"]["SchedulerJobRead"][];
+            /** Connections Count */
+            connections_count: number;
+            /** Named Queries Count */
+            named_queries_count: number;
         };
         /** CleanupReport */
         CleanupReport: {
@@ -651,8 +655,8 @@ export interface components {
             name: string;
             /** Trigger */
             trigger: string;
-            /** Next Run Time */
-            next_run_time: string | null;
+            /** Next Run */
+            next_run: string | null;
         };
         /** SortConfig */
         SortConfig: {

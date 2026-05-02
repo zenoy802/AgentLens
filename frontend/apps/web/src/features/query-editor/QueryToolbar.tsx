@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Loader2, Play, Save } from "lucide-react";
 
 import type { ExecutionInfo } from "@/stores/queryStore";
@@ -12,6 +13,7 @@ type QueryToolbarProps = {
   execution: ExecutionInfo | null;
   isExecuting: boolean;
   runDisabled?: boolean;
+  resultTabs?: ReactNode;
   onConnectionChange: (id: number | null) => void;
   onRun: () => void;
   onSaveAs: () => void;
@@ -25,6 +27,7 @@ export function QueryToolbar({
   execution,
   isExecuting,
   runDisabled: runBlocked = false,
+  resultTabs,
   onConnectionChange,
   onRun,
   onSaveAs,
@@ -34,7 +37,7 @@ export function QueryToolbar({
   const saveDisabled = queryId === null || isNamed || isExecuting;
 
   return (
-    <div className="flex flex-col gap-3 border-b bg-card px-4 py-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-3 border-b bg-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <ConnectionSelect value={connectionId} onChange={onConnectionChange} disabled={isExecuting} />
         <Button className="gap-2" onClick={onRun} disabled={runDisabled}>
@@ -51,11 +54,14 @@ export function QueryToolbar({
         </Button>
       </div>
 
-      {execution !== null ? (
-        <div className="text-sm text-muted-foreground">
-          {execution.row_count} 行 · {Math.round(execution.duration_ms)}ms
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        {execution !== null ? (
+          <div className="text-sm text-muted-foreground">
+            {execution.row_count} 行 · {Math.round(execution.duration_ms)}ms
+          </div>
+        ) : null}
+        {resultTabs}
+      </div>
     </div>
   );
 }

@@ -32,4 +32,3 @@ __all__ = [
     "ViewConfig",
     "import_all_models",
 ]
-

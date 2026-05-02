@@ -33,7 +33,7 @@ export function useQueryHistory(params: QueryHistoryParams = {}) {
       });
 
       if (error !== undefined) {
-        throw new Error(`Failed to load query history: ${JSON.stringify(error)}`);
+        throw { data, error, response };
       }
       if (!response.ok || data === undefined) {
         throw new Error(`Failed to load query history with status ${response.status}`);

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Save, Search, Trash2 } from "lucide-react";
+import { ExternalLink, FileSearch, Save, Search, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { useConnections } from "@/api/hooks/useConnections";
 import type { NamedQueryRead, QueryListParams } from "@/api/hooks/useQueries";
 import { useQueries } from "@/api/hooks/useQueries";
+import { EmptyState } from "@/components/common/EmptyState";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DeleteQueryDialog } from "@/features/queries/DeleteQueryDialog";
 import { PromoteQueryDialog } from "@/features/queries/PromoteQueryDialog";
@@ -112,26 +115,31 @@ export function Queries() {
 
       <div className="overflow-hidden rounded-lg border">
         {queries.isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">正在加载查询...</div>
+          <LoadingState label="正在加载查询..." rows={6} className="rounded-none border-0" />
         ) : queries.isError ? (
-          <div className="flex items-center justify-between gap-3 p-6 text-sm text-destructive">
-            <span>{queries.error instanceof Error ? queries.error.message : "查询加载失败"}</span>
-            <Button variant="outline" size="sm" onClick={() => void queries.refetch()}>
-              重试
-            </Button>
-          </div>
+          <ErrorState
+            error={queries.error}
+            className="m-4"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void queries.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : pageIsOutOfRange ? (
-          <div className="p-6 text-sm text-muted-foreground">正在调整页码...</div>
+          <LoadingState label="正在调整页码..." rows={3} className="rounded-none border-0" />
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 px-4 py-14 text-center">
-            <div className="text-base font-medium">暂无查询</div>
-            <div className="max-w-sm text-sm text-muted-foreground">
-              执行 SQL 后会生成临时查询，也可以新建命名查询。
-            </div>
-            <Link to="/query" className={cn(buttonVariants({ variant: "outline" }))}>
-              新建查询
-            </Link>
-          </div>
+          <EmptyState
+            icon={<FileSearch className="h-6 w-6" aria-hidden="true" />}
+            title="暂无查询"
+            description="执行 SQL 后会生成临时查询，也可以保存为命名查询。"
+            className="m-4"
+            action={
+              <Link to="/query" className={cn(buttonVariants({ variant: "outline" }))}>
+                去写第一条 SQL
+              </Link>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1080px] table-fixed border-collapse text-sm">

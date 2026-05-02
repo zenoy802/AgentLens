@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { NamedQueryRead } from "@/api/hooks/useQueries";
 import { usePromoteQuery } from "@/api/hooks/useQueries";
 import { Button } from "@/components/ui/button";
+import { formatApiError } from "@/lib/formatApiError";
 
 export type PromotableQuery = Pick<
   NamedQueryRead,
@@ -61,7 +62,7 @@ export function PromoteQueryDialog({
       toast.success("查询已保存");
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "保存查询失败");
+      toast.error(formatApiError(error));
     }
   }
 

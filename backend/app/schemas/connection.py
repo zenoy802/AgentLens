@@ -69,4 +69,3 @@ class ConnectionTestResponse(BaseModel):
     server_version: str | None = None
     tested_at: datetime
     error: str | None = None
-

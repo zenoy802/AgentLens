@@ -1,2 +1,1 @@
 """Database utilities for AgentLens."""
-

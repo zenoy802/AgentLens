@@ -4,6 +4,9 @@ import { toast } from "sonner";
 
 import { useConnections, useTestConnection } from "@/api/hooks/useConnections";
 import type { ConnectionRead } from "@/api/hooks/useConnections";
+import { EmptyState } from "@/components/common/EmptyState";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -36,7 +39,7 @@ export function Connections() {
           `连接成功 — ${result.server_version ?? "unknown"} (${result.latency_ms}ms)`,
         );
       } else {
-        toast.error(`连接失败: ${result.error ?? "未知错误"}`);
+        toast.error(`CONN_TEST_FAILED: ${result.error ?? "连接失败"}`);
       }
     } catch (err) {
       toast.error(formatApiError(err));
@@ -79,34 +82,29 @@ export function Connections() {
 
       <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
         {connections.isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">正在加载连接...</div>
+          <LoadingState label="正在加载连接..." rows={5} className="rounded-none border-0" />
         ) : connections.isError ? (
-          <div className="flex items-center justify-between gap-3 p-6 text-sm text-destructive">
-            <span>
-              {formatApiError(connections.error)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void connections.refetch()}
-            >
-              重试
-            </Button>
-          </div>
+          <ErrorState
+            error={connections.error}
+            className="m-4"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void connections.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : (connections.data?.items ?? []).length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 px-4 py-14 text-center">
-            <Database className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <div className="text-base font-medium">暂无连接</div>
-            <div className="max-w-sm text-sm text-muted-foreground">
-              创建你的第一个数据源连接，开始分析 Agent trajectory 数据。
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setFormTarget(null)}
-            >
-              新建你的第一个连接
-            </Button>
-          </div>
+          <EmptyState
+            icon={<Database className="h-6 w-6" aria-hidden="true" />}
+            title="暂无连接"
+            description="创建只读 MySQL 数据源连接后，就可以开始分析 Agent trajectory 数据。"
+            className="m-4"
+            action={
+              <Button variant="outline" onClick={() => setFormTarget(null)}>
+                新建你的第一个连接
+              </Button>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[960px]">

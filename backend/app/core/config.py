@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,9 +12,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    data_dir: Path = Field(default_factory=lambda: Path("~/.agentlens").expanduser())
-    host: str = "127.0.0.1"
-    port: int = 8000
+    data_dir: Path = Field(
+        default_factory=lambda: Path("~/.agentlens").expanduser(),
+        validation_alias=AliasChoices("AGENTLENS_DATA_DIR", "AGENT_LENS_DATA_DIR"),
+    )
+    host: str = Field(
+        default="127.0.0.1",
+        validation_alias=AliasChoices("AGENTLENS_HOST", "AGENT_LENS_HOST"),
+    )
+    port: int = Field(
+        default=8000,
+        validation_alias=AliasChoices("AGENTLENS_PORT", "AGENT_LENS_PORT"),
+    )
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     query_default_timeout: int = 30
     query_default_row_limit: int = 10000
