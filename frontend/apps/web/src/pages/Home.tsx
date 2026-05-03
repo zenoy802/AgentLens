@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { CheckCircle2, Clock3, Database, ListChecks, Plus, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -7,6 +7,8 @@ import { apiClient } from "@/api/client";
 import { useConnections } from "@/api/hooks/useConnections";
 import type { QueryHistoryRead } from "@/api/hooks/useQueryHistory";
 import { useQueryHistory } from "@/api/hooks/useQueryHistory";
+import type { QueryDetailState, QueryListParams } from "@/api/hooks/useQueries";
+import { useQueries, useQueryDetailsByIds } from "@/api/hooks/useQueries";
 import type { HealthResponse } from "@/api/types";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -35,11 +37,33 @@ export function Home() {
   });
   const health = healthQuery.data;
   const history = useQueryHistory({ limit: 10 });
+  const namedQueryParams = useMemo<QueryListParams>(
+    () => ({
+      is_named: true,
+      include_expired: false,
+      order_by: "last_executed_at",
+      page_size: 10,
+    }),
+    [],
+  );
+  const namedQueries = useQueries(namedQueryParams);
   const connections = useConnections();
   const connectionNames = new Map(
     (connections.data?.items ?? []).map((connection) => [connection.id, connection.name]),
   );
-  const recentHistory = (history.data?.items ?? []).slice(0, 10);
+  const recentHistory = useMemo(
+    () => (history.data?.items ?? []).slice(0, 10),
+    [history.data?.items],
+  );
+  const recentHistoryQueryIds = useMemo(
+    () =>
+      recentHistory
+        .map((item) => item.query_id)
+        .filter((queryId): queryId is number => queryId !== null),
+    [recentHistory],
+  );
+  const historyQueryStates = useQueryDetailsByIds(recentHistoryQueryIds);
+  const topNamedQueries = (namedQueries.data?.items ?? []).slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -97,7 +121,7 @@ export function Home() {
       <section className="rounded-lg border bg-card shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold">最近查询</h2>
+            <h2 className="text-base font-semibold">最近执行</h2>
             <p className="mt-1 text-sm text-muted-foreground">最近 10 条 query_history。</p>
           </div>
           <Link to="/query" className={cn(buttonVariants({ size: "sm" }), "gap-2")}>
@@ -133,7 +157,10 @@ export function Home() {
         ) : (
           <div className="divide-y">
             {recentHistory.map((item) => (
-              <div key={item.id} className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center">
+              <div
+                key={item.id}
+                className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>{formatDateTime(item.executed_at)}</span>
@@ -151,9 +178,75 @@ export function Home() {
                     <div className="mt-1 truncate text-xs text-destructive">{item.error_message}</div>
                   ) : null}
                 </div>
+                <HistoryOpenAction
+                  item={item}
+                  queryState={getHistoryQueryState(item, historyQueryStates)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border bg-card shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold">我的命名查询</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              按最近执行时间排序的前 10 条。
+            </p>
+          </div>
+          <Link to="/queries" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+            管理查询
+          </Link>
+        </div>
+
+        {namedQueries.isLoading ? (
+          <LoadingState label="正在加载命名查询..." rows={5} className="rounded-none border-0" />
+        ) : namedQueries.isError ? (
+          <ErrorState
+            error={namedQueries.error}
+            className="m-4"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void namedQueries.refetch()}>
+                重试
+              </Button>
+            }
+          />
+        ) : topNamedQueries.length === 0 ? (
+          <EmptyState
+            icon={<ListChecks className="h-6 w-6" aria-hidden="true" />}
+            title="暂无命名查询"
+            description="将临时查询 Promote 后，这里会显示最近使用的命名查询。"
+            className="m-4"
+            action={
+              <Link to="/queries" className={cn(buttonVariants({ variant: "outline" }))}>
+                查看查询列表
+              </Link>
+            }
+          />
+        ) : (
+          <div className="divide-y">
+            {topNamedQueries.map((query) => (
+              <div
+                key={query.id}
+                className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{query.connection_name ?? `#${query.connection_id}`}</span>
+                    <span>·</span>
+                    <span>{formatNullableDateTime(query.last_executed_at)}</span>
+                    <span>·</span>
+                    <span>{formatExpiration(query.expires_at)}</span>
+                  </div>
+                  <div className="mt-2 truncate text-sm font-medium">{query.name}</div>
+                  <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                    {previewSql(query.sql_text)}
+                  </div>
+                </div>
                 <Link
-                  to={getHistoryOpenPath(item)}
-                  state={getHistoryOpenState(item)}
+                  to={`/query/${query.id}`}
                   className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
                 >
                   打开
@@ -210,14 +303,92 @@ function formatDateTime(value: string): string {
   }).format(date);
 }
 
-function getHistoryOpenPath(item: QueryHistoryRead): string {
-  if (item.query_id !== null) {
-    return `/query/${item.query_id}`;
-  }
-
-  return `/query?connection_id=${item.connection_id}`;
-}
-
 function getHistoryOpenState(item: QueryHistoryRead): { initialSql: string } | undefined {
   return item.query_id === null ? { initialSql: item.sql_text } : undefined;
+}
+
+function getHistoryQueryState(
+  item: QueryHistoryRead,
+  queryStates: Map<number, QueryDetailState>,
+): QueryDetailState | null | undefined {
+  if (item.query_id === null) {
+    return null;
+  }
+
+  return queryStates.get(item.query_id);
+}
+
+function HistoryOpenAction({
+  item,
+  queryState,
+}: {
+  item: QueryHistoryRead;
+  queryState: QueryDetailState | null | undefined;
+}) {
+  if (item.query_id !== null) {
+    const activeQueryState = queryState;
+    if (activeQueryState === null || activeQueryState === undefined || activeQueryState.isLoading) {
+      return (
+        <Button variant="outline" size="sm" disabled className="shrink-0">
+          加载中
+        </Button>
+      );
+    }
+
+    if (activeQueryState.isError || activeQueryState.data === undefined) {
+      return (
+        <Button variant="outline" size="sm" disabled className="shrink-0">
+          不可用
+        </Button>
+      );
+    }
+
+    if (isExpired(activeQueryState.data.expires_at)) {
+      return (
+        <Button variant="outline" size="sm" disabled className="shrink-0">
+          已过期
+        </Button>
+      );
+    }
+  }
+
+  const to =
+    item.query_id === null
+      ? `/query?connection_id=${item.connection_id}`
+      : `/query/${item.query_id}`;
+
+  return (
+    <Link
+      to={to}
+      state={getHistoryOpenState(item)}
+      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+    >
+      打开
+    </Link>
+  );
+}
+
+function formatNullableDateTime(value: string | null): string {
+  if (value === null) {
+    return "从未执行";
+  }
+
+  return formatDateTime(value);
+}
+
+function formatExpiration(value: string | null): string {
+  if (value === null) {
+    return "永不过期";
+  }
+
+  return isExpired(value) ? "已过期" : `${formatDateTime(value)} 过期`;
+}
+
+function isExpired(value: string | null): boolean {
+  if (value === null) {
+    return false;
+  }
+
+  const time = new Date(value).getTime();
+  return !Number.isNaN(time) && Date.now() > time;
 }

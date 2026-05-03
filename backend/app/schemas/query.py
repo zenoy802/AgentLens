@@ -40,10 +40,9 @@ class NamedQueryPromote(BaseModel):
 
 
 class NamedQueryRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     connection_id: int
+    connection_name: str
     name: str | None
     description: str | None
     sql_text: str
@@ -52,6 +51,8 @@ class NamedQueryRead(BaseModel):
     updated_at: datetime
     last_executed_at: datetime | None
     expires_at: datetime | None
+    label_record_count: int
+    llm_analysis_count: int
 
     @model_validator(mode="after")
     def normalize_datetimes(self) -> NamedQueryRead:
