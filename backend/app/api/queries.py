@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
@@ -25,6 +25,7 @@ def list_queries(
     is_named: bool | None = None,
     search: str | None = None,
     include_expired: bool = False,
+    order_by: Literal["created_at", "last_executed_at"] = "created_at",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> NamedQueryListResponse:
@@ -33,6 +34,7 @@ def list_queries(
         is_named=is_named,
         search=search,
         include_expired=include_expired,
+        order_by=order_by,
         page=page,
         page_size=page_size,
     )
@@ -43,7 +45,7 @@ def get_query(
     query_id: int,
     service: Annotated[QueryService, Depends(get_query_service)],
 ) -> NamedQueryRead:
-    return NamedQueryRead.model_validate(service.get(query_id))
+    return service.build_read(service.get(query_id))
 
 
 @router.post(
@@ -55,7 +57,7 @@ def create_query(
     payload: NamedQueryCreate,
     service: Annotated[QueryService, Depends(get_query_service)],
 ) -> NamedQueryRead:
-    return NamedQueryRead.model_validate(service.create_named_query(payload))
+    return service.build_read(service.create_named_query(payload))
 
 
 @router.patch("/{query_id}", response_model=NamedQueryRead)
@@ -64,7 +66,7 @@ def update_query(
     payload: NamedQueryUpdate,
     service: Annotated[QueryService, Depends(get_query_service)],
 ) -> NamedQueryRead:
-    return NamedQueryRead.model_validate(service.update(query_id, payload))
+    return service.build_read(service.update(query_id, payload))
 
 
 @router.delete("/{query_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -82,7 +84,7 @@ def promote_query(
     payload: NamedQueryPromote,
     service: Annotated[QueryService, Depends(get_query_service)],
 ) -> NamedQueryRead:
-    return NamedQueryRead.model_validate(service.promote(query_id, payload))
+    return service.build_read(service.promote(query_id, payload))
 
 
 @router.post(

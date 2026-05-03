@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ConflictError, NotFoundError
 from app.models.connection import Connection
-from app.models.label import LabelSchema
+from app.models.label import LabelRecord, LabelSchema
+from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
@@ -207,6 +208,7 @@ class QueryService:
         is_named: bool | None = None,
         search: str | None = None,
         include_expired: bool = False,
+        order_by: str = "created_at",
         page: int,
         page_size: int,
     ) -> NamedQueryListResponse:
@@ -234,22 +236,105 @@ class QueryService:
         total_records = self.session.scalar(count_stmt) or 0
         total_pages = max((total_records + page_size - 1) // page_size, 1)
 
-        stmt: Select[tuple[NamedQuery]] = (
-            select(NamedQuery)
-            .where(*filters)
-            .order_by(NamedQuery.created_at.desc(), NamedQuery.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+        label_counts = (
+            select(
+                LabelRecord.query_id.label("query_id"),
+                func.count(LabelRecord.id).label("label_record_count"),
+            )
+            .group_by(LabelRecord.query_id)
+            .subquery()
         )
-        queries = self.session.scalars(stmt).all()
+        analysis_counts = (
+            select(
+                LLMAnalysis.query_id.label("query_id"),
+                func.count(LLMAnalysis.id).label("llm_analysis_count"),
+            )
+            .group_by(LLMAnalysis.query_id)
+            .subquery()
+        )
+        label_record_count = func.coalesce(label_counts.c.label_record_count, 0)
+        llm_analysis_count = func.coalesce(analysis_counts.c.llm_analysis_count, 0)
+
+        stmt: Select[tuple[NamedQuery, str, int, int]] = (
+            select(
+                NamedQuery,
+                Connection.name,
+                label_record_count,
+                llm_analysis_count,
+            )
+            .join(Connection, NamedQuery.connection_id == Connection.id)
+            .outerjoin(label_counts, label_counts.c.query_id == NamedQuery.id)
+            .outerjoin(analysis_counts, analysis_counts.c.query_id == NamedQuery.id)
+            .where(*filters)
+        )
+        if order_by == "last_executed_at":
+            stmt = stmt.order_by(NamedQuery.last_executed_at.desc(), NamedQuery.id.desc())
+        else:
+            stmt = stmt.order_by(NamedQuery.created_at.desc(), NamedQuery.id.desc())
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        rows = self.session.execute(stmt).all()
         return NamedQueryListResponse(
-            items=[NamedQueryRead.model_validate(query) for query in queries],
+            items=[
+                self.build_read(
+                    query,
+                    connection_name=connection_name,
+                    label_record_count=int(label_count),
+                    llm_analysis_count=int(analysis_count),
+                )
+                for query, connection_name, label_count, analysis_count in rows
+            ],
             pagination=Pagination(
                 page=page,
                 page_size=page_size,
                 total=total_records,
                 total_pages=total_pages,
             ),
+        )
+
+    def build_read(
+        self,
+        query: NamedQuery,
+        *,
+        connection_name: str | None = None,
+        label_record_count: int | None = None,
+        llm_analysis_count: int | None = None,
+    ) -> NamedQueryRead:
+        resolved_connection_name = connection_name
+        if resolved_connection_name is None:
+            resolved_connection_name = self._get_connection_or_raise(query.connection_id).name
+
+        resolved_label_record_count = label_record_count
+        if resolved_label_record_count is None:
+            resolved_label_record_count = (
+                self.session.scalar(
+                    select(func.count(LabelRecord.id)).where(LabelRecord.query_id == query.id)
+                )
+                or 0
+            )
+
+        resolved_llm_analysis_count = llm_analysis_count
+        if resolved_llm_analysis_count is None:
+            resolved_llm_analysis_count = (
+                self.session.scalar(
+                    select(func.count(LLMAnalysis.id)).where(LLMAnalysis.query_id == query.id)
+                )
+                or 0
+            )
+
+        return NamedQueryRead(
+            id=query.id,
+            connection_id=query.connection_id,
+            connection_name=resolved_connection_name,
+            name=query.name,
+            description=query.description,
+            sql_text=query.sql_text,
+            is_named=query.is_named,
+            created_at=query.created_at,
+            updated_at=query.updated_at,
+            last_executed_at=query.last_executed_at,
+            expires_at=query.expires_at,
+            label_record_count=resolved_label_record_count,
+            llm_analysis_count=resolved_llm_analysis_count,
         )
 
     def update(self, query_id: int, payload: NamedQueryUpdate) -> NamedQuery:

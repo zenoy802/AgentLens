@@ -11,7 +11,8 @@ from starlette import status
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
 from app.models.connection import Connection
-from app.models.label import LabelSchema
+from app.models.label import LabelRecord, LabelSchema
+from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
@@ -21,6 +22,9 @@ HTTP_NO_CONTENT = status.HTTP_204_NO_CONTENT
 HTTP_CONFLICT = status.HTTP_409_CONFLICT
 HTTP_UNPROCESSABLE_ENTITY = status.HTTP_422_UNPROCESSABLE_CONTENT
 LEGACY_LIMIT = 2
+EXPECTED_LABEL_RECORD_COUNT = 2
+EXPECTED_LLM_ANALYSIS_COUNT = 1
+EXPECTED_LAST_EXECUTED_ORDER_TOTAL = 3
 
 
 def _is_utc_iso(value: str) -> bool:
@@ -109,6 +113,114 @@ async def test_list_filter_is_named() -> None:
     assert payload["pagination"]["total"] == 1
     assert [item["id"] for item in payload["items"]] == [named_id]
     assert payload["items"][0]["is_named"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_includes_connection_name_and_stats() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        query_id = _create_query(
+            session,
+            connection_id=connection_id,
+            name="with-stats",
+            is_named=True,
+        )
+        session.add_all(
+            [
+                LabelRecord(
+                    query_id=query_id,
+                    row_identity="row-1",
+                    field_key="quality",
+                    value='"good"',
+                ),
+                LabelRecord(
+                    query_id=query_id,
+                    row_identity="row-2",
+                    field_key="quality",
+                    value='"bad"',
+                ),
+                LLMAnalysis(
+                    query_id=query_id,
+                    provider_id=None,
+                    selection="{}",
+                    structure_format="json",
+                    prompt="Analyze rows",
+                    structured_input="[]",
+                    response="{}",
+                    model_name="test-model",
+                    token_usage=None,
+                    status="completed",
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/v1/queries", params={"is_named": "true"})
+
+    assert response.status_code == HTTP_OK
+    payload = response.json()
+    assert payload["items"][0]["id"] == query_id
+    assert payload["items"][0]["connection_name"] == "queries-mysql"
+    assert payload["items"][0]["label_record_count"] == EXPECTED_LABEL_RECORD_COUNT
+    assert payload["items"][0]["llm_analysis_count"] == EXPECTED_LLM_ANALYSIS_COUNT
+
+
+@pytest.mark.asyncio
+async def test_list_can_order_by_last_executed_at() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        old_id = _create_query(
+            session,
+            connection_id=connection_id,
+            name="old",
+            is_named=True,
+        )
+        new_id = _create_query(
+            session,
+            connection_id=connection_id,
+            name="new",
+            is_named=True,
+        )
+        never_run_id = _create_query(
+            session,
+            connection_id=connection_id,
+            name="never-run",
+            is_named=True,
+        )
+        old_query = session.get(NamedQuery, old_id)
+        new_query = session.get(NamedQuery, new_id)
+        assert old_query is not None
+        assert new_query is not None
+        old_query.last_executed_at = _now() - timedelta(days=1)
+        new_query.last_executed_at = _now()
+        session.commit()
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(
+            "/api/v1/queries",
+            params={
+                "is_named": "true",
+                "order_by": "last_executed_at",
+                "page_size": LEGACY_LIMIT,
+            },
+        )
+
+    assert response.status_code == HTTP_OK
+    payload = response.json()
+    assert payload["pagination"]["total"] == EXPECTED_LAST_EXECUTED_ORDER_TOTAL
+    assert [item["id"] for item in payload["items"]] == [new_id, old_id]
+    assert never_run_id not in {item["id"] for item in payload["items"]}
 
 
 @pytest.mark.asyncio

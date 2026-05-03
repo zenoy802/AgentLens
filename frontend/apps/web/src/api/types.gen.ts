@@ -567,6 +567,8 @@ export interface components {
             id: number;
             /** Connection Id */
             connection_id: number;
+            /** Connection Name */
+            connection_name: string;
             /** Name */
             name: string | null;
             /** Description */
@@ -589,6 +591,10 @@ export interface components {
             last_executed_at: string | null;
             /** Expires At */
             expires_at: string | null;
+            /** Label Record Count */
+            label_record_count: number;
+            /** Llm Analysis Count */
+            llm_analysis_count: number;
         };
         /** NamedQueryUpdate */
         NamedQueryUpdate: {
@@ -1148,6 +1154,7 @@ export interface operations {
                 is_named?: boolean | null;
                 search?: string | null;
                 include_expired?: boolean;
+                order_by?: "created_at" | "last_executed_at";
                 page?: number;
                 page_size?: number;
             };
