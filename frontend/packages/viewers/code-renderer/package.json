@@ -1,0 +1,16 @@
+{
+  "name": "@agentlens/code-renderer",
+  "private": true,
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "dependencies": {
+    "highlight.js": "^11.10.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12"
+  }
+}

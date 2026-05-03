@@ -1,0 +1,12 @@
+services:
+  agentlens:
+    build: .
+    image: agentlens:latest
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - agentlens-data:/data
+    restart: unless-stopped
+
+volumes:
+  agentlens-data:

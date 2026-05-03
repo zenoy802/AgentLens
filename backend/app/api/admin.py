@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import time
+from datetime import UTC, datetime
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, field_serializer
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.api.health import get_app_version
+from app.core.config import get_settings
+from app.db.session import get_db_session
+from app.models.connection import Connection
+from app.models.named_query import NamedQuery
+from app.services.cleanup_service import CleanupReport, CleanupService
+
+router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class CleanupRequest(BaseModel):
+    dry_run: bool = False
+
+
+class SchedulerJobRead(BaseModel):
+    id: str
+    name: str
+    trigger: str
+    next_run: datetime | None
+
+    @field_serializer("next_run")
+    def serialize_next_run(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+class AdminInfoResponse(BaseModel):
+    version: str
+    data_dir: str
+    db_path: str
+    uptime_seconds: int
+    scheduler_jobs: list[SchedulerJobRead]
+    connections_count: int
+    named_queries_count: int
+
+
+@router.post("/cleanup", response_model=CleanupReport)
+def run_cleanup(
+    payload: CleanupRequest,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> CleanupReport:
+    return CleanupService().run(session, dry_run=payload.dry_run)
+
+
+@router.get("/info", response_model=AdminInfoResponse)
+def get_admin_info(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> AdminInfoResponse:
+    settings = get_settings()
+    started_at = getattr(request.app.state, "started_at", time.monotonic())
+    scheduler = getattr(request.app.state, "scheduler", None)
+    connections_count = session.scalar(select(func.count()).select_from(Connection)) or 0
+    named_queries_count = (
+        session.scalar(
+            select(func.count()).select_from(NamedQuery).where(NamedQuery.is_named.is_(True))
+        )
+        or 0
+    )
+
+    return AdminInfoResponse(
+        version=get_app_version(),
+        data_dir=str(settings.data_dir),
+        db_path=str(settings.metadata_db_path),
+        uptime_seconds=_uptime_seconds(started_at),
+        scheduler_jobs=_scheduler_jobs(scheduler),
+        connections_count=connections_count,
+        named_queries_count=named_queries_count,
+    )
+
+
+def _uptime_seconds(started_at: object) -> int:
+    if isinstance(started_at, int | float):
+        return max(int(time.monotonic() - started_at), 0)
+    return 0
+
+
+def _scheduler_jobs(scheduler: Any) -> list[SchedulerJobRead]:
+    if scheduler is None:
+        return []
+
+    jobs = scheduler.get_jobs()
+    return [
+        SchedulerJobRead(
+            id=str(job.id),
+            name=str(job.name),
+            trigger=str(job.trigger),
+            next_run=_ensure_utc(getattr(job, "next_run_time", None)),
+        )
+        for job in jobs
+    ]
+
+
+def _ensure_utc(value: object) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

@@ -16,6 +16,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!frontend/apps/web/src/lib/
+!frontend/apps/web/src/lib/**
 parts/
 sdist/
 var/
@@ -25,6 +27,10 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# JavaScript / pnpm
+node_modules/
+.pnpm-store/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -40,6 +46,7 @@ pip-delete-this-directory.txt
 htmlcov/
 .tox/
 .nox/
+.agentlens-test-data/
 .coverage
 .coverage.*
 .cache
@@ -208,3 +215,13 @@ __marimo__/
 
 # design
 .design/
+
+# Codex
+AGENTS.md
+.mcp.json
+scripts/codex-playwright-mcp.sh
+docs/testing-playwright-mcp.md
+
+# Claude Code
+.claude/
+CLAUDE.md
