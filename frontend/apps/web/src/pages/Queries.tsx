@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DeleteQueryDialog } from "@/features/queries/DeleteQueryDialog";
+import { ExportDialog } from "@/features/export/ExportDialog";
 import { PromoteQueryDialog } from "@/features/queries/PromoteQueryDialog";
 import { QueryActionsMenu } from "@/features/queries/QueryActionsMenu";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function Queries() {
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<NamedQueryRead | null>(null);
   const [editTarget, setEditTarget] = useState<NamedQueryRead | null>(null);
+  const [exportTarget, setExportTarget] = useState<NamedQueryRead | null>(null);
 
   const params = useMemo<QueryListParams>(
     () => ({
@@ -254,6 +256,7 @@ export function Queries() {
                               query={query}
                               onEdit={setEditTarget}
                               onPromote={setEditTarget}
+                              onExport={setExportTarget}
                               onDelete={setDeleteTarget}
                             />
                           </div>
@@ -310,6 +313,15 @@ export function Queries() {
           onOpenChange={(open) => {
             if (!open) {
               setEditTarget(null);
+            }
+          }}
+        />
+        <ExportDialog
+          open={exportTarget !== null}
+          queryId={exportTarget?.id ?? null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setExportTarget(null);
             }
           }}
         />

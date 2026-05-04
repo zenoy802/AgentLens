@@ -22,6 +22,7 @@ type QueryActionsMenuProps = {
   query: NamedQueryRead;
   onEdit: (query: NamedQueryRead) => void;
   onPromote: (query: NamedQueryRead) => void;
+  onExport: (query: NamedQueryRead) => void;
   onDelete: (query: NamedQueryRead) => void;
 };
 
@@ -29,6 +30,7 @@ export function QueryActionsMenu({
   query,
   onEdit,
   onPromote,
+  onExport,
   onDelete,
 }: QueryActionsMenuProps) {
   const navigate = useNavigate();
@@ -56,9 +58,9 @@ export function QueryActionsMenu({
             Promote
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem onSelect={() => onExport(query)}>
           <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-          导出 CSV
+          导出
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
