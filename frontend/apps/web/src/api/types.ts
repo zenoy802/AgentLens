@@ -14,6 +14,7 @@ export type ConnectionRead = Schemas["ConnectionRead"];
 export type ConnectionTestResponse = Schemas["ConnectionTestResponse"];
 export type ConnectionUpdate = Schemas["ConnectionUpdate"];
 export type ExecuteRequest = Schemas["ExecuteRequest"];
+export type ExportRequest = Schemas["ExportRequest"];
 export type ExecutionInfo = Schemas["ExecutionInfo"];
 export type FieldRender =
   | Schemas["TextRender"]

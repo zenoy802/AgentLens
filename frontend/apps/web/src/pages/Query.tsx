@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
+import { ExportDialog } from "@/features/export/ExportDialog";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
 import {
   clampEditorHeight,
@@ -89,6 +90,7 @@ export function Query() {
 
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [lastError, setLastError] = useState<unknown>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
   const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
@@ -410,20 +412,55 @@ export function Query() {
       return;
     }
 
+    await saveCurrentViewConfig({ showSuccessToast: true });
+  }
+
+  async function saveCurrentViewConfig({
+    showSuccessToast,
+  }: {
+    showSuccessToast: boolean;
+  }): Promise<boolean> {
+    const activeQueryId = useQueryStore.getState().queryId;
+    if (activeQueryId === null) {
+      return false;
+    }
+    if (!useQueryStore.getState().isDirty) {
+      return true;
+    }
+
     const payload = getViewConfigPayloadFromState(useQueryStore.getState());
     try {
       const saved = await saveViewConfig.mutateAsync({
-        queryId,
+        queryId: activeQueryId,
         payload,
       });
       const currentState = useQueryStore.getState();
-      if (currentState.queryId === queryId && viewConfigPayloadMatchesState(payload, currentState)) {
+      const stillCurrent =
+        currentState.queryId === activeQueryId &&
+        viewConfigPayloadMatchesState(payload, currentState);
+      if (stillCurrent) {
         applyViewConfig(saved);
       }
-      toast.success("视图已保存");
+      if (showSuccessToast && stillCurrent) {
+        toast.success("视图已保存");
+      }
+      return stillCurrent;
     } catch {
       // useSaveViewConfig reports API errors with the shared toast formatter.
+      return false;
     }
+  }
+
+  async function handleBeforeExport() {
+    if (!useQueryStore.getState().isDirty) {
+      return true;
+    }
+
+    const saved = await saveCurrentViewConfig({ showSuccessToast: false });
+    if (!saved) {
+      toast.error("请先保存当前视图配置后再导出");
+    }
+    return saved;
   }
 
   function handleConnectionChange(id: number | null) {
@@ -608,6 +645,7 @@ export function Query() {
           onConnectionChange={handleConnectionChange}
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
+          onExport={() => setExportDialogOpen(true)}
           resultTabs={
             <ResultViewTabs
               activeView={activeResultView}
@@ -724,6 +762,13 @@ export function Query() {
             setPromoteTarget(null);
           }
         }}
+      />
+
+      <ExportDialog
+        open={exportDialogOpen}
+        queryId={queryId}
+        onBeforeExport={handleBeforeExport}
+        onOpenChange={setExportDialogOpen}
       />
     </div>
   );
