@@ -1,0 +1,373 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Braces, CheckCircle2, XCircle } from "lucide-react";
+import { toast } from "sonner";
+
+import {
+  useCreateRenderRule,
+  useUpdateRenderRule,
+  type RenderRuleCreate,
+  type RenderRuleRead,
+} from "@/api/hooks/useRenderRules";
+import type { FieldRender } from "@/api/types";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { formatApiError } from "@/lib/formatApiError";
+
+import type { CodeLanguage, MatchType, RenderRuleFormValues, RenderType } from "./types";
+
+type RenderRuleFormDialogProps = {
+  open: boolean;
+  rule: RenderRuleRead | null;
+  onOpenChange: (open: boolean) => void;
+};
+
+const MATCH_TYPES: MatchType[] = ["exact", "prefix", "suffix", "regex"];
+const RENDER_TYPES: RenderType[] = ["text", "markdown", "json", "code", "timestamp", "tag"];
+const CODE_LANGUAGES: CodeLanguage[] = ["sql", "python", "javascript", "json", "plain"];
+const DEFAULT_TIMESTAMP_FORMAT = "YYYY-MM-DD HH:mm:ss";
+
+const DEFAULT_VALUES: RenderRuleFormValues = {
+  matchPattern: "",
+  matchType: "exact",
+  renderType: "text",
+  codeLanguage: "plain",
+  jsonCollapsed: true,
+  timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+  priority: 0,
+  enabled: true,
+};
+
+export function RenderRuleFormDialog({
+  open,
+  rule,
+  onOpenChange,
+}: RenderRuleFormDialogProps) {
+  const createRule = useCreateRenderRule();
+  const updateRule = useUpdateRenderRule();
+
+  const [values, setValues] = useState<RenderRuleFormValues>(DEFAULT_VALUES);
+  const [sampleFieldName, setSampleFieldName] = useState("");
+
+  const isEditMode = rule !== null;
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (rule === null) {
+      setValues(DEFAULT_VALUES);
+      setSampleFieldName("");
+      return;
+    }
+
+    setValues(valuesFromRule(rule));
+    setSampleFieldName(rule.match_pattern);
+  }, [open, rule]);
+
+  const matchResult = useMemo(
+    () => testMatch(values.matchPattern, values.matchType, sampleFieldName),
+    [sampleFieldName, values.matchPattern, values.matchType],
+  );
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const payload: RenderRuleCreate = {
+      match_pattern: values.matchPattern.trim(),
+      match_type: values.matchType,
+      render_config: buildRenderConfig(values),
+      priority: values.priority,
+      enabled: values.enabled,
+    };
+
+    try {
+      if (isEditMode) {
+        await updateRule.mutateAsync({ id: rule.id, payload });
+        toast.success("渲染规则已更新");
+      } else {
+        await createRule.mutateAsync(payload);
+        toast.success("渲染规则已创建");
+      }
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  }
+
+  function updateValues(patch: Partial<RenderRuleFormValues>) {
+    setValues((current) => ({ ...current, ...patch }));
+  }
+
+  const isPending = createRule.isPending || updateRule.isPending;
+  const canSubmit = values.matchPattern.trim().length > 0 && !isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <Braces className="h-5 w-5" aria-hidden="true" />
+            <DialogTitle>{isEditMode ? "编辑规则" : "新建规则"}</DialogTitle>
+          </div>
+          <DialogDescription>配置字段名匹配方式和默认渲染类型。</DialogDescription>
+        </DialogHeader>
+
+        <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block text-sm font-medium">
+              Pattern
+              <input
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                value={values.matchPattern}
+                onChange={(event) =>
+                  updateValues({ matchPattern: event.target.value })
+                }
+                maxLength={200}
+                required
+                placeholder="content"
+              />
+            </label>
+
+            <label className="block text-sm font-medium">
+              Match Type
+              <Select
+                value={values.matchType}
+                onValueChange={(value) =>
+                  updateValues({ matchType: value as MatchType })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MATCH_TYPES.map((matchType) => (
+                    <SelectItem key={matchType} value={matchType}>
+                      {matchType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3">
+            <label className="block text-sm font-medium">
+              示例字段名
+              <input
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                value={sampleFieldName}
+                onChange={(event) => setSampleFieldName(event.target.value)}
+                placeholder="meta_json"
+              />
+            </label>
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              {matchResult.matches ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              ) : (
+                <XCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className={matchResult.matches ? "text-emerald-700" : "text-muted-foreground"}>
+                {sampleFieldName.trim().length === 0
+                  ? "输入示例字段名后显示匹配结果"
+                  : matchResult.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block text-sm font-medium">
+              Render Type
+              <Select
+                value={values.renderType}
+                onValueChange={(value) =>
+                  updateValues({ renderType: value as RenderType })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RENDER_TYPES.map((renderType) => (
+                    <SelectItem key={renderType} value={renderType}>
+                      {renderType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            {values.renderType === "code" ? (
+              <label className="block text-sm font-medium">
+                语言
+                <Select
+                  value={values.codeLanguage}
+                  onValueChange={(value) =>
+                    updateValues({ codeLanguage: value as CodeLanguage })
+                  }
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CODE_LANGUAGES.map((language) => (
+                      <SelectItem key={language} value={language}>
+                        {language}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
+
+            {values.renderType === "json" ? (
+              <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                <div className="text-sm font-medium">默认折叠</div>
+                <Switch
+                  checked={values.jsonCollapsed}
+                  onCheckedChange={(checked) =>
+                    updateValues({ jsonCollapsed: checked })
+                  }
+                />
+              </div>
+            ) : null}
+
+            {values.renderType === "timestamp" ? (
+              <label className="block text-sm font-medium">
+                格式
+                <input
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                  value={values.timestampFormat}
+                  onChange={(event) =>
+                    updateValues({ timestampFormat: event.target.value })
+                  }
+                  placeholder={DEFAULT_TIMESTAMP_FORMAT}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block text-sm font-medium">
+              Priority
+              <input
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                type="number"
+                value={values.priority}
+                onChange={(event) =>
+                  updateValues({ priority: Number(event.target.value) })
+                }
+              />
+            </label>
+
+            <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+              <div className="text-sm font-medium">Enabled</div>
+              <Switch
+                checked={values.enabled}
+                onCheckedChange={(checked) => updateValues({ enabled: checked })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {isEditMode ? "保存" : "创建"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function valuesFromRule(rule: RenderRuleRead): RenderRuleFormValues {
+  const renderConfig = rule.render_config;
+  return {
+    matchPattern: rule.match_pattern,
+    matchType: rule.match_type,
+    renderType: renderConfig.type,
+    codeLanguage:
+      renderConfig.type === "code" && isCodeLanguage(renderConfig.language)
+        ? renderConfig.language
+        : "plain",
+    jsonCollapsed: renderConfig.type === "json" ? renderConfig.collapsed ?? true : true,
+    timestampFormat:
+      renderConfig.type === "timestamp"
+        ? renderConfig.format ?? DEFAULT_TIMESTAMP_FORMAT
+        : DEFAULT_TIMESTAMP_FORMAT,
+    priority: rule.priority,
+    enabled: rule.enabled,
+  };
+}
+
+function buildRenderConfig(values: RenderRuleFormValues): FieldRender {
+  switch (values.renderType) {
+    case "markdown":
+      return { type: "markdown" };
+    case "json":
+      return { type: "json", collapsed: values.jsonCollapsed };
+    case "code":
+      return { type: "code", language: values.codeLanguage };
+    case "timestamp":
+      return {
+        type: "timestamp",
+        format: values.timestampFormat.trim() || DEFAULT_TIMESTAMP_FORMAT,
+      };
+    case "tag":
+      return { type: "tag" };
+    case "text":
+      return { type: "text" };
+  }
+}
+
+function testMatch(
+  pattern: string,
+  matchType: MatchType,
+  sample: string,
+): { matches: boolean; label: string } {
+  if (sample.trim().length === 0) {
+    return { matches: false, label: "未匹配" };
+  }
+
+  if (matchType === "exact") {
+    return labelMatch(sample === pattern);
+  }
+  if (matchType === "prefix") {
+    return labelMatch(sample.startsWith(pattern));
+  }
+  if (matchType === "suffix") {
+    return labelMatch(sample.endsWith(pattern));
+  }
+
+  try {
+    const regex = new RegExp(pattern);
+    const match = sample.match(regex);
+    return labelMatch(match !== null && match[0] === sample);
+  } catch {
+    return { matches: false, label: "regex 无效" };
+  }
+}
+
+function labelMatch(matches: boolean): { matches: boolean; label: string } {
+  return { matches, label: matches ? "匹配" : "不匹配" };
+}
+
+function isCodeLanguage(value: string): value is CodeLanguage {
+  return CODE_LANGUAGES.includes(value as CodeLanguage);
+}

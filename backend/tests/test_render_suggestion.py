@@ -106,6 +106,65 @@ def test_disabled_rule_is_ignored() -> None:
     assert result["payload"].type == "json"
 
 
+def test_highest_priority_matching_rule_wins() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        session.add_all(
+            [
+                GlobalRenderRule(
+                    match_pattern="content",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "text"}),
+                    priority=10,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="content",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "markdown"}),
+                    priority=100,
+                    enabled=True,
+                ),
+            ]
+        )
+        session.commit()
+
+        result = suggest([Column(name="content", sql_type="TEXT", inferred_type="text")], session)
+    finally:
+        session.close()
+
+    assert result["content"].type == "markdown"
+
+
+def test_same_priority_matching_rule_uses_lowest_id() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        first_rule = GlobalRenderRule(
+            match_pattern="content",
+            match_type="exact",
+            render_config=json.dumps({"type": "markdown"}),
+            priority=100,
+            enabled=True,
+        )
+        second_rule = GlobalRenderRule(
+            match_pattern="content",
+            match_type="exact",
+            render_config=json.dumps({"type": "json"}),
+            priority=100,
+            enabled=True,
+        )
+        session.add_all([first_rule, second_rule])
+        session.commit()
+
+        result = suggest([Column(name="content", sql_type="TEXT", inferred_type="text")], session)
+    finally:
+        session.close()
+
+    assert result["content"].type == "markdown"
+
+
 def test_invalid_rule_is_skipped_with_warning() -> None:
     initialize_metadata_database()
     session = get_session_factory()()

@@ -150,6 +150,7 @@ def _match_pattern(
         try:
             return re.fullmatch(pattern, name) is not None
         except re.error as exc:
+            logger.warning("Skipping invalid global render rule {} regex: {}", rule.id, exc)
             if warned_invalid_rule_ids is not None:
                 _warn_invalid_rule(
                     rule,
