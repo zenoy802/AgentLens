@@ -395,7 +395,7 @@ function buildRegexPreview(pattern: string): RegexPreview {
 
   const body = inlineFlags === null ? pattern : pattern.slice(inlineFlags.raw.length);
   const flags = inlineFlags === null ? "" : inlineFlags.flags;
-  if (hasPythonOnlyRegexAnchor(body)) {
+  if (hasPythonOnlyRegexToken(body)) {
     return { type: "unsupported" };
   }
 
@@ -414,9 +414,11 @@ function regexFullMatches(regex: RegExp, sample: string): boolean {
   return match !== null && match.index === 0 && match[0] === sample;
 }
 
-function hasPythonOnlyRegexAnchor(pattern: string): boolean {
+const PYTHON_ONLY_PREVIEW_TOKENS = new Set(["A", "Z", "w", "W", "d", "D", "b", "B"]);
+
+function hasPythonOnlyRegexToken(pattern: string): boolean {
   for (let index = 0; index < pattern.length - 1; index += 1) {
-    if (pattern[index] !== "\\" || (pattern[index + 1] !== "A" && pattern[index + 1] !== "Z")) {
+    if (pattern[index] !== "\\" || !PYTHON_ONLY_PREVIEW_TOKENS.has(pattern[index + 1])) {
       continue;
     }
     if (countBackslashRunEndingAt(pattern, index) % 2 === 1) {
