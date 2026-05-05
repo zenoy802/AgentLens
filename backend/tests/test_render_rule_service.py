@@ -78,7 +78,7 @@ def test_render_rule_service_rejects_invalid_regex() -> None:
     assert exc_info.value.code == "RENDER_RULE_INVALID_REGEX"
 
 
-def test_render_rule_service_rejects_invalid_stored_render_config() -> None:
+def test_render_rule_service_falls_back_for_invalid_stored_render_config() -> None:
     initialize_metadata_database()
     session = get_session_factory()()
     try:
@@ -93,12 +93,11 @@ def test_render_rule_service_rejects_invalid_stored_render_config() -> None:
         session.commit()
 
         service = RenderRuleService(session)
-        with pytest.raises(ValidationError) as exc_info:
-            service.get_rule(rule.id)
+        fetched = service.get_rule(rule.id)
     finally:
         session.close()
 
-    assert exc_info.value.code == "RENDER_RULE_INVALID_RENDER_CONFIG"
+    assert fetched.render_config.type == "text"
 
 
 def test_render_rule_service_missing_rule_raises_not_found() -> None:

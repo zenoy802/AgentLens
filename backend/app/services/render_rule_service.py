@@ -3,13 +3,14 @@ from __future__ import annotations
 import re
 from typing import cast
 
+from loguru import logger
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, ValidationError
 from app.models.misc import GlobalRenderRule
-from app.schemas.render import FieldRender, field_render_adapter
+from app.schemas.render import FieldRender, TextRender, field_render_adapter
 from app.schemas.render_rule import MatchType, RenderRuleCreate, RenderRuleRead, RenderRuleUpdate
 
 
@@ -119,11 +120,12 @@ class RenderRuleService:
         try:
             return field_render_adapter.validate_json(rule.render_config)
         except (PydanticValidationError, ValueError) as exc:
-            raise ValidationError(
-                code="RENDER_RULE_INVALID_RENDER_CONFIG",
-                message="Stored render_config is not a valid FieldRender.",
-                detail={"rule_id": rule.id},
-            ) from exc
+            logger.warning(
+                "Invalid stored render_config for global render rule {}: {}",
+                rule.id,
+                exc,
+            )
+            return TextRender()
 
     def _to_read_model(self, rule: GlobalRenderRule) -> RenderRuleRead:
         return RenderRuleRead(
