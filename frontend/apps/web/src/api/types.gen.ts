@@ -231,6 +231,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/render-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Render Rules */
+        get: operations["list_render_rules_api_v1_render_rules_get"];
+        put?: never;
+        /** Create Render Rule */
+        post: operations["create_render_rule_api_v1_render_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/render-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Render Rule */
+        get: operations["get_render_rule_api_v1_render_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Render Rule */
+        delete: operations["delete_render_rule_api_v1_render_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Render Rule */
+        patch: operations["update_render_rule_api_v1_render_rules__rule_id__patch"];
+        trace?: never;
+    };
     "/queries/{query_id}/trajectories": {
         parameters: {
             query?: never;
@@ -688,6 +725,77 @@ export interface components {
             executed_at: string;
             /** Query Id */
             query_id: number | null;
+        };
+        /** RenderRuleCreate */
+        RenderRuleCreate: {
+            /** Match Pattern */
+            match_pattern: string;
+            /**
+             * Match Type
+             * @default exact
+             * @enum {string}
+             */
+            match_type: "exact" | "prefix" | "suffix" | "regex";
+            /** Render Config */
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** RenderRuleRead */
+        RenderRuleRead: {
+            /** Match Pattern */
+            match_pattern: string;
+            /**
+             * Match Type
+             * @default exact
+             * @enum {string}
+             */
+            match_type: "exact" | "prefix" | "suffix" | "regex";
+            /** Render Config */
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RenderRuleUpdate */
+        RenderRuleUpdate: {
+            /** Match Pattern */
+            match_pattern?: string | null;
+            /** Match Type */
+            match_type?: ("exact" | "prefix" | "suffix" | "regex") | null;
+            /** Render Config */
+            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"]) | null;
+            /** Priority */
+            priority?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
         };
         /** SchedulerJobRead */
         SchedulerJobRead: {
@@ -1475,6 +1583,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryHistoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_render_rules_api_v1_render_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"][];
+                };
+            };
+        };
+    };
+    create_render_rule_api_v1_render_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_render_rule_api_v1_render_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_render_rule_api_v1_render_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_render_rule_api_v1_render_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
                 };
             };
             /** @description Validation Error */
