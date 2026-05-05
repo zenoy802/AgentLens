@@ -6,8 +6,9 @@ import httpx
 import pytest
 from starlette import status
 
-from app.db.session import initialize_metadata_database
+from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
+from app.models.misc import GlobalRenderRule
 
 HTTP_CREATED = status.HTTP_201_CREATED
 HTTP_OK = status.HTTP_200_OK
@@ -94,3 +95,32 @@ async def test_render_rules_api_rejects_invalid_regex_and_render_config() -> Non
         )
         assert invalid_render.status_code == HTTP_UNPROCESSABLE_ENTITY
         assert invalid_render.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_render_rules_api_lists_rules_with_invalid_stored_render_config() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        rule = GlobalRenderRule(
+            match_pattern="content",
+            match_type="exact",
+            render_config='{"type":"unknown"}',
+            priority=0,
+            enabled=True,
+        )
+        session.add(rule)
+        session.commit()
+        rule_id = rule.id
+    finally:
+        session.close()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        list_response = await client.get("/api/v1/render-rules")
+        get_response = await client.get(f"/api/v1/render-rules/{rule_id}")
+
+    assert list_response.status_code == HTTP_OK
+    assert list_response.json()[0]["render_config"] == {"type": "text"}
+    assert get_response.status_code == HTTP_OK
+    assert get_response.json()["render_config"] == {"type": "text"}

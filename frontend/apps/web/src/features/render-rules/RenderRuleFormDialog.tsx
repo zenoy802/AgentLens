@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Braces, CheckCircle2, XCircle } from "lucide-react";
+import { AlertCircle, Braces, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -175,12 +175,14 @@ export function RenderRuleFormDialog({
               />
             </label>
             <div className="mt-2 flex items-center gap-2 text-sm">
-              {matchResult.matches ? (
+              {matchResult.tone === "success" ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              ) : matchResult.tone === "warning" ? (
+                <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden="true" />
               ) : (
                 <XCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               )}
-              <span className={matchResult.matches ? "text-emerald-700" : "text-muted-foreground"}>
+              <span className={matchToneClassName(matchResult.tone)}>
                 {sampleFieldName.trim().length === 0
                   ? "输入示例字段名后显示匹配结果"
                   : matchResult.label}
@@ -340,9 +342,9 @@ function testMatch(
   pattern: string,
   matchType: MatchType,
   sample: string,
-): { matches: boolean; label: string } {
+): MatchPreviewResult {
   if (sample.trim().length === 0) {
-    return { matches: false, label: "未匹配" };
+    return { matches: false, label: "未匹配", tone: "muted" };
   }
 
   if (matchType === "exact") {
@@ -356,16 +358,97 @@ function testMatch(
   }
 
   try {
-    const regex = new RegExp(pattern);
-    const match = sample.match(regex);
-    return labelMatch(match !== null && match[0] === sample);
+    const preview = buildRegexPreview(pattern);
+    if (preview.type === "unsupported") {
+      return {
+        matches: false,
+        label: "浏览器无法预览该 Python regex；保存时由后端校验",
+        tone: "warning",
+      };
+    }
+    return labelMatch(regexFullMatches(preview.regex, sample));
   } catch {
-    return { matches: false, label: "regex 无效" };
+    return { matches: false, label: "regex 无效", tone: "muted" };
   }
 }
 
-function labelMatch(matches: boolean): { matches: boolean; label: string } {
-  return { matches, label: matches ? "匹配" : "不匹配" };
+type MatchPreviewResult = {
+  matches: boolean;
+  label: string;
+  tone: "success" | "muted" | "warning";
+};
+
+type RegexPreview =
+  | {
+      type: "regex";
+      regex: RegExp;
+    }
+  | {
+      type: "unsupported";
+    };
+
+function buildRegexPreview(pattern: string): RegexPreview {
+  const inlineFlags = parsePythonInlineFlags(pattern);
+  if (inlineFlags?.supported === false) {
+    return { type: "unsupported" };
+  }
+
+  const body = inlineFlags === null ? pattern : pattern.slice(inlineFlags.raw.length);
+  const flags = inlineFlags === null ? "" : inlineFlags.flags;
+
+  try {
+    return { type: "regex", regex: new RegExp(body, flags) };
+  } catch (err) {
+    if (pattern.includes("(?")) {
+      return { type: "unsupported" };
+    }
+    throw err;
+  }
+}
+
+function regexFullMatches(regex: RegExp, sample: string): boolean {
+  const match = regex.exec(sample);
+  return match !== null && match.index === 0 && match[0] === sample;
+}
+
+function parsePythonInlineFlags(
+  pattern: string,
+): { supported: true; raw: string; flags: string } | { supported: false } | null {
+  const match = pattern.match(/^\(\?([aiLmsux]+)\)/);
+  if (match === null) {
+    return null;
+  }
+
+  const flags = new Set<string>();
+  for (const flag of match[1]) {
+    if (flag === "i" || flag === "m" || flag === "s") {
+      flags.add(flag);
+    } else if (flag === "u") {
+      continue;
+    } else {
+      return { supported: false };
+    }
+  }
+
+  return { supported: true, raw: match[0], flags: [...flags].join("") };
+}
+
+function labelMatch(matches: boolean): MatchPreviewResult {
+  return {
+    matches,
+    label: matches ? "匹配" : "不匹配",
+    tone: matches ? "success" : "muted",
+  };
+}
+
+function matchToneClassName(tone: MatchPreviewResult["tone"]): string {
+  if (tone === "success") {
+    return "text-emerald-700";
+  }
+  if (tone === "warning") {
+    return "text-amber-700";
+  }
+  return "text-muted-foreground";
 }
 
 function isCodeLanguage(value: string): value is CodeLanguage {
