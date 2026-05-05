@@ -395,6 +395,9 @@ function buildRegexPreview(pattern: string): RegexPreview {
 
   const body = inlineFlags === null ? pattern : pattern.slice(inlineFlags.raw.length);
   const flags = inlineFlags === null ? "" : inlineFlags.flags;
+  if (hasPythonOnlyRegexAnchor(body)) {
+    return { type: "unsupported" };
+  }
 
   try {
     return { type: "regex", regex: new RegExp(body, flags) };
@@ -409,6 +412,26 @@ function buildRegexPreview(pattern: string): RegexPreview {
 function regexFullMatches(regex: RegExp, sample: string): boolean {
   const match = regex.exec(sample);
   return match !== null && match.index === 0 && match[0] === sample;
+}
+
+function hasPythonOnlyRegexAnchor(pattern: string): boolean {
+  for (let index = 0; index < pattern.length - 1; index += 1) {
+    if (pattern[index] !== "\\" || (pattern[index + 1] !== "A" && pattern[index + 1] !== "Z")) {
+      continue;
+    }
+    if (countBackslashRunEndingAt(pattern, index) % 2 === 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function countBackslashRunEndingAt(pattern: string, index: number): number {
+  let count = 0;
+  for (let cursor = index; cursor >= 0 && pattern[cursor] === "\\"; cursor -= 1) {
+    count += 1;
+  }
+  return count;
 }
 
 function parsePythonInlineFlags(
