@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ArrowDown, ArrowUp, Columns3, Copy, Maximize2, Rows3 } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, Copy, Maximize2, Rows3, Tag } from "lucide-react";
 import {
   flexRender,
   getCoreRowModel,
@@ -20,8 +20,10 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
-import type { Column, FieldRender, Row } from "@/api/types";
+import type { Column, FieldRender, LabelField, Row } from "@/api/types";
 import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
+import { useLabels } from "@/api/hooks/useLabels";
+import { useLabelSchema } from "@/api/hooks/useLabelSchema";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CellDispatcher } from "@/features/row-view/cells/CellDispatcher";
+import { LabelCell } from "@/features/labeling/cells/LabelCell";
 import { cn } from "@/lib/utils";
 import { stringifyRawValue } from "@/features/row-view/cells/RawCell";
 import { ColumnHeaderMenu } from "@/features/row-view/ColumnHeaderMenu";
@@ -47,6 +50,7 @@ import {
   type RowHeightMode,
   type TableConfig,
 } from "@/stores/queryStore";
+import { useLabelsStore } from "@/stores/labelsStore";
 
 interface RowTableProps {
   columns: Column[];
@@ -57,8 +61,11 @@ interface RowTableProps {
 
 const ROW_NUMBER_COLUMN_WIDTH = 56;
 const DEFAULT_DATA_COLUMN_WIDTH = 200;
+const DEFAULT_LABEL_COLUMN_WIDTH = 168;
 const ROW_NUMBER_COLUMN_ID = "__agentlens_internal_row_number";
 const DATA_COLUMN_ID_PREFIX = "__agentlens_internal_data_column_";
+const LABEL_COLUMN_ID_PREFIX = "__agentlens_internal_label_column_";
+const EMPTY_LABEL_FIELDS: LabelField[] = [];
 
 const ROW_HEIGHT_OPTIONS: Array<{
   mode: RowHeightMode;
@@ -75,9 +82,12 @@ const RICH_PREVIEW_ROW_HEIGHT = 220;
 
 function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: RowTableProps) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const queryId = useQueryStore((state) => state.queryId);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
   const setColumnWidth = useQueryStore((state) => state.setColumnWidth);
+  const labelSchema = useLabelSchema(queryId);
+  const labelFields = labelSchema.data?.fields ?? EMPTY_LABEL_FIELDS;
   const visibleColumns = useMemo(
     () => columns.filter((column) => !tableConfig.hidden_columns.includes(column.name)),
     [columns, tableConfig.hidden_columns],
@@ -86,7 +96,12 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     () => sortRows(rows, tableConfig.sort[0]),
     [rows, tableConfig.sort],
   );
+  const rowIdentities = useMemo(
+    () => sortedRows.map((row, index) => getStableRowIdentity(row, columns, index)),
+    [columns, sortedRows],
+  );
   const rowHeightConfig = getRowHeightConfig(tableConfig.row_height, tableConfig.rich_preview);
+  useLabels(queryId, rowIdentities);
   const columnSizing = useMemo<ColumnSizingState>(
     () => ({
       [ROW_NUMBER_COLUMN_ID]: ROW_NUMBER_COLUMN_WIDTH,
@@ -96,8 +111,14 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
           tableConfig.column_widths[column.name] ?? DEFAULT_DATA_COLUMN_WIDTH,
         ]),
       ),
+      ...Object.fromEntries(
+        labelFields.map((field) => [
+          getLabelColumnId(field.key),
+          DEFAULT_LABEL_COLUMN_WIDTH,
+        ]),
+      ),
     }),
-    [tableConfig.column_widths, visibleColumns],
+    [labelFields, tableConfig.column_widths, visibleColumns],
   );
   useEffect(() => {
     tableContainerRef.current?.scrollTo({ top: 0 });
@@ -144,9 +165,33 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
         minSize: 60,
         enableResizing: true,
       })),
+      ...(queryId === null
+        ? []
+        : labelFields.map<ColumnDef<Row, unknown>>((field) => ({
+            id: getLabelColumnId(field.key),
+            accessorFn: (row) => row,
+            header: () => (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="min-w-0 truncate" title={field.label}>
+                  {field.label}
+                </span>
+              </div>
+            ),
+            cell: ({ row }) => {
+              const rowId = getStableRowIdentity(row.original, columns, row.index);
+              return <LabelTableCell queryId={queryId} field={field} rowId={rowId} />;
+            },
+            size: DEFAULT_LABEL_COLUMN_WIDTH,
+            minSize: DEFAULT_LABEL_COLUMN_WIDTH,
+            enableResizing: false,
+          }))),
     ],
     [
+      columns,
       fieldRenders,
+      labelFields,
+      queryId,
       rowHeightConfig.previewLines,
       tableConfig.column_widths,
       tableConfig.rich_preview,
@@ -380,6 +425,19 @@ function ColumnVisibilityMenu({
   );
 }
 
+function LabelTableCell({
+  queryId,
+  field,
+  rowId,
+}: {
+  queryId: number;
+  field: LabelField;
+  rowId: string;
+}) {
+  const value = useLabelsStore((state) => state.labelsByRow[rowId]?.[field.key]);
+  return <LabelCell queryId={queryId} field={field} rowId={rowId} value={value} />;
+}
+
 type VirtualizedTableBodyProps = {
   rows: Array<TableRow<Row>>;
   tableContainerRef: RefObject<HTMLDivElement>;
@@ -595,6 +653,10 @@ function toClipboardText(value: unknown): string {
 
 function getDataColumnId(columnName: string): string {
   return `${DATA_COLUMN_ID_PREFIX}${columnName}`;
+}
+
+function getLabelColumnId(fieldKey: string): string {
+  return `${LABEL_COLUMN_ID_PREFIX}${fieldKey}`;
 }
 
 function getDataColumnName(columnId: string): string | null {

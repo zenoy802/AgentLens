@@ -30,8 +30,14 @@ export type LabelField =
   | Schemas["MultiSelectField"]
   | Schemas["TextField"];
 export type LabelOption = Schemas["LabelOption"];
+export type LabelBatchResult = Schemas["LabelBatchResult"];
+export type LabelBatchUpsert = Schemas["LabelBatchUpsert"];
+export type LabelRecordRead = Schemas["LabelRecordRead"];
+export type LabelRecordUpsert = Schemas["LabelRecordUpsert"];
+export type LabelRowsQuery = Schemas["LabelRowsQuery"];
 export type LabelSchemaPayload = Schemas["LabelSchemaPayload"];
 export type LabelSchemaRead = Schemas["LabelSchemaRead"];
+export type LabelsByRowResponse = Schemas["LabelsByRowResponse"];
 export type NamedQueryCreate = Schemas["NamedQueryCreate"];
 export type NamedQueryListResponse = Schemas["NamedQueryListResponse"];
 export type NamedQueryPromote = Schemas["NamedQueryPromote"];

@@ -143,6 +143,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Labels */
+        get: operations["get_labels_api_v1_queries__query_id__labels_get"];
+        put?: never;
+        /** Upsert Label */
+        post: operations["upsert_label_api_v1_queries__query_id__labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Labels */
+        post: operations["query_labels_api_v1_queries__query_id__labels_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Upsert Labels */
+        post: operations["batch_upsert_labels_api_v1_queries__query_id__labels_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Label */
+        delete: operations["delete_label_api_v1_queries__query_id__labels__record_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/label-schema": {
         parameters: {
             query?: never;
@@ -614,6 +683,37 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** LabelBatchError */
+        LabelBatchError: {
+            /** Row Identity */
+            row_identity: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** LabelBatchResult */
+        LabelBatchResult: {
+            /** Affected */
+            affected: number;
+            /** Skipped */
+            skipped: number;
+            /** Errors */
+            errors?: components["schemas"]["LabelBatchError"][];
+        };
+        /** LabelBatchUpsert */
+        LabelBatchUpsert: {
+            /** Row Identities */
+            row_identities?: string[];
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown | null;
+        };
         /** LabelOption */
         LabelOption: {
             /** Value */
@@ -622,6 +722,38 @@ export interface components {
             label: string;
             /** Color */
             color?: string | null;
+        };
+        /** LabelRecordRead */
+        LabelRecordRead: {
+            /** Record Id */
+            record_id: number;
+            /** Query Id */
+            query_id: number;
+            /** Row Identity */
+            row_identity: string;
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LabelRecordUpsert */
+        LabelRecordUpsert: {
+            /** Row Identity */
+            row_identity: string;
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown | null;
+        };
+        /** LabelRowsQuery */
+        LabelRowsQuery: {
+            /** Row Identities */
+            row_identities?: string[];
         };
         /** LabelSchemaPayload */
         LabelSchemaPayload: {
@@ -644,6 +776,15 @@ export interface components {
              * @default 0
              */
             cascade_deleted_records: number;
+        };
+        /** LabelsByRowResponse */
+        LabelsByRowResponse: {
+            /** Labels By Row */
+            labels_by_row: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
         };
         /** MarkdownRender */
         MarkdownRender: {
@@ -1412,6 +1553,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_labels_api_v1_queries__query_id__labels_get: {
+        parameters: {
+            query?: {
+                row_identities?: string | null;
+                row_identity?: string[] | null;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsByRowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_label_api_v1_queries__query_id__labels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelRecordUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRecordRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_labels_api_v1_queries__query_id__labels_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelRowsQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsByRowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_upsert_labels_api_v1_queries__query_id__labels_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelBatchUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelBatchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_label_api_v1_queries__query_id__labels__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

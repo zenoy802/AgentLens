@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -66,3 +66,50 @@ class LabelSchemaRead(BaseModel):
     def normalize_datetimes(self) -> LabelSchemaRead:
         self.updated_at = ensure_utc(self.updated_at)
         return self
+
+
+class LabelsByRowResponse(BaseModel):
+    labels_by_row: dict[str, dict[str, Any]]
+
+
+class LabelRowsQuery(BaseModel):
+    row_identities: list[str] = Field(default_factory=list)
+
+
+class LabelRecordUpsert(BaseModel):
+    row_identity: str = Field(min_length=1, max_length=512)
+    field_key: str = Field(min_length=1, max_length=200)
+    value: Any | None
+
+
+class LabelRecordRead(BaseModel):
+    record_id: int
+    query_id: int
+    row_identity: str
+    field_key: str
+    value: Any
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def normalize_datetimes(self) -> LabelRecordRead:
+        self.updated_at = ensure_utc(self.updated_at)
+        return self
+
+
+class LabelBatchUpsert(BaseModel):
+    row_identities: list[str] = Field(default_factory=list)
+    field_key: str = Field(min_length=1, max_length=200)
+    value: Any | None
+
+
+class LabelBatchError(BaseModel):
+    row_identity: str
+    code: str
+    message: str
+    detail: dict[str, Any] | None = None
+
+
+class LabelBatchResult(BaseModel):
+    affected: int
+    skipped: int
+    errors: list[LabelBatchError] = Field(default_factory=list)
