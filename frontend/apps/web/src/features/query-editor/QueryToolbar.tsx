@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Download, Loader2, Play, Save } from "lucide-react";
+import { Download, Loader2, Play, Save, Tags } from "lucide-react";
 
 import type { ExecutionInfo } from "@/stores/queryStore";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,13 @@ type QueryToolbarProps = {
   execution: ExecutionInfo | null;
   isExecuting: boolean;
   runDisabled?: boolean;
+  labelingDisabled?: boolean;
   resultTabs?: ReactNode;
   onConnectionChange: (id: number | null) => void;
   onRun: () => void;
   onSaveAs: () => void;
   onExport: () => void;
+  onLabeling: () => void;
 };
 
 export function QueryToolbar({
@@ -28,11 +30,13 @@ export function QueryToolbar({
   execution,
   isExecuting,
   runDisabled: runBlocked = false,
+  labelingDisabled = false,
   resultTabs,
   onConnectionChange,
   onRun,
   onSaveAs,
   onExport,
+  onLabeling,
 }: QueryToolbarProps) {
   const runDisabled =
     connectionId === null || sql.trim().length === 0 || isExecuting || runBlocked;
@@ -58,6 +62,15 @@ export function QueryToolbar({
         <Button variant="outline" className="gap-2" onClick={onExport} disabled={exportDisabled}>
           <Download className="h-4 w-4" aria-hidden="true" />
           导出
+        </Button>
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={onLabeling}
+          disabled={labelingDisabled || queryId === null || isExecuting}
+        >
+          <Tags className="h-4 w-4" aria-hidden="true" />
+          打标
         </Button>
       </div>
 

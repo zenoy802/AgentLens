@@ -143,6 +143,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/label-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Label Schema */
+        get: operations["get_label_schema_api_v1_queries__query_id__label_schema_get"];
+        /** Put Label Schema */
+        put: operations["put_label_schema_api_v1_queries__query_id__label_schema_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries": {
         parameters: {
             query?: never;
@@ -596,6 +614,37 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** LabelOption */
+        LabelOption: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** LabelSchemaPayload */
+        LabelSchemaPayload: {
+            /** Fields */
+            fields?: (components["schemas"]["SingleSelectField"] | components["schemas"]["MultiSelectField"] | components["schemas"]["TextField"])[];
+        };
+        /** LabelSchemaRead */
+        LabelSchemaRead: {
+            /** Query Id */
+            query_id: number;
+            /** Fields */
+            fields: (components["schemas"]["SingleSelectField"] | components["schemas"]["MultiSelectField"] | components["schemas"]["TextField"])[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Cascade Deleted Records
+             * @default 0
+             */
+            cascade_deleted_records: number;
+        };
         /** MarkdownRender */
         MarkdownRender: {
             /**
@@ -605,6 +654,20 @@ export interface components {
             type: "markdown";
         } & {
             [key: string]: unknown;
+        };
+        /** MultiSelectField */
+        MultiSelectField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multi_select";
+            /** Options */
+            options?: components["schemas"]["LabelOption"][];
         };
         /** NamedQueryCreate */
         NamedQueryCreate: {
@@ -808,6 +871,20 @@ export interface components {
             /** Next Run */
             next_run: string | null;
         };
+        /** SingleSelectField */
+        SingleSelectField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "single_select";
+            /** Options */
+            options?: components["schemas"]["LabelOption"][];
+        };
         /** SortConfig */
         SortConfig: {
             /** Column */
@@ -843,6 +920,18 @@ export interface components {
             type: "tag";
         } & {
             [key: string]: unknown;
+        };
+        /** TextField */
+        TextField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
         };
         /** TextRender */
         TextRender: {
@@ -1323,6 +1412,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_label_schema_api_v1_queries__query_id__label_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelSchemaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_label_schema_api_v1_queries__query_id__label_schema_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelSchemaPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelSchemaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
