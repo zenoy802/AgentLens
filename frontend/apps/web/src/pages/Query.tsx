@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, DatabaseZap, GripHorizontal } from "lucide-react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useExecute, useExecuteQuery } from "@/api/hooks/useExecute";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { ExportDialog } from "@/features/export/ExportDialog";
+import { LabelingPanel } from "@/features/labeling/LabelingPanel";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
 import {
   clampEditorHeight,
@@ -66,6 +67,7 @@ const QUERY_TEMPLATE_SQL = `-- 从这里开始：按 session_id 和时间顺序�
 export function Query() {
   const { queryId: queryIdParam } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const routeQueryId = parsePositiveInt(queryIdParam);
   const connectionIdParam = searchParams.get("connection_id");
@@ -91,6 +93,7 @@ export function Query() {
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [labelingPanelOpen, setLabelingPanelOpen] = useState(false);
   const [lastError, setLastError] = useState<unknown>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
   const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
@@ -105,6 +108,8 @@ export function Query() {
   const trajectoryRequestedKeyRef = useRef<string | null>(null);
   const previousRouteQueryIdRef = useRef<number | null | undefined>(undefined);
   const routeQueryIdRef = useRef<number | null>(routeQueryId);
+  const preservedRouteQueryIdRef = useRef<number | null>(null);
+  const skipNextViewConfigApplyForQueryIdRef = useRef<number | null>(null);
   routeQueryIdRef.current = routeQueryId;
 
   const queryDetail = useQueryById(routeQueryId ?? 0);
@@ -227,7 +232,17 @@ export function Query() {
     previousRouteQueryIdRef.current = routeQueryId;
 
     if (previousRouteQueryId !== undefined && previousRouteQueryId !== routeQueryId) {
-      useQueryStore.getState().reset();
+      const currentQueryId = useQueryStore.getState().queryId;
+      const shouldPreserveCurrentResult =
+        routeQueryId !== null &&
+        preservedRouteQueryIdRef.current === routeQueryId &&
+        currentQueryId === routeQueryId;
+
+      if (!shouldPreserveCurrentResult) {
+        preservedRouteQueryIdRef.current = null;
+        skipNextViewConfigApplyForQueryIdRef.current = null;
+        useQueryStore.getState().reset();
+      }
     }
   }, [routeQueryId]);
 
@@ -246,6 +261,12 @@ export function Query() {
       return;
     }
 
+    if (skipNextViewConfigApplyForQueryIdRef.current === routeQueryId) {
+      skipNextViewConfigApplyForQueryIdRef.current = null;
+      appliedForQueryIdRef.current = routeQueryId;
+      return;
+    }
+
     applyViewConfig(viewConfig);
     appliedForQueryIdRef.current = routeQueryId;
   }, [applyViewConfig, queryId, routeQueryId, viewConfig, viewConfigLoaded]);
@@ -255,6 +276,8 @@ export function Query() {
       return;
     }
 
+    preservedRouteQueryIdRef.current = null;
+    skipNextViewConfigApplyForQueryIdRef.current = null;
     reset();
     hydratedQueryIdRef.current = null;
     setActiveQuery(null);
@@ -281,7 +304,17 @@ export function Query() {
       return;
     }
 
-    reset();
+    const currentState = useQueryStore.getState();
+    const shouldPreserveCurrentResult =
+      preservedRouteQueryIdRef.current === queryDetail.data.id &&
+      currentState.queryId === queryDetail.data.id &&
+      currentState.connectionId === queryDetail.data.connection_id &&
+      currentState.sql === queryDetail.data.sql_text;
+
+    if (!shouldPreserveCurrentResult) {
+      reset();
+    }
+    preservedRouteQueryIdRef.current = null;
     hydratedQueryIdRef.current = queryDetail.data.id;
     setConnectionId(queryDetail.data.connection_id);
     setSql(queryDetail.data.sql_text);
@@ -293,10 +326,12 @@ export function Query() {
       expires_at: queryDetail.data.expires_at,
       is_named: queryDetail.data.is_named,
     });
-    setLastError(null);
-    setManualEditorHeight(null);
-    setDetailRow(null);
-    setDetailRowNumber(null);
+    if (!shouldPreserveCurrentResult) {
+      setLastError(null);
+      setManualEditorHeight(null);
+      setDetailRow(null);
+      setDetailRowNumber(null);
+    }
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
 
   async function handleRun() {
@@ -396,6 +431,14 @@ export function Query() {
           }
         }
       }
+
+      if (
+        !executeSavedQuery &&
+        result.query_id > 0 &&
+        executionStillMatchesAfterResult(executionGuard, result.query_id)
+      ) {
+        replaceRouteWithQueryId(result.query_id);
+      }
     } catch (error) {
       if (!executionStillMatches(executionGuard)) {
         useQueryStore.setState({ isExecuting: false });
@@ -405,6 +448,12 @@ export function Query() {
       useQueryStore.setState({ isExecuting: false });
       setLastError(error);
     }
+  }
+
+  function replaceRouteWithQueryId(nextQueryId: number) {
+    preservedRouteQueryIdRef.current = nextQueryId;
+    skipNextViewConfigApplyForQueryIdRef.current = nextQueryId;
+    navigate(`/query/${nextQueryId}`, { replace: true });
   }
 
   async function handleSaveViewConfig() {
@@ -512,6 +561,7 @@ export function Query() {
       nextState.queryId = null;
       setActiveQuery(null);
       setPromoteTarget(null);
+      setLabelingPanelOpen(false);
     }
 
     if (options?.preserveViewConfig !== true) {
@@ -646,6 +696,7 @@ export function Query() {
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
           onExport={() => setExportDialogOpen(true)}
+          onLabeling={() => setLabelingPanelOpen(true)}
           resultTabs={
             <ResultViewTabs
               activeView={activeResultView}
@@ -742,6 +793,12 @@ export function Query() {
             setDetailRowNumber(null);
           }
         }}
+      />
+
+      <LabelingPanel
+        open={labelingPanelOpen}
+        queryId={queryId}
+        onOpenChange={setLabelingPanelOpen}
       />
 
       <PromoteQueryDialog

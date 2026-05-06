@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+
+from app.schemas.datetime import ensure_utc
 
 
 class LabelOption(BaseModel):
@@ -45,3 +48,21 @@ LabelField: TypeAlias = Annotated[
 ]
 
 label_fields_adapter: TypeAdapter[list[LabelField]] = TypeAdapter(list[LabelField])
+
+
+class LabelSchemaPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[LabelField] = Field(default_factory=list)
+
+
+class LabelSchemaRead(BaseModel):
+    query_id: int
+    fields: list[LabelField]
+    updated_at: datetime
+    cascade_deleted_records: int = 0
+
+    @model_validator(mode="after")
+    def normalize_datetimes(self) -> LabelSchemaRead:
+        self.updated_at = ensure_utc(self.updated_at)
+        return self

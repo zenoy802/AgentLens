@@ -25,6 +25,13 @@ export type FieldRender =
   | Schemas["TagRender"];
 export type HealthResponse = Schemas["HealthResponse"];
 export type HTTPValidationError = Schemas["HTTPValidationError"];
+export type LabelField =
+  | Schemas["SingleSelectField"]
+  | Schemas["MultiSelectField"]
+  | Schemas["TextField"];
+export type LabelOption = Schemas["LabelOption"];
+export type LabelSchemaPayload = Schemas["LabelSchemaPayload"];
+export type LabelSchemaRead = Schemas["LabelSchemaRead"];
 export type NamedQueryCreate = Schemas["NamedQueryCreate"];
 export type NamedQueryListResponse = Schemas["NamedQueryListResponse"];
 export type NamedQueryPromote = Schemas["NamedQueryPromote"];
