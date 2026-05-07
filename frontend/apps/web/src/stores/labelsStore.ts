@@ -1,12 +1,15 @@
 import { create } from "zustand";
 
+type LabelsByRow = Record<string, Record<string, unknown>>;
+type PendingLabelsByRow = Record<string, Record<string, true>>;
+
 export interface LabelsState {
   activeQueryId: number | null;
-  labelsByRow: Record<string, Record<string, unknown>>;
-  pendingLabelsByRow: Record<string, Record<string, true>>;
+  labelsByRow: LabelsByRow;
+  pendingLabelsByRow: PendingLabelsByRow;
   setActiveQuery(queryId: number | null): void;
-  setLabels(data: Record<string, Record<string, unknown>>): void;
-  setLabelsForQuery(queryId: number, data: Record<string, Record<string, unknown>>): void;
+  setLabels(data: LabelsByRow): void;
+  setLabelsForQuery(queryId: number, data: LabelsByRow): void;
   patchLabel(rowId: string, fieldKey: string, value: unknown): void;
   patchLabelForQuery(
     queryId: number,
@@ -153,10 +156,10 @@ export const useLabelsStore = create<LabelsState>((set) => ({
 }));
 
 function mergeServerLabelsWithPendingEdits(
-  serverLabelsByRow: Record<string, Record<string, unknown>>,
-  currentLabelsByRow: Record<string, Record<string, unknown>>,
-  pendingLabelsByRow: Record<string, Record<string, true>>,
-): Record<string, Record<string, unknown>> {
+  serverLabelsByRow: LabelsByRow,
+  currentLabelsByRow: LabelsByRow,
+  pendingLabelsByRow: PendingLabelsByRow,
+): LabelsByRow {
   const labelsByRow = Object.fromEntries(
     Object.entries(serverLabelsByRow).map(([rowId, rowLabels]) => [
       rowId,
