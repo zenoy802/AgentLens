@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ type ExportFormat = ExportRequest["format"];
 type ExportDialogProps = {
   open: boolean;
   queryId: number | null;
+  defaultIncludeLabels?: boolean;
   onBeforeExport?: () => boolean | Promise<boolean>;
   onOpenChange: (open: boolean) => void;
 };
@@ -28,12 +29,19 @@ type ExportDialogProps = {
 export function ExportDialog({
   open,
   queryId,
+  defaultIncludeLabels = true,
   onBeforeExport,
   onOpenChange,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [includeLabels, setIncludeLabels] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setIncludeLabels(defaultIncludeLabels);
+    }
+  }, [defaultIncludeLabels, open]);
 
   async function handleSubmit() {
     if (queryId === null || isExporting) {

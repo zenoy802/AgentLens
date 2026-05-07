@@ -30,6 +30,7 @@ import { RowTable } from "@/features/row-view/RowTable";
 import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
+import { useLabelsStore } from "@/stores/labelsStore";
 import {
   getViewConfigPayloadFromState,
   initialTableConfig,
@@ -94,6 +95,7 @@ export function Query() {
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportIncludeLabelsDefault, setExportIncludeLabelsDefault] = useState(true);
   const [labelingPanelOpen, setLabelingPanelOpen] = useState(false);
   const [lastError, setLastError] = useState<unknown>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
@@ -101,6 +103,7 @@ export function Query() {
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [detailRowId, setDetailRowId] = useState<string | null>(null);
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
   const [trajectoryLoadedKey, setTrajectoryLoadedKey] = useState<string | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
@@ -171,6 +174,7 @@ export function Query() {
         }
         if (detailRow !== null) {
           setDetailRow(null);
+          setDetailRowId(null);
           setDetailRowNumber(null);
         }
         if (!closesOverlay) {
@@ -257,6 +261,7 @@ export function Query() {
         preservedRouteQueryIdRef.current = null;
         skipNextViewConfigApplyForQueryIdRef.current = null;
         useQueryStore.getState().reset();
+        useLabelsStore.getState().setActiveQuery(null);
       }
     }
   }, [routeQueryId]);
@@ -299,7 +304,9 @@ export function Query() {
     setLastError(null);
     setManualEditorHeight(null);
     setDetailRow(null);
+    setDetailRowId(null);
     setDetailRowNumber(null);
+    useLabelsStore.getState().setActiveQuery(null);
 
     if (initialConnectionId !== null) {
       setConnectionId(initialConnectionId);
@@ -334,6 +341,7 @@ export function Query() {
     setConnectionId(queryDetail.data.connection_id);
     setSql(queryDetail.data.sql_text);
     useQueryStore.setState({ queryId: queryDetail.data.id });
+    useLabelsStore.getState().setActiveQuery(queryDetail.data.id);
     setActiveQuery({
       id: queryDetail.data.id,
       name: queryDetail.data.name,
@@ -345,6 +353,7 @@ export function Query() {
       setLastError(null);
       setManualEditorHeight(null);
       setDetailRow(null);
+      setDetailRowId(null);
       setDetailRowNumber(null);
     }
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
@@ -394,6 +403,7 @@ export function Query() {
       }
 
       setResult(result);
+      useLabelsStore.getState().setActiveQuery(result.query_id);
       mergeSuggestedRenders(result.suggested_field_renders);
       if (
         !wasDirtyBeforeRun &&
@@ -403,6 +413,7 @@ export function Query() {
         useQueryStore.getState().markDirty();
       }
       setDetailRow(null);
+      setDetailRowId(null);
       setDetailRowNumber(null);
       if (executeSavedQuery && activeQuery !== null) {
         setActiveQuery({
@@ -563,6 +574,7 @@ export function Query() {
     trajectoryRequestedKeyRef.current = null;
     setTrajectoryLoadedKey(null);
     setDetailRow(null);
+    setDetailRowId(null);
     setDetailRowNumber(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
       columns: [],
@@ -570,6 +582,7 @@ export function Query() {
       execution: null,
       suggestedRenders: {},
       warnings: [],
+      filters: {},
       selectedRowIds: new Set<string>(),
     };
 
@@ -578,6 +591,7 @@ export function Query() {
       setActiveQuery(null);
       setPromoteTarget(null);
       setLabelingPanelOpen(false);
+      useLabelsStore.getState().setActiveQuery(null);
     }
 
     if (options?.preserveViewConfig !== true) {
@@ -631,8 +645,20 @@ export function Query() {
     clearCurrentQueryIdentity();
   }
 
-  function handleRowClick(row: Row, rowNumber: number) {
+  function handleOpenExport(includeLabelsDefault: boolean) {
+    setExportIncludeLabelsDefault(includeLabelsDefault);
+    setExportDialogOpen(true);
+  }
+
+  function handleExportLabels() {
+    setLabelingPanelOpen(false);
+    handleOpenExport(true);
+    toast.info("已打开导出对话框，并预选包含打标数据。");
+  }
+
+  function handleRowClick(row: Row, rowNumber: number, rowId: string) {
     setDetailRow(row);
+    setDetailRowId(rowId);
     setDetailRowNumber(rowNumber);
   }
 
@@ -711,7 +737,7 @@ export function Query() {
           onConnectionChange={handleConnectionChange}
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
-          onExport={() => setExportDialogOpen(true)}
+          onExport={() => handleOpenExport(true)}
           onLabeling={() => setLabelingPanelOpen(true)}
           resultTabs={
             <ResultViewTabs
@@ -800,12 +826,15 @@ export function Query() {
 
       <RowDetailSheet
         open={detailRow !== null}
+        queryId={queryId}
         row={detailRow}
+        rowId={detailRowId}
         columns={columns}
         rowNumber={detailRowNumber}
         onOpenChange={(open) => {
           if (!open) {
             setDetailRow(null);
+            setDetailRowId(null);
             setDetailRowNumber(null);
           }
         }}
@@ -814,6 +843,7 @@ export function Query() {
       <LabelingPanel
         open={labelingPanelOpen}
         queryId={queryId}
+        onExportLabels={handleExportLabels}
         onOpenChange={setLabelingPanelOpen}
       />
 
@@ -840,6 +870,7 @@ export function Query() {
       <ExportDialog
         open={exportDialogOpen}
         queryId={queryId}
+        defaultIncludeLabels={exportIncludeLabelsDefault}
         onBeforeExport={handleBeforeExport}
         onOpenChange={setExportDialogOpen}
       />
@@ -859,7 +890,7 @@ type ResultPlaceholderProps = {
   trajectoryLoading: boolean;
   trajectories: Trajectory[] | undefined;
   trajectoryWarnings: Warning[] | undefined;
-  onRowClick: (row: Row, rowNumber: number) => void;
+  onRowClick: (row: Row, rowNumber: number, rowId: string) => void;
   onUseSqlTemplate: () => void;
 };
 
