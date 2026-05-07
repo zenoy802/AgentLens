@@ -576,6 +576,7 @@ export function Query() {
     setDetailRow(null);
     setDetailRowId(null);
     setDetailRowNumber(null);
+    useLabelsStore.getState().setActiveQuery(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
       columns: [],
       rows: [],
@@ -591,7 +592,6 @@ export function Query() {
       setActiveQuery(null);
       setPromoteTarget(null);
       setLabelingPanelOpen(false);
-      useLabelsStore.getState().setActiveQuery(null);
     }
 
     if (options?.preserveViewConfig !== true) {

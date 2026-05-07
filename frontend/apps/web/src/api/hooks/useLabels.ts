@@ -42,11 +42,15 @@ type LabelSnapshot = {
 export const labelsKeys = {
   all: ["labels"] as const,
   query: (queryId: number) => [...labelsKeys.all, queryId] as const,
-  rows: (queryId: number, rowIdentitiesKey: string) =>
-    [...labelsKeys.query(queryId), rowIdentitiesKey] as const,
+  rows: (queryId: number, rowIdentitiesKey: string, resultKey: string) =>
+    [...labelsKeys.query(queryId), rowIdentitiesKey, resultKey] as const,
 };
 
-export function useLabels(queryId: number | null, rowIdentities: string[]) {
+export function useLabels(
+  queryId: number | null,
+  rowIdentities: string[],
+  resultKey = "current",
+) {
   const setActiveQuery = useLabelsStore((state) => state.setActiveQuery);
   const setLabels = useLabelsStore((state) => state.setLabels);
   const setLabelsForQuery = useLabelsStore((state) => state.setLabelsForQuery);
@@ -62,8 +66,8 @@ export function useLabels(queryId: number | null, rowIdentities: string[]) {
   const query = useQuery({
     queryKey:
       queryId === null
-        ? labelsKeys.rows(0, "null")
-        : labelsKeys.rows(queryId, normalizedRowIdentitiesKey),
+        ? labelsKeys.rows(0, "null", resultKey)
+        : labelsKeys.rows(queryId, normalizedRowIdentitiesKey, resultKey),
     enabled,
     gcTime: 0,
     staleTime: 15_000,
