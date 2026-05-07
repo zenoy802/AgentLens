@@ -65,6 +65,7 @@ export interface QueryState {
   trajectoryConfig: TrajectoryConfig | null;
   rowIdentityColumn: string | null;
   warnings: Warning[];
+  selectedRowIds: Set<string>;
   isExecuting: boolean;
   isDirty: boolean;
   setConnectionId(id: number | null): void;
@@ -83,6 +84,9 @@ export interface QueryState {
   setSort(col: string, dir: SortDirection | null): void;
   setTrajectoryConfig(cfg: TrajectoryConfig | null): void;
   setRowIdentityColumn(col: string | null): void;
+  setSelectedRowIds(rowIds: Iterable<string>): void;
+  setRowsSelected(rowIds: Iterable<string>, selected: boolean): void;
+  clearSelection(): void;
   applyViewConfig(vc: ViewConfigRead): void;
   mergeSuggestedRenders(suggested: Record<string, FieldRender>): void;
   reset(): void;
@@ -110,6 +114,7 @@ const initialResultState = {
   trajectoryConfig: null as TrajectoryConfig | null,
   rowIdentityColumn: null as string | null,
   warnings: [] as Warning[],
+  selectedRowIds: new Set<string>(),
   isDirty: false,
 };
 
@@ -139,6 +144,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         ),
         tableConfig: filterTableConfig(state.tableConfig, result.columns),
         warnings: result.warnings,
+        selectedRowIds: new Set(),
         isExecuting: false,
       };
     }),
@@ -285,6 +291,35 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     set({ rowIdentityColumn: col });
     get().markDirty();
   },
+  setSelectedRowIds: (rowIds) =>
+    set({ selectedRowIds: createSelectedRowIdsSet(rowIds) }),
+  setRowsSelected: (rowIds, selected) =>
+    set((state) => {
+      const nextSelectedRowIds = new Set(state.selectedRowIds);
+      let changed = false;
+
+      for (const rowId of rowIds) {
+        if (rowId.length === 0) {
+          continue;
+        }
+        if (selected) {
+          if (!nextSelectedRowIds.has(rowId)) {
+            nextSelectedRowIds.add(rowId);
+            changed = true;
+          }
+          continue;
+        }
+        if (nextSelectedRowIds.delete(rowId)) {
+          changed = true;
+        }
+      }
+
+      return changed ? { selectedRowIds: nextSelectedRowIds } : {};
+    }),
+  clearSelection: () =>
+    set((state) =>
+      state.selectedRowIds.size === 0 ? {} : { selectedRowIds: new Set<string>() },
+    ),
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
     set({
@@ -315,9 +350,20 @@ export const useQueryStore = create<QueryState>((set, get) => ({
       connectionId: null,
       sql: "",
       ...initialResultState,
+      selectedRowIds: new Set(),
       isExecuting: false,
     }),
 }));
+
+function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
+  const selectedRowIds = new Set<string>();
+  for (const rowId of rowIds) {
+    if (rowId.length > 0) {
+      selectedRowIds.add(rowId);
+    }
+  }
+  return selectedRowIds;
+}
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {
   const execution = state.execution;

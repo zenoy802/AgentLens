@@ -249,33 +249,33 @@ export function useBatchUpsertLabels(queryId: number) {
     },
     onMutate: async (args): Promise<LabelSnapshot[]> => {
       await queryClient.cancelQueries({ queryKey: labelsKeys.query(queryId) });
-      for (const rowIdentity of args.rowIdentities) {
-        useLabelsStore
-          .getState()
-          .markPendingLabelForQuery(queryId, rowIdentity, args.fieldKey);
-      }
       const snapshots = args.rowIdentities.map((rowIdentity) =>
         getLabelSnapshot(queryId, rowIdentity, args.fieldKey),
       );
+      const labelsStore = useLabelsStore.getState();
       for (const rowIdentity of args.rowIdentities) {
+        labelsStore.markPendingLabelForQuery(queryId, rowIdentity, args.fieldKey);
         applyOptimisticLabel(queryId, rowIdentity, args.fieldKey, args.value);
       }
       return snapshots;
     },
     onError: (error, _args, snapshots) => {
       if (snapshots !== undefined) {
-        restoreLabelSnapshots(snapshots);
+        restoreActiveQueryLabelSnapshots(snapshots);
       }
       toast.error(formatApiError(error));
     },
     onSuccess: (result, _args, snapshots) => {
       const errors = result.errors ?? [];
-      if (errors.length > 0 && snapshots !== undefined) {
-        const failedRows = new Set(errors.map((item) => item.row_identity));
-        restoreLabelSnapshots(
-          snapshots.filter((snapshot) => failedRows.has(snapshot.rowIdentity)),
-        );
-        toast.error(`批量打标完成，${errors.length} 行失败`);
+      toast.success(`已应用到 ${result.affected} 行`);
+      if (errors.length > 0) {
+        if (snapshots !== undefined) {
+          const failedRows = new Set(errors.map((item) => item.row_identity));
+          restoreActiveQueryLabelSnapshots(
+            snapshots.filter((snapshot) => failedRows.has(snapshot.rowIdentity)),
+          );
+        }
+        toast.warning(`${errors.length} 行失败`);
       }
     },
     onSettled: async (_data, _error, args) => {
@@ -339,8 +339,10 @@ function restoreLabelSnapshot(snapshot: LabelSnapshot) {
     .removeLabelForQuery(snapshot.queryId, snapshot.rowIdentity, snapshot.fieldKey);
 }
 
-function restoreLabelSnapshots(snapshots: LabelSnapshot[]) {
+function restoreActiveQueryLabelSnapshots(snapshots: LabelSnapshot[]) {
   for (const snapshot of snapshots) {
-    restoreLabelSnapshot(snapshot);
+    if (useLabelsStore.getState().activeQueryId === snapshot.queryId) {
+      restoreLabelSnapshot(snapshot);
+    }
   }
 }

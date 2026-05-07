@@ -89,6 +89,7 @@ export function Query() {
   const applyViewConfig = useQueryStore((state) => state.applyViewConfig);
   const mergeSuggestedRenders = useQueryStore((state) => state.mergeSuggestedRenders);
   const reset = useQueryStore((state) => state.reset);
+  const clearSelection = useQueryStore((state) => state.clearSelection);
 
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
@@ -164,15 +165,29 @@ export function Query() {
       }
 
       if (event.key === "Escape") {
-        setPromoteTarget(null);
-        setDetailRow(null);
-        setDetailRowNumber(null);
+        const closesOverlay = promoteTarget !== null || detailRow !== null;
+        if (promoteTarget !== null) {
+          setPromoteTarget(null);
+        }
+        if (detailRow !== null) {
+          setDetailRow(null);
+          setDetailRowNumber(null);
+        }
+        if (!closesOverlay) {
+          useQueryStore.getState().clearSelection();
+        }
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
+
+  useEffect(() => {
+    clearSelection();
+  }, [activeResultView, clearSelection, routeQueryId]);
+
+  useEffect(() => () => clearSelection(), [clearSelection]);
 
   useEffect(() => {
     if (activeResultView !== "trajectory") {
@@ -555,6 +570,7 @@ export function Query() {
       execution: null,
       suggestedRenders: {},
       warnings: [],
+      selectedRowIds: new Set<string>(),
     };
 
     if (options?.preserveQueryIdentity !== true) {
