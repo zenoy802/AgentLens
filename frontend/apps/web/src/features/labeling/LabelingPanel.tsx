@@ -116,6 +116,7 @@ function LabelStatsContent({
   error: unknown;
 }) {
   const columns = useQueryStore((state) => state.columns);
+  const execution = useQueryStore((state) => state.execution);
   const rows = useQueryStore((state) => state.rows);
   const filters = useQueryStore((state) => state.filters);
   const toggleLabelFilterValue = useQueryStore((state) => state.toggleLabelFilterValue);
@@ -124,25 +125,28 @@ function LabelStatsContent({
     () => rows.map((row, index) => getStableRowIdentity(row, columns, index)),
     [columns, rows],
   );
-  useLabels(queryId, rowIds);
+  const labels = useLabels(queryId, rowIds, execution?.executed_at ?? "no-execution");
 
   const stats = useMemo(
     () =>
-      schemaData === undefined
+      schemaData === undefined || labels.isLoading || labels.isError
         ? {}
         : computeStats(schemaData, labelsByRow, rowIds),
-    [labelsByRow, rowIds, schemaData],
+    [labelsByRow, labels.isError, labels.isLoading, rowIds, schemaData],
   );
+  const loading = isLoading || labels.isLoading;
+  const statsError = isError || labels.isError;
+  const statsErrorValue = isError ? error : labels.error;
 
   return (
     <StatsContent
       fieldCount={fieldCount}
       filters={filters}
-      isError={isError}
-      isLoading={isLoading}
+      isError={statsError}
+      isLoading={loading}
       rowCount={rowIds.length}
       stats={stats}
-      error={error}
+      error={statsErrorValue}
       onToggleOption={toggleLabelFilterValue}
     />
   );

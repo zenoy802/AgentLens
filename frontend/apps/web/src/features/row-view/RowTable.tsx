@@ -42,6 +42,7 @@ import { CellDispatcher } from "@/features/row-view/cells/CellDispatcher";
 import { LabelCell } from "@/features/labeling/cells/LabelCell";
 import { getLabelOptions } from "@/features/labeling/cells/utils";
 import { SelectionToolbar } from "@/features/query-editor/SelectionToolbar";
+import { formatApiError } from "@/lib/formatApiError";
 import { cn } from "@/lib/utils";
 import { stringifyRawValue } from "@/features/row-view/cells/RawCell";
 import { ColumnHeaderMenu } from "@/features/row-view/ColumnHeaderMenu";
@@ -96,6 +97,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   const tableRef = useRef<Table<Row> | null>(null);
   const lastSelectedRowIdRef = useRef<string | null>(null);
   const queryId = useQueryStore((state) => state.queryId);
+  const execution = useQueryStore((state) => state.execution);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
   const filters = useQueryStore((state) => state.filters);
@@ -125,27 +127,35 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       ),
     [columns, rowIdentityByRow, sortedRows],
   );
+  const labelsQuery = useLabels(
+    queryId,
+    rowIdentities,
+    execution?.executed_at ?? "no-execution",
+  );
+  const labelsReady = !labelsQuery.isLoading && !labelsQuery.isError;
+  const labelsError = labelsQuery.isError ? labelsQuery.error : null;
   const filteredRows = useMemo(
     () =>
-      filterRowsByLabels({
-        rows: sortedRows,
-        columns,
-        labelFields,
-        labelsByRow,
-        filters,
-        rowIdentityByRow,
-      }),
-    [columns, filters, labelFields, labelsByRow, rowIdentityByRow, sortedRows],
+      labelsReady
+        ? filterRowsByLabels({
+            rows: sortedRows,
+            columns,
+            labelFields,
+            labelsByRow,
+            filters,
+            rowIdentityByRow,
+          })
+        : sortedRows,
+    [columns, filters, labelFields, labelsByRow, labelsReady, rowIdentityByRow, sortedRows],
   );
   const labelStatsByField = useMemo(
     () =>
-      labelSchema.data === undefined
+      labelSchema.data === undefined || !labelsReady
         ? {}
         : computeStats(labelSchema.data, labelsByRow, rowIdentities),
-    [labelSchema.data, labelsByRow, rowIdentities],
+    [labelSchema.data, labelsByRow, labelsReady, rowIdentities],
   );
   const rowHeightConfig = getRowHeightConfig(tableConfig.row_height, tableConfig.rich_preview);
-  useLabels(queryId, rowIdentities);
   const columnSizing = useMemo<ColumnSizingState>(
     () => ({
       [SELECTION_COLUMN_ID]: SELECTION_COLUMN_WIDTH,
@@ -265,8 +275,12 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
                   {field.label}
                 </span>
                 <span className="ml-auto shrink-0 rounded bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {labelStatsByField[field.key]?.labeled ?? 0}/
-                  {labelStatsByField[field.key]?.total ?? 0}
+                  {getLabelHeaderCountText({
+                    error: labelsQuery.isError,
+                    loading: labelsQuery.isLoading,
+                    stats: labelStatsByField[field.key],
+                    total: rowIdentities.length,
+                  })}
                 </span>
                 <LabelFilterMenu field={field} />
               </div>
@@ -285,8 +299,11 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       fieldRenders,
       labelStatsByField,
       labelFields,
+      labelsQuery.isError,
+      labelsQuery.isLoading,
       queryId,
       rowIdentityByRow,
+      rowIdentities.length,
       rowHeightConfig.previewLines,
       selectedRowIds,
       setRowsSelected,
@@ -369,6 +386,11 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
           ) : null}
         </div>
       </div>
+      <LabelLoadStatusBar
+        error={labelsError}
+        labelFields={labelFields}
+        loading={labelsQuery.isLoading}
+      />
       <LabelFilterBar labelFields={labelFields} />
       <SelectionToolbar
         queryId={queryId}
@@ -543,6 +565,37 @@ function ColumnVisibilityMenu({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function LabelLoadStatusBar({
+  error,
+  labelFields,
+  loading,
+}: {
+  error: unknown;
+  labelFields: LabelField[];
+  loading: boolean;
+}) {
+  const filters = useQueryStore((state) => state.filters);
+  const hasActiveFilters = getActiveLabelFilters(labelFields, filters).length > 0;
+
+  if (labelFields.length === 0 || (error === null && !(loading && hasActiveFilters))) {
+    return null;
+  }
+
+  if (error !== null) {
+    return (
+      <div className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        打标数据加载失败，打标筛选暂未应用：{formatApiError(error)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      正在加载打标数据，筛选将在加载完成后应用。
+    </div>
   );
 }
 
@@ -1056,6 +1109,26 @@ function getActiveLabelFilters(
   }
 
   return activeFilters;
+}
+
+function getLabelHeaderCountText({
+  error,
+  loading,
+  stats,
+  total,
+}: {
+  error: boolean;
+  loading: boolean;
+  stats: { labeled: number; total: number } | undefined;
+  total: number;
+}): string {
+  if (error) {
+    return "失败";
+  }
+  if (loading) {
+    return "加载中";
+  }
+  return `${stats?.labeled ?? 0}/${stats?.total ?? total}`;
 }
 
 function ColumnSortIndicator({ columnName }: { columnName: string }) {
