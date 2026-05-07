@@ -1,4 +1,5 @@
-import type { Column, FieldRender, Row } from "@/api/types";
+import { useLabelSchema } from "@/api/hooks/useLabelSchema";
+import type { Column, FieldRender, LabelField, Row } from "@/api/types";
 import {
   Sheet,
   SheetContent,
@@ -6,13 +7,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { LabelCell } from "@/features/labeling/cells/LabelCell";
 import { CellDispatcher } from "@/features/row-view/cells/CellDispatcher";
 import { getRowIdentityValue } from "@/features/row-view/rowIdentity";
+import { useLabelsStore } from "@/stores/labelsStore";
 import { useQueryStore } from "@/stores/queryStore";
 
 interface RowDetailSheetProps {
   open: boolean;
+  queryId: number | null;
   row: Row | null;
+  rowId: string | null;
   columns: Column[];
   rowNumber: number | null;
   onOpenChange: (open: boolean) => void;
@@ -20,12 +25,16 @@ interface RowDetailSheetProps {
 
 export function RowDetailSheet({
   open,
+  queryId,
   row,
+  rowId,
   columns,
   rowNumber,
   onOpenChange,
 }: RowDetailSheetProps) {
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
+  const labelSchema = useLabelSchema(open ? queryId : null);
+  const labelFields = labelSchema.data?.fields ?? [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -39,6 +48,11 @@ export function RowDetailSheet({
 
         {row !== null ? (
           <div className="space-y-6 py-6">
+            <LabelSection
+              queryId={queryId}
+              rowId={rowId}
+              fields={labelFields}
+            />
             {columns.map((column) => (
               <FieldValue
                 key={column.name}
@@ -56,6 +70,77 @@ export function RowDetailSheet({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function LabelSection({
+  queryId,
+  rowId,
+  fields,
+}: {
+  queryId: number | null;
+  rowId: string | null;
+  fields: LabelField[];
+}) {
+  if (queryId === null || rowId === null) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-3 rounded-lg border bg-card p-4">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          打标
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Row Identity: {rowId}
+        </div>
+      </div>
+      {fields.length === 0 ? (
+        <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          暂无打标字段。
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {fields.map((field) => (
+            <RowLabelEditor
+              key={field.key}
+              queryId={queryId}
+              rowId={rowId}
+              field={field}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RowLabelEditor({
+  queryId,
+  rowId,
+  field,
+}: {
+  queryId: number;
+  rowId: string;
+  field: LabelField;
+}) {
+  const value = useLabelsStore((state) => state.labelsByRow[rowId]?.[field.key]);
+
+  return (
+    <div className="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium" title={field.label}>
+          {field.label}
+        </div>
+        <div className="truncate text-xs text-muted-foreground" title={field.key}>
+          {field.key}
+        </div>
+      </div>
+      <div className="flex min-h-9 min-w-0 rounded-md border bg-muted/20 p-1">
+        <LabelCell queryId={queryId} field={field} rowId={rowId} value={value} />
+      </div>
+    </div>
   );
 }
 

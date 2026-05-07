@@ -25,6 +25,7 @@ export type {
 export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
+export type LabelFilters = Record<string, string[]>;
 
 export interface SortConfig {
   column: string;
@@ -64,6 +65,7 @@ export interface QueryState {
   tableConfig: TableConfig;
   trajectoryConfig: TrajectoryConfig | null;
   rowIdentityColumn: string | null;
+  filters: LabelFilters;
   warnings: Warning[];
   selectedRowIds: Set<string>;
   isExecuting: boolean;
@@ -84,6 +86,10 @@ export interface QueryState {
   setSort(col: string, dir: SortDirection | null): void;
   setTrajectoryConfig(cfg: TrajectoryConfig | null): void;
   setRowIdentityColumn(col: string | null): void;
+  setLabelFilter(fieldKey: string, values: string[]): void;
+  toggleLabelFilterValue(fieldKey: string, value: string): void;
+  clearLabelFilter(fieldKey: string): void;
+  clearLabelFilters(): void;
   setSelectedRowIds(rowIds: Iterable<string>): void;
   setRowsSelected(rowIds: Iterable<string>, selected: boolean): void;
   clearSelection(): void;
@@ -113,6 +119,7 @@ const initialResultState = {
   tableConfig: initialTableConfig,
   trajectoryConfig: null as TrajectoryConfig | null,
   rowIdentityColumn: null as string | null,
+  filters: {} as LabelFilters,
   warnings: [] as Warning[],
   selectedRowIds: new Set<string>(),
   isDirty: false,
@@ -144,6 +151,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         ),
         tableConfig: filterTableConfig(state.tableConfig, result.columns),
         warnings: result.warnings,
+        filters: {},
         selectedRowIds: new Set(),
         isExecuting: false,
       };
@@ -291,6 +299,44 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     set({ rowIdentityColumn: col });
     get().markDirty();
   },
+  setLabelFilter: (fieldKey, values) =>
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        [fieldKey]: normalizeLabelFilterValues(values),
+      },
+    })),
+  toggleLabelFilterValue: (fieldKey, value) =>
+    set((state) => {
+      const currentValues = state.filters[fieldKey] ?? [];
+      const nextValues = currentValues.includes(value)
+        ? currentValues.filter((item) => item !== value)
+        : [...currentValues, value];
+
+      return {
+        filters: {
+          ...state.filters,
+          [fieldKey]: normalizeLabelFilterValues(nextValues),
+        },
+      };
+    }),
+  clearLabelFilter: (fieldKey) =>
+    set((state) =>
+      state.filters[fieldKey]?.length === 0
+        ? {}
+        : {
+            filters: {
+              ...state.filters,
+              [fieldKey]: [],
+            },
+          },
+    ),
+  clearLabelFilters: () =>
+    set((state) =>
+      Object.values(state.filters).every((values) => values.length === 0)
+        ? {}
+        : { filters: {} },
+    ),
   setSelectedRowIds: (rowIds) =>
     set({ selectedRowIds: createSelectedRowIdsSet(rowIds) }),
   setRowsSelected: (rowIds, selected) =>
@@ -363,6 +409,10 @@ function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
     }
   }
   return selectedRowIds;
+}
+
+function normalizeLabelFilterValues(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => typeof value === "string")));
 }
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {

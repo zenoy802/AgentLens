@@ -3,7 +3,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
@@ -13,11 +12,8 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, Columns3, Copy, Maximize2, Rows
 import {
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
   useReactTable,
-  type Column as TableColumn,
   type ColumnDef,
-  type ColumnFiltersState,
   type ColumnSizingState,
   type Row as TableRow,
   type Table,
@@ -50,9 +46,11 @@ import { cn } from "@/lib/utils";
 import { stringifyRawValue } from "@/features/row-view/cells/RawCell";
 import { ColumnHeaderMenu } from "@/features/row-view/ColumnHeaderMenu";
 import { getStableRowIdentity } from "@/features/row-view/rowIdentity";
+import { computeStats, labelValueMatchesSelectedOptions } from "@/lib/labelStats";
 import {
   useQueryStore,
   type ColumnPinDirection,
+  type LabelFilters,
   type RowHeightMode,
   type TableConfig,
 } from "@/stores/queryStore";
@@ -66,7 +64,7 @@ import {
 interface RowTableProps {
   columns: Column[];
   rows: Row[];
-  onRowClick?: (row: Row, rowNumber: number) => void;
+  onRowClick?: (row: Row, rowNumber: number, rowId: string) => void;
   isFullscreen?: boolean;
 }
 
@@ -97,10 +95,10 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<Table<Row> | null>(null);
   const lastSelectedRowIdRef = useRef<string | null>(null);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const queryId = useQueryStore((state) => state.queryId);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
+  const filters = useQueryStore((state) => state.filters);
   const setColumnWidth = useQueryStore((state) => state.setColumnWidth);
   const selectedRowIds = useQueryStore((state) => state.selectedRowIds);
   const setRowsSelected = useQueryStore((state) => state.setRowsSelected);
@@ -115,13 +113,36 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     () => sortRows(rows, tableConfig.sort[0]),
     [rows, tableConfig.sort],
   );
-  const rowIdentities = useMemo(
-    () => sortedRows.map((row, index) => getStableRowIdentity(row, columns, index)),
+  const rowIdentityByRow = useMemo(
+    () => createRowIdentityMap(sortedRows, columns),
     [columns, sortedRows],
   );
+  const rowIdentities = useMemo(
+    () =>
+      sortedRows.map(
+        (row, index) =>
+          rowIdentityByRow.get(row) ?? getStableRowIdentity(row, columns, index),
+      ),
+    [columns, rowIdentityByRow, sortedRows],
+  );
+  const filteredRows = useMemo(
+    () =>
+      filterRowsByLabels({
+        rows: sortedRows,
+        columns,
+        labelFields,
+        labelsByRow,
+        filters,
+        rowIdentityByRow,
+      }),
+    [columns, filters, labelFields, labelsByRow, rowIdentityByRow, sortedRows],
+  );
   const labelStatsByField = useMemo(
-    () => getLabelStatsByField(labelFields, rowIdentities, labelsByRow),
-    [labelFields, labelsByRow, rowIdentities],
+    () =>
+      labelSchema.data === undefined
+        ? {}
+        : computeStats(labelSchema.data, labelsByRow, rowIdentities),
+    [labelSchema.data, labelsByRow, rowIdentities],
   );
   const rowHeightConfig = getRowHeightConfig(tableConfig.row_height, tableConfig.rich_preview);
   useLabels(queryId, rowIdentities);
@@ -147,9 +168,6 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   useEffect(() => {
     tableContainerRef.current?.scrollTo({ top: 0 });
   }, [rowHeightConfig.mode, tableConfig.rich_preview]);
-  useEffect(() => {
-    setColumnFilters([]);
-  }, [columns, labelFields, queryId]);
 
   const columnDefs = useMemo<Array<ColumnDef<Row, unknown>>>(
     () => [
@@ -158,14 +176,18 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
         header: () => (
           <SelectionHeaderCell
             getFilteredRowIds={() =>
-              getTableRowIdentities(tableRef.current?.getRowModel().rows ?? [], columns)
+              getTableRowIdentities(
+                tableRef.current?.getRowModel().rows ?? [],
+                columns,
+                rowIdentityByRow,
+              )
             }
             selectedRowIds={selectedRowIds}
             setRowsSelected={setRowsSelected}
           />
         ),
         cell: ({ row }) => {
-          const rowId = getStableRowIdentity(row.original, columns, row.index);
+          const rowId = getRowIdentity(row.original, columns, row.index, rowIdentityByRow);
           return (
             <SelectionRowCell
               rowId={rowId}
@@ -178,6 +200,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
                   filteredRowIds: getTableRowIdentities(
                     tableRef.current?.getRowModel().rows ?? [],
                     columns,
+                    rowIdentityByRow,
                   ),
                   selectedRowIds,
                   setRowsSelected,
@@ -235,7 +258,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
         : labelFields.map<ColumnDef<Row, unknown>>((field) => ({
             id: getLabelColumnId(field.key),
             accessorFn: (row) => row,
-            header: ({ column }) => (
+            header: () => (
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span className="min-w-0 truncate" title={field.label}>
@@ -245,24 +268,16 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
                   {labelStatsByField[field.key]?.labeled ?? 0}/
                   {labelStatsByField[field.key]?.total ?? 0}
                 </span>
-                <LabelFilterMenu field={field} column={column} />
+                <LabelFilterMenu field={field} />
               </div>
             ),
             cell: ({ row }) => {
-              const rowId = getStableRowIdentity(row.original, columns, row.index);
+              const rowId = getRowIdentity(row.original, columns, row.index, rowIdentityByRow);
               return <LabelTableCell queryId={queryId} field={field} rowId={rowId} />;
             },
             size: DEFAULT_LABEL_COLUMN_WIDTH,
             minSize: DEFAULT_LABEL_COLUMN_WIDTH,
             enableResizing: false,
-            filterFn: (row, _columnId, filterValue) =>
-              labelValueMatchesFilter(
-                field,
-                labelsByRow[getStableRowIdentity(row.original, columns, row.index)]?.[
-                  field.key
-                ],
-                filterValue,
-              ),
           }))),
     ],
     [
@@ -270,8 +285,8 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       fieldRenders,
       labelStatsByField,
       labelFields,
-      labelsByRow,
       queryId,
+      rowIdentityByRow,
       rowHeightConfig.previewLines,
       selectedRowIds,
       setRowsSelected,
@@ -282,14 +297,12 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   );
 
   const table = useReactTable({
-    data: sortedRows,
+    data: filteredRows,
     columns: columnDefs,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     enableColumnResizing: true,
     columnResizeMode: "onEnd",
-    state: { columnSizing, columnFilters },
-    onColumnFiltersChange: setColumnFilters,
+    state: { columnSizing },
     onColumnSizingChange: (updater) => {
       const nextSizing = typeof updater === "function" ? updater(columnSizing) : updater;
       for (const [columnId, width] of Object.entries(nextSizing)) {
@@ -299,13 +312,16 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
         }
       }
     },
-    getRowId: (row, index) => `${getStableRowIdentity(row, columns, index)}:${index}`,
+    getRowId: (row, index) =>
+      `${getRowIdentity(row, columns, index, rowIdentityByRow)}:${index}`,
   });
   tableRef.current = table;
 
   const tableRows = table.getRowModel().rows;
   const filteredSelectedCount = tableRows.filter((row) =>
-    selectedRowIds.has(getStableRowIdentity(row.original, columns, row.index)),
+    selectedRowIds.has(
+      getRowIdentity(row.original, columns, row.index, rowIdentityByRow),
+    ),
   ).length;
 
   const resultSummary =
@@ -353,6 +369,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
           ) : null}
         </div>
       </div>
+      <LabelFilterBar labelFields={labelFields} />
       <SelectionToolbar
         queryId={queryId}
         labelFields={labelFields}
@@ -430,10 +447,12 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
             rows={tableRows}
             tableContainerRef={tableContainerRef}
             onRowClick={onRowClick}
+            columns={columns}
             visibleColumns={visibleColumns}
             table={table}
             tableConfig={tableConfig}
             rowHeight={rowHeightConfig.height}
+            rowIdentityByRow={rowIdentityByRow}
           />
         </table>
       </div>
@@ -527,6 +546,44 @@ function ColumnVisibilityMenu({
   );
 }
 
+function LabelFilterBar({ labelFields }: { labelFields: LabelField[] }) {
+  const filters = useQueryStore((state) => state.filters);
+  const toggleLabelFilterValue = useQueryStore((state) => state.toggleLabelFilterValue);
+  const clearLabelFilters = useQueryStore((state) => state.clearLabelFilters);
+  const activeFilters = getActiveLabelFilters(labelFields, filters);
+
+  if (activeFilters.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex min-h-10 flex-wrap items-center gap-2 border-b bg-amber-50/60 px-3 py-2">
+      <span className="text-xs font-medium text-muted-foreground">筛选</span>
+      {activeFilters.map((filter) => (
+        <button
+          key={`${filter.field.key}:${filter.value}`}
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-background px-2 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
+          title={`${filter.field.label}: ${filter.optionLabel}`}
+          onClick={() => toggleLabelFilterValue(filter.field.key, filter.value)}
+        >
+          <span>
+            {filter.field.key}: {filter.value}
+          </span>
+          <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+        </button>
+      ))}
+      <button
+        type="button"
+        className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground"
+        onClick={clearLabelFilters}
+      >
+        清除筛选
+      </button>
+    </div>
+  );
+}
+
 function SelectionHeaderCell({
   getFilteredRowIds,
   selectedRowIds,
@@ -611,37 +668,20 @@ function SelectionCheckbox({
 
 function LabelFilterMenu({
   field,
-  column,
 }: {
   field: LabelField;
-  column: TableColumn<Row, unknown>;
 }) {
-  const filterValue = normalizeLabelFilterValue(column.getFilterValue());
-  const active = !labelFilterIsEmpty(field, filterValue);
-
-  function commitFilter(nextFilter: LabelFilterValue) {
-    column.setFilterValue(labelFilterIsEmpty(field, nextFilter) ? undefined : nextFilter);
-  }
+  const selectedValues = useQueryStore((state) => state.filters[field.key] ?? []);
+  const toggleLabelFilterValue = useQueryStore((state) => state.toggleLabelFilterValue);
+  const clearLabelFilter = useQueryStore((state) => state.clearLabelFilter);
+  const active = selectedValues.length > 0;
 
   function toggleOption(value: string) {
-    const values = filterValue.values.includes(value)
-      ? filterValue.values.filter((item) => item !== value)
-      : [...filterValue.values, value];
-    commitFilter({ ...filterValue, values });
+    toggleLabelFilterValue(field.key, value);
   }
 
-  function toggleUnlabeled() {
-    commitFilter({
-      ...filterValue,
-      includeUnlabeled: !filterValue.includeUnlabeled,
-    });
-  }
-
-  function toggleLabeled() {
-    commitFilter({
-      ...filterValue,
-      includeLabeled: !filterValue.includeLabeled,
-    });
+  if (field.type === "text") {
+    return null;
   }
 
   return (
@@ -666,43 +706,21 @@ function LabelFilterMenu({
           筛选 {field.label}
         </div>
         <div className="max-h-72 overflow-y-auto">
-          {field.type === "text" ? (
-            <>
-              <LabelFilterOption
-                label="已打标"
-                checked={filterValue.includeLabeled}
-                onClick={toggleLabeled}
-              />
-              <LabelFilterOption
-                label="未打标"
-                checked={filterValue.includeUnlabeled}
-                onClick={toggleUnlabeled}
-              />
-            </>
-          ) : (
-            <>
-              {getLabelOptions(field).map((option) => (
-                <LabelFilterOption
-                  key={option.value}
-                  label={option.label}
-                  color={option.color ?? null}
-                  checked={filterValue.values.includes(option.value)}
-                  onClick={() => toggleOption(option.value)}
-                />
-              ))}
-              <LabelFilterOption
-                label="未打标"
-                checked={filterValue.includeUnlabeled}
-                onClick={toggleUnlabeled}
-              />
-            </>
-          )}
+          {getLabelOptions(field).map((option) => (
+            <LabelFilterOption
+              key={option.value}
+              label={option.label}
+              color={option.color ?? null}
+              checked={selectedValues.includes(option.value)}
+              onClick={() => toggleOption(option.value)}
+            />
+          ))}
         </div>
         {active ? (
           <button
             type="button"
             className="mt-1 flex w-full items-center gap-2 border-t px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => column.setFilterValue(undefined)}
+            onClick={() => clearLabelFilter(field.key)}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             清除筛选
@@ -773,21 +791,25 @@ function LabelTableCell({
 type VirtualizedTableBodyProps = {
   rows: Array<TableRow<Row>>;
   tableContainerRef: RefObject<HTMLDivElement>;
-  onRowClick?: (row: Row, rowNumber: number) => void;
+  onRowClick?: (row: Row, rowNumber: number, rowId: string) => void;
+  columns: Column[];
   visibleColumns: Column[];
   table: Table<Row>;
   tableConfig: TableConfig;
   rowHeight: number;
+  rowIdentityByRow: WeakMap<Row, string>;
 };
 
 function VirtualizedTableBody({
   rows,
   tableContainerRef,
   onRowClick,
+  columns,
   visibleColumns,
   table,
   tableConfig,
   rowHeight,
+  rowIdentityByRow,
 }: VirtualizedTableBodyProps) {
   const rowVirtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: rows.length,
@@ -821,7 +843,11 @@ function VirtualizedTableBody({
               if (shouldIgnoreRowClick(event)) {
                 return;
               }
-              onRowClick?.(row.original, row.index + 1);
+              onRowClick?.(
+                row.original,
+                row.index + 1,
+                getRowIdentity(row.original, columns, row.index, rowIdentityByRow),
+              );
             }}
           >
             {row.getVisibleCells().map((cell) => {
@@ -929,101 +955,107 @@ function handleRowSelectionChange({
   lastSelectedRowIdRef.current = rowId;
 }
 
-function getTableRowIdentities(tableRows: Array<TableRow<Row>>, columns: Column[]): string[] {
-  return tableRows.map((row) => getStableRowIdentity(row.original, columns, row.index));
-}
-
-type LabelStatsByField = Record<string, { labeled: number; total: number }>;
-
-function getLabelStatsByField(
-  labelFields: LabelField[],
-  rowIdentities: string[],
-  labelsByRow: Record<string, Record<string, unknown>>,
-): LabelStatsByField {
-  return Object.fromEntries(
-    labelFields.map((field) => {
-      const labeled = rowIdentities.filter((rowId) =>
-        labelIsPresent(labelsByRow[rowId], field.key),
-      ).length;
-      return [field.key, { labeled, total: rowIdentities.length }];
-    }),
+function getTableRowIdentities(
+  tableRows: Array<TableRow<Row>>,
+  columns: Column[],
+  rowIdentityByRow: WeakMap<Row, string>,
+): string[] {
+  return tableRows.map((row) =>
+    getRowIdentity(row.original, columns, row.index, rowIdentityByRow),
   );
 }
 
-type LabelFilterValue = {
-  values: string[];
-  includeUnlabeled: boolean;
-  includeLabeled: boolean;
+function createRowIdentityMap(rows: Row[], columns: Column[]): WeakMap<Row, string> {
+  const rowIdentityByRow = new WeakMap<Row, string>();
+  rows.forEach((row, index) => {
+    rowIdentityByRow.set(row, getStableRowIdentity(row, columns, index));
+  });
+  return rowIdentityByRow;
+}
+
+function getRowIdentity(
+  row: Row,
+  columns: Column[],
+  fallbackIndex: number,
+  rowIdentityByRow: WeakMap<Row, string>,
+): string {
+  return rowIdentityByRow.get(row) ?? getStableRowIdentity(row, columns, fallbackIndex);
+}
+
+function filterRowsByLabels({
+  rows,
+  columns,
+  labelFields,
+  labelsByRow,
+  filters,
+  rowIdentityByRow,
+}: {
+  rows: Row[];
+  columns: Column[];
+  labelFields: LabelField[];
+  labelsByRow: Record<string, Record<string, unknown>>;
+  filters: LabelFilters;
+  rowIdentityByRow: WeakMap<Row, string>;
+}): Row[] {
+  const fieldByKey = new Map(labelFields.map((field) => [field.key, field]));
+  const activeFilters = Object.entries(filters).filter(
+    ([, values]) => values.length > 0,
+  );
+
+  if (activeFilters.length === 0) {
+    return rows;
+  }
+
+  return rows.filter((row, index) => {
+    const rowId = getRowIdentity(row, columns, index, rowIdentityByRow);
+    const rowLabels = labelsByRow[rowId] ?? {};
+
+    return activeFilters.every(([fieldKey, selectedValues]) => {
+      const field = fieldByKey.get(fieldKey);
+      if (field === undefined) {
+        return true;
+      }
+      return labelValueMatchesSelectedOptions(
+        field,
+        rowLabels[fieldKey],
+        selectedValues,
+      );
+    });
+  });
+}
+
+type ActiveLabelFilter = {
+  field: LabelField;
+  value: string;
+  optionLabel: string;
 };
 
-function normalizeLabelFilterValue(value: unknown): LabelFilterValue {
-  if (!isRecord(value)) {
-    return { values: [], includeUnlabeled: false, includeLabeled: false };
+function getActiveLabelFilters(
+  labelFields: LabelField[],
+  filters: LabelFilters,
+): ActiveLabelFilter[] {
+  const fieldByKey = new Map(labelFields.map((field) => [field.key, field]));
+  const activeFilters: ActiveLabelFilter[] = [];
+
+  for (const [fieldKey, values] of Object.entries(filters)) {
+    const field = fieldByKey.get(fieldKey);
+    if (field === undefined || field.type === "text") {
+      continue;
+    }
+
+    const optionByValue = new Map(
+      getLabelOptions(field).map((option) => [option.value, option.label]),
+    );
+    for (const value of values) {
+      activeFilters.push({
+        field,
+        value,
+        optionLabel: optionByValue.get(value) ?? value,
+      });
+    }
   }
 
-  return {
-    values: Array.isArray(value.values)
-      ? value.values.filter((item): item is string => typeof item === "string")
-      : [],
-    includeUnlabeled: value.includeUnlabeled === true,
-    includeLabeled: value.includeLabeled === true,
-  };
-}
-
-function labelFilterIsEmpty(field: LabelField, filterValue: LabelFilterValue): boolean {
-  if (field.type === "text") {
-    return !filterValue.includeLabeled && !filterValue.includeUnlabeled;
-  }
-  return filterValue.values.length === 0 && !filterValue.includeUnlabeled;
-}
-
-function labelValueMatchesFilter(
-  field: LabelField,
-  value: unknown,
-  filterValue: unknown,
-): boolean {
-  const normalizedFilter = normalizeLabelFilterValue(filterValue);
-  if (labelFilterIsEmpty(field, normalizedFilter)) {
-    return true;
-  }
-
-  if (labelValueIsUnlabeled(value)) {
-    return normalizedFilter.includeUnlabeled;
-  }
-
-  if (field.type === "text") {
-    return normalizedFilter.includeLabeled;
-  }
-
-  if (field.type === "single_select") {
-    return typeof value === "string" && normalizedFilter.values.includes(value);
-  }
-
-  if (!Array.isArray(value)) {
-    return false;
-  }
-  return value.some(
-    (item) => typeof item === "string" && normalizedFilter.values.includes(item),
-  );
-}
-
-function labelIsPresent(
-  rowLabels: Record<string, unknown> | undefined,
-  fieldKey: string,
-): boolean {
-  return (
-    rowLabels !== undefined &&
-    Object.prototype.hasOwnProperty.call(rowLabels, fieldKey) &&
-    !labelValueIsUnlabeled(rowLabels[fieldKey])
-  );
-}
-
-function labelValueIsUnlabeled(value: unknown): boolean {
-  return value == null || (Array.isArray(value) && value.length === 0);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return activeFilters;
 }
 
 function ColumnSortIndicator({ columnName }: { columnName: string }) {
