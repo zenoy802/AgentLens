@@ -430,12 +430,17 @@ export function Query() {
         .getState()
         .setActiveQuery(result.query_id, result.execution.executed_at);
       mergeSuggestedRenders(result.suggested_field_renders);
+      const previousTrajectoryConfigSource =
+        useQueryStore.getState().trajectoryConfigSource;
       const trajectorySuggestionApplied = applySuggestedTrajectoryConfig(
         result.suggested_trajectory_config,
       );
       const hasAppliedSuggestions =
         Object.keys(result.suggested_field_renders).length > 0 ||
         trajectorySuggestionApplied;
+      const shouldSaveAppliedSuggestions =
+        (persistedViewConfigWasEmpty && hasAppliedSuggestions) ||
+        (previousTrajectoryConfigSource === "suggested" && trajectorySuggestionApplied);
       if (
         !wasDirtyBeforeRun &&
         persistedViewConfigUnknown &&
@@ -463,8 +468,7 @@ export function Query() {
 
       if (
         !wasDirtyBeforeRun &&
-        persistedViewConfigWasEmpty &&
-        hasAppliedSuggestions &&
+        shouldSaveAppliedSuggestions &&
         result.query_id > 0
       ) {
         const payload = getViewConfigPayloadFromState(useQueryStore.getState());

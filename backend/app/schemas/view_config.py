@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.datetime import ensure_utc
 from app.schemas.render import FieldRender
 
+TrajectoryConfigSource = Literal["manual", "suggested"]
+
 
 class SortConfig(BaseModel):
     column: str = Field(min_length=1)
@@ -38,6 +40,7 @@ class ViewConfigPayload(BaseModel):
     field_renders: dict[str, FieldRender] = Field(default_factory=dict)
     table_config: TableConfig = Field(default_factory=TableConfig)
     trajectory_config: TrajectoryConfig | None = None
+    trajectory_config_source: TrajectoryConfigSource | None = None
     row_identity_column: str | None = None
 
 
