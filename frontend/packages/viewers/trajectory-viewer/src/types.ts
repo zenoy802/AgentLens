@@ -16,6 +16,8 @@ export interface Trajectory {
   messages: TrajectoryMessage[];
 }
 
+export type MessageCollapseResolver = boolean | ((msg: TrajectoryMessage) => boolean);
+
 export interface TrajectoryViewerProps {
   trajectory: Trajectory;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
@@ -26,4 +28,9 @@ export interface TrajectoryViewerProps {
   showHeader?: boolean;
   showMetaLine?: boolean;
   metaFields?: string[];
+  collapsibleMessages?: boolean;
+  defaultMessageCollapsed?: MessageCollapseResolver;
+  collapsedContentHeight?: number;
+  expandLabel?: string;
+  collapseLabel?: string;
 }
