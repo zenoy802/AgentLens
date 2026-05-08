@@ -12,6 +12,15 @@ from app.core.sql_guard import validate_sql
         "SELECT 1",
         "SELECT * FROM t",
         "WITH x AS (SELECT 1) SELECT * FROM x",
+        """
+        WITH sample AS (
+          SELECT 's1' AS session_id, 1 AS msg_idx, 'system' AS role, 'one' AS content
+          UNION ALL SELECT 's1', 2, 'user', 'two'
+          UNION ALL SELECT 's2', 1, 'assistant', 'three'
+        )
+        SELECT * FROM sample
+        ORDER BY session_id, msg_idx
+        """,
         "-- leading comment\nSeLeCt\n  *\nFROM t",
         "/* block comment */\nselect 1",
         "SELECT 'sleep' AS txt",

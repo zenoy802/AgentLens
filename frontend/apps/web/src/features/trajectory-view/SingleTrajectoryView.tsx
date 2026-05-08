@@ -3,6 +3,7 @@ import { TrajectoryViewer } from "@agentlens/trajectory-viewer";
 import type { Trajectory } from "@agentlens/trajectory-viewer";
 
 import { cn } from "@/lib/utils";
+import { getTrajectoryRoles } from "@/features/trajectory-view/trajectoryRoles";
 
 interface SingleTrajectoryViewProps {
   trajectory: Trajectory;
@@ -12,7 +13,7 @@ interface SingleTrajectoryViewProps {
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
 
 export function SingleTrajectoryView({ trajectory, className }: SingleTrajectoryViewProps) {
-  const roles = useMemo(() => getRoles(trajectory), [trajectory]);
+  const roles = useMemo(() => getTrajectoryRoles([trajectory]), [trajectory]);
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>(roles);
   const activeRoles = selectedRoles.length === roles.length ? undefined : selectedRoles;
@@ -77,17 +78,6 @@ export function SingleTrajectoryView({ trajectory, className }: SingleTrajectory
       </div>
     </div>
   );
-}
-
-function getRoles(trajectory: Trajectory): string[] {
-  const roles = new Map<string, string>();
-  for (const message of trajectory.messages) {
-    const normalized = message.role.trim().toLowerCase() || "unknown";
-    if (!roles.has(normalized)) {
-      roles.set(normalized, message.role || "unknown");
-    }
-  }
-  return Array.from(roles.values());
 }
 
 function getMetaFields(trajectory: Trajectory): string[] {

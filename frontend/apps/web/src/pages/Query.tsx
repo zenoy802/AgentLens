@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp, DatabaseZap, GripHorizontal } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  DatabaseZap,
+  GripHorizontal,
+} from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -8,10 +15,19 @@ import { useQueryById } from "@/api/hooks/useQueries";
 import { useTrajectories } from "@/api/hooks/useTrajectories";
 import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
 import type { Row, Trajectory, Warning } from "@/api/types";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
+import { ComparisonView } from "@/features/comparison-view/ComparisonView";
 import { ExportDialog } from "@/features/export/ExportDialog";
 import { LabelingPanel } from "@/features/labeling/LabelingPanel";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
@@ -28,6 +44,8 @@ import {
 import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
 import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
+import { getTrajectoryOptions } from "@/features/trajectory-view/trajectoryOptions";
+import { getTrajectoryRoles } from "@/features/trajectory-view/trajectoryRoles";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
 import { useLabelsStore } from "@/stores/labelsStore";
@@ -44,6 +62,7 @@ type ActiveQuery = PromotableQuery & {
 };
 
 type ResultView = "row" | "trajectory";
+type TrajectoryDetailMode = "comparison" | "single";
 
 type DragState = {
   pointerId: number;
@@ -59,6 +78,7 @@ type ExecutionGuard = {
 };
 
 const SQL_EDITOR_COLLAPSED_KEY = "agentlens.query.sqlEditorCollapsed";
+const MAX_COMPARISON_TRAJECTORIES = 10;
 const QUERY_TEMPLATE_SQL = `-- 从这里开始：按 session_id 和时间顺序查询一条或多条 trajectory
 -- SELECT session_id, role, content, created_at
 -- FROM agent_messages
@@ -1018,6 +1038,41 @@ function TrajectoryResult({
   trajectories,
   warnings,
 }: TrajectoryResultProps) {
+  const trajectoryOptions = useMemo(
+    () => (trajectories === undefined ? [] : getTrajectoryOptions(trajectories)),
+    [trajectories],
+  );
+  const allTrajectoryKeys = useMemo(
+    () => trajectoryOptions.map((option) => option.key),
+    [trajectoryOptions],
+  );
+  const allRoles = useMemo(
+    () => (trajectories === undefined ? [] : getTrajectoryRoles(trajectories)),
+    [trajectories],
+  );
+  const [trajectoryMode, setTrajectoryMode] = useState<TrajectoryDetailMode>("comparison");
+  const [comparisonSelectedKeys, setComparisonSelectedKeys] = useState<string[]>([]);
+  const [comparisonSyncScroll, setComparisonSyncScroll] = useState(false);
+  const [comparisonRoleFilter, setComparisonRoleFilter] = useState<string[] | null>(null);
+  const [singleTrajectoryIndex, setSingleTrajectoryIndex] = useState(0);
+  const activeComparisonRoleFilter = comparisonRoleFilter ?? allRoles;
+
+  useEffect(() => {
+    if (trajectories === undefined) {
+      return;
+    }
+
+    setComparisonSelectedKeys(
+      allTrajectoryKeys.slice(
+        0,
+        trajectories.length > 6 ? MAX_COMPARISON_TRAJECTORIES : trajectories.length,
+      ),
+    );
+    setComparisonRoleFilter(allRoles);
+    setSingleTrajectoryIndex(0);
+    setTrajectoryMode(trajectories.length > 1 ? "comparison" : "single");
+  }, [allRoles, allTrajectoryKeys, trajectories]);
+
   if (isLoading) {
     return <LoadingState label="正在聚合 Trajectory..." rows={5} />;
   }
@@ -1031,6 +1086,20 @@ function TrajectoryResult({
       <EmptyState title="Trajectory 未聚合" description="切换到 Trajectory 后开始聚合。" />
     );
   }
+
+  if (trajectories.length === 0) {
+    return (
+      <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+        <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+        <AlertTitle>未聚合到 Trajectory</AlertTitle>
+        <AlertDescription>
+          当前结果没有可展示的 trajectory。请检查 group_by、role、content 配置是否匹配 SQL 返回列。
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const selectedSingleTrajectory = trajectories[singleTrajectoryIndex] ?? trajectories[0];
 
   return (
     <div className="space-y-3">
@@ -1048,11 +1117,114 @@ function TrajectoryResult({
       ) : null}
       {trajectories.length === 1 ? (
         <SingleTrajectoryView trajectory={trajectories[0]} />
+      ) : trajectoryMode === "comparison" ? (
+        <>
+          <TrajectoryModeTabs
+            mode={trajectoryMode}
+            trajectories={trajectories}
+            trajectoryOptions={trajectoryOptions}
+            singleTrajectoryIndex={singleTrajectoryIndex}
+            onModeChange={setTrajectoryMode}
+            onSingleTrajectoryIndexChange={setSingleTrajectoryIndex}
+          />
+          <ComparisonView
+            trajectories={trajectories}
+            selectedKeys={comparisonSelectedKeys}
+            onSelectionChange={setComparisonSelectedKeys}
+            syncScroll={comparisonSyncScroll}
+            roleFilter={activeComparisonRoleFilter}
+            onSyncScrollChange={setComparisonSyncScroll}
+            onRoleFilterChange={setComparisonRoleFilter}
+          />
+        </>
       ) : (
-        <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-          检测到 {trajectories.length} 条 trajectories
-        </div>
+        <>
+          <TrajectoryModeTabs
+            mode={trajectoryMode}
+            trajectories={trajectories}
+            trajectoryOptions={trajectoryOptions}
+            singleTrajectoryIndex={singleTrajectoryIndex}
+            onModeChange={setTrajectoryMode}
+            onSingleTrajectoryIndexChange={setSingleTrajectoryIndex}
+          />
+          <SingleTrajectoryView trajectory={selectedSingleTrajectory} />
+        </>
       )}
+    </div>
+  );
+}
+
+function TrajectoryModeTabs({
+  mode,
+  trajectories,
+  trajectoryOptions,
+  singleTrajectoryIndex,
+  onModeChange,
+  onSingleTrajectoryIndexChange,
+}: {
+  mode: TrajectoryDetailMode;
+  trajectories: Trajectory[];
+  trajectoryOptions: ReturnType<typeof getTrajectoryOptions>;
+  singleTrajectoryIndex: number;
+  onModeChange: (mode: TrajectoryDetailMode) => void;
+  onSingleTrajectoryIndexChange: (index: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+      <div
+        className="inline-flex h-9 items-center rounded-md bg-muted p-1 text-muted-foreground"
+        role="tablist"
+        aria-label="Trajectory 视图切换"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "comparison"}
+          className={cn(
+            "inline-flex h-7 items-center justify-center rounded px-3 text-sm font-medium transition-colors",
+            mode === "comparison"
+              ? "bg-background text-foreground shadow-sm"
+              : "hover:text-foreground",
+          )}
+          onClick={() => onModeChange("comparison")}
+        >
+          对比
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "single"}
+          className={cn(
+            "inline-flex h-7 items-center justify-center rounded px-3 text-sm font-medium transition-colors",
+            mode === "single"
+              ? "bg-background text-foreground shadow-sm"
+              : "hover:text-foreground",
+          )}
+          onClick={() => onModeChange("single")}
+        >
+          单个
+        </button>
+      </div>
+      {mode === "single" ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-sm text-muted-foreground">当前</span>
+          <Select
+            value={String(singleTrajectoryIndex)}
+            onValueChange={(value) => onSingleTrajectoryIndexChange(Number(value))}
+          >
+            <SelectTrigger className="w-[260px]">
+              <SelectValue placeholder="选择 group_key" />
+            </SelectTrigger>
+            <SelectContent>
+              {trajectories.map((trajectory, index) => (
+                <SelectItem key={`${trajectory.group_key}:${index}`} value={String(index)}>
+                  {trajectoryOptions[index]?.label ?? trajectory.group_key}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
     </div>
   );
 }
