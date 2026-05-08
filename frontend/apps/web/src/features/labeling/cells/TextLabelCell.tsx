@@ -9,6 +9,7 @@ import {
 
 type TextLabelCellProps = {
   queryId: number;
+  resultKey: string | null;
   field: TextLabelField;
   rowId: string;
   value: unknown;
@@ -16,8 +17,14 @@ type TextLabelCellProps = {
 
 const SAVE_DEBOUNCE_MS = 500;
 
-export function TextLabelCell({ queryId, field, rowId, value }: TextLabelCellProps) {
-  const { commitLabel } = useQueuedUpsertLabel(queryId);
+export function TextLabelCell({
+  queryId,
+  resultKey,
+  field,
+  rowId,
+  value,
+}: TextLabelCellProps) {
+  const { commitLabel } = useQueuedUpsertLabel(queryId, resultKey);
   const textValue = coerceStringValue(value);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(textValue ?? "");

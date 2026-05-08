@@ -16,12 +16,14 @@ import { useQueryStore } from "@/stores/queryStore";
 
 interface SelectionToolbarProps {
   queryId: number | null;
+  resultKey: string | null;
   labelFields: LabelField[];
   filteredSelectedCount: number;
 }
 
 export function SelectionToolbar({
   queryId,
+  resultKey,
   labelFields,
   filteredSelectedCount,
 }: SelectionToolbarProps) {
@@ -96,6 +98,7 @@ export function SelectionToolbar({
         <BatchLabelDialog
           open={batchField !== null}
           queryId={queryId}
+          resultKey={resultKey}
           field={batchField}
           rowIdentities={selectedRowIdentities}
           onOpenChange={(open) => {

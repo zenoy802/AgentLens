@@ -829,6 +829,7 @@ export function Query() {
       <RowDetailSheet
         open={detailRow !== null}
         queryId={queryId}
+        resultKey={execution?.executed_at ?? "no-execution"}
         row={detailRow}
         rowId={detailRowId}
         columns={columns}

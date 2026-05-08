@@ -24,6 +24,7 @@ type LabelValue = string | string[] | null;
 interface BatchLabelDialogProps {
   open: boolean;
   queryId: number;
+  resultKey: string | null;
   field: LabelField;
   rowIdentities: string[];
   onOpenChange(open: boolean): void;
@@ -32,11 +33,12 @@ interface BatchLabelDialogProps {
 export function BatchLabelDialog({
   open,
   queryId,
+  resultKey,
   field,
   rowIdentities,
   onOpenChange,
 }: BatchLabelDialogProps) {
-  const batchUpsertLabels = useBatchUpsertLabels(queryId);
+  const batchUpsertLabels = useBatchUpsertLabels(queryId, resultKey);
   const [singleValue, setSingleValue] = useState<string | null | undefined>(undefined);
   const [multiValues, setMultiValues] = useState<string[] | null>(null);
   const [textValue, setTextValue] = useState("");

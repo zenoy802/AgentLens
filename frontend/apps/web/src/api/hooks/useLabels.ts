@@ -133,6 +133,10 @@ export function useUpsertLabel(queryId: number) {
 
   return useMutation({
     mutationFn: async (args: UpsertLabelMutationArgs): Promise<LabelRecordRead | null> => {
+      if (!activeLabelContextMatches(queryId, args.resultKey)) {
+        return null;
+      }
+
       const { data, error, response } = await apiClient.POST(
         "/queries/{query_id}/labels",
         {
@@ -215,13 +219,12 @@ export function useUpsertLabel(queryId: number) {
   });
 }
 
-export function useQueuedUpsertLabel(queryId: number) {
+export function useQueuedUpsertLabel(queryId: number, resultKey: string | null) {
   const upsert = useUpsertLabel(queryId);
   const { isPending, mutateAsync } = upsert;
 
   const commitLabel = useCallback(
     (args: UpsertLabelArgs): Promise<void> => {
-      const resultKey = getActiveResultKey(queryId);
       const queueKey = getCellMutationQueueKey(
         queryId,
         resultKey,
@@ -245,7 +248,7 @@ export function useQueuedUpsertLabel(queryId: number) {
       labelMutationQueues.set(queueKey, next);
       return next;
     },
-    [mutateAsync, queryId],
+    [mutateAsync, queryId, resultKey],
   );
 
   return {
@@ -265,11 +268,19 @@ function getCellMutationQueueKey(
   );
 }
 
-export function useBatchUpsertLabels(queryId: number) {
+export function useBatchUpsertLabels(queryId: number, resultKey: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (args: BatchUpsertLabelArgs): Promise<LabelBatchResult> => {
+      if (!activeLabelContextMatches(queryId, resultKey)) {
+        return {
+          affected: 0,
+          skipped: args.rowIdentities.length,
+          errors: [],
+        };
+      }
+
       const { data, error, response } = await apiClient.POST(
         "/queries/{query_id}/labels/batch",
         {
@@ -293,7 +304,6 @@ export function useBatchUpsertLabels(queryId: number) {
     },
     onMutate: async (args): Promise<LabelSnapshot[]> => {
       await queryClient.cancelQueries({ queryKey: labelsKeys.query(queryId) });
-      const resultKey = getActiveResultKey(queryId);
       const snapshots = args.rowIdentities.map((rowIdentity) =>
         getLabelSnapshot(queryId, resultKey, rowIdentity, args.fieldKey),
       );
@@ -329,13 +339,13 @@ export function useBatchUpsertLabels(queryId: number) {
       }
     },
     onSettled: async (_data, _error, args, snapshots) => {
-      const resultKey = snapshots?.[0]?.resultKey ?? getActiveResultKey(queryId);
+      const settledResultKey = snapshots?.[0]?.resultKey ?? resultKey;
       for (const rowIdentity of args.rowIdentities) {
         useLabelsStore
           .getState()
-          .clearPendingLabelForQuery(queryId, resultKey, rowIdentity, args.fieldKey);
+          .clearPendingLabelForQuery(queryId, settledResultKey, rowIdentity, args.fieldKey);
       }
-      if (activeLabelContextMatches(queryId, resultKey)) {
+      if (activeLabelContextMatches(queryId, settledResultKey)) {
         await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
       }
     },
@@ -420,11 +430,6 @@ function restoreActiveQueryLabelSnapshots(snapshots: LabelSnapshot[]) {
       restoreLabelSnapshot(snapshot);
     }
   }
-}
-
-function getActiveResultKey(queryId: number): string | null {
-  const state = useLabelsStore.getState();
-  return state.activeQueryId === queryId ? state.activeResultKey : null;
 }
 
 function activeLabelContextMatches(queryId: number, resultKey: string | null): boolean {

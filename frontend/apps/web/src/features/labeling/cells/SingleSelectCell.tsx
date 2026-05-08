@@ -19,15 +19,22 @@ import {
 
 type SingleSelectCellProps = {
   queryId: number;
+  resultKey: string | null;
   field: SingleSelectLabelField;
   rowId: string;
   value: unknown;
 };
 
-export function SingleSelectCell({ queryId, field, rowId, value }: SingleSelectCellProps) {
+export function SingleSelectCell({
+  queryId,
+  resultKey,
+  field,
+  rowId,
+  value,
+}: SingleSelectCellProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { commitLabel } = useQueuedUpsertLabel(queryId);
+  const { commitLabel } = useQueuedUpsertLabel(queryId, resultKey);
   const options = getLabelOptions(field);
   const selectedValue = coerceStringValue(value);
   const selectedOption =
