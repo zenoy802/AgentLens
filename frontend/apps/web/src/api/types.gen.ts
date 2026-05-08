@@ -1199,6 +1199,8 @@ export interface components {
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Trajectory Config Source */
+            trajectory_config_source?: ("manual" | "suggested") | null;
             /** Row Identity Column */
             row_identity_column?: string | null;
         };
@@ -1210,6 +1212,8 @@ export interface components {
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Trajectory Config Source */
+            trajectory_config_source?: ("manual" | "suggested") | null;
             /** Row Identity Column */
             row_identity_column?: string | null;
             /** Query Id */

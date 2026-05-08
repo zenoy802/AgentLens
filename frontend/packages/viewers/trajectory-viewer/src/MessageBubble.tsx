@@ -30,7 +30,7 @@ export function MessageBubble({
   showMetaLine = false,
   metaFields = DEFAULT_META_FIELDS,
   className,
-  collapsible = true,
+  collapsible = false,
   defaultCollapsed = false,
   collapsedContentHeight = DEFAULT_COLLAPSED_CONTENT_HEIGHT,
   expandLabel = DEFAULT_EXPAND_LABEL,

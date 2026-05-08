@@ -26,7 +26,10 @@ export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
 export type LabelFilters = Record<string, string[]>;
-export type TrajectoryConfigSource = "manual" | "suggested" | null;
+export type TrajectoryConfigSource = Exclude<
+  ViewConfigPayload["trajectory_config_source"],
+  undefined
+>;
 
 export interface SortConfig {
   column: string;
@@ -373,17 +376,17 @@ export const useQueryStore = create<QueryState>((set, get) => ({
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
     const trajectoryConfig = vc.trajectory_config ?? null;
-    set((state) => ({
+    set({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
       trajectoryConfig,
-      trajectoryConfigSource: resolveAppliedTrajectoryConfigSource(
-        state,
+      trajectoryConfigSource: normalizeAppliedTrajectoryConfigSource(
         trajectoryConfig,
+        vc.trajectory_config_source,
       ),
       rowIdentityColumn: vc.row_identity_column ?? null,
-    }));
+    });
     get().markClean();
   },
   mergeSuggestedRenders: (suggested) =>
@@ -455,12 +458,15 @@ function trajectoryConfigsEqual(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function resolveAppliedTrajectoryConfigSource(
-  state: QueryState,
+function normalizeAppliedTrajectoryConfigSource(
   trajectoryConfig: TrajectoryConfig | null,
+  source: TrajectoryConfigSource | undefined,
 ): TrajectoryConfigSource {
-  if (trajectoryConfigsEqual(state.trajectoryConfig, trajectoryConfig)) {
-    return state.trajectoryConfigSource;
+  if (source === "manual") {
+    return "manual";
+  }
+  if (source === "suggested" && trajectoryConfig !== null) {
+    return "suggested";
   }
   return trajectoryConfig === null ? null : "manual";
 }
@@ -615,6 +621,7 @@ export function getViewConfigPayloadFromState(state: QueryState): ViewConfigPayl
     field_renders: state.fieldRenders,
     table_config: state.tableConfig,
     trajectory_config: state.trajectoryConfig,
+    trajectory_config_source: state.trajectoryConfigSource,
     row_identity_column: state.rowIdentityColumn,
   };
 }
@@ -631,6 +638,7 @@ export function viewConfigIsEmpty(viewConfig: ViewConfigRead): boolean {
     Object.keys(viewConfig.field_renders ?? {}).length === 0 &&
     tableConfigIsEmpty(viewConfig.table_config) &&
     viewConfig.trajectory_config == null &&
+    viewConfig.trajectory_config_source == null &&
     viewConfig.row_identity_column == null
   );
 }
