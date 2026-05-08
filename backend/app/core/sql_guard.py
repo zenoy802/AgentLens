@@ -10,6 +10,19 @@ from sqlparse.sql import Statement
 from app.core.errors import SqlForbiddenError
 
 _ALLOWED_STATEMENT_TYPES = frozenset({"SELECT"})
+_OUTER_STATEMENT_KEYWORDS = frozenset(
+    {
+        "ALTER",
+        "CREATE",
+        "DELETE",
+        "DROP",
+        "INSERT",
+        "REPLACE",
+        "SELECT",
+        "TRUNCATE",
+        "UPDATE",
+    }
+)
 _DANGEROUS_FUNCTIONS = frozenset(
     {
         "BENCHMARK",
@@ -83,7 +96,8 @@ def _first_effective_keyword(statement: Statement) -> str | None:
 
 def _outer_keyword_after_with(statement: Statement) -> str | None:
     seen_with = False
-    for token in statement.tokens:
+    depth = 0
+    for token in statement.flatten():  # type: ignore[no-untyped-call]
         if token.is_whitespace or token.ttype in tokens.Comment:
             continue
         if token.ttype is tokens.Punctuation and token.value == ";":
@@ -93,9 +107,16 @@ def _outer_keyword_after_with(statement: Statement) -> str | None:
         if not seen_with:
             seen_with = token_value == "WITH"
             continue
-        if token_value == "RECURSIVE" or token.is_group:
+        if token.ttype is tokens.Punctuation:
+            if token.value == "(":
+                depth += 1
+            elif token.value == ")":
+                depth = max(0, depth - 1)
             continue
-        return token_value
+        if depth > 0 or token_value == "RECURSIVE":
+            continue
+        if token_value in _OUTER_STATEMENT_KEYWORDS:
+            return token_value
     return None
 
 

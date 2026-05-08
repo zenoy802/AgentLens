@@ -72,6 +72,23 @@
   padding: 18px;
 }
 
+.agentlens-trajectory-viewer--embedded {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agentlens-trajectory-viewer--embedded .agentlens-trajectory-stream {
+  gap: 12px;
+  padding: 12px;
+}
+
+.agentlens-trajectory-viewer--embedded .agentlens-trajectory-bubble {
+  border-radius: 12px;
+  box-shadow: none;
+  max-width: 100%;
+}
+
 .agentlens-trajectory-message {
   display: flex;
   width: 100%;

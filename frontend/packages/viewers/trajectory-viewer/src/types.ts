@@ -23,6 +23,7 @@ export interface TrajectoryViewerProps {
   filterRoles?: string[];
   className?: string;
   messageClassName?: string;
+  showHeader?: boolean;
   showMetaLine?: boolean;
   metaFields?: string[];
 }

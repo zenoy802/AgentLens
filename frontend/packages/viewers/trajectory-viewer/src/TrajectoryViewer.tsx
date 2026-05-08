@@ -10,6 +10,7 @@ export function TrajectoryViewer({
   filterRoles,
   className,
   messageClassName,
+  showHeader = true,
   showMetaLine = false,
   metaFields,
 }: TrajectoryViewerProps) {
@@ -17,17 +18,19 @@ export function TrajectoryViewer({
 
   return (
     <section className={joinClassNames("agentlens-trajectory-viewer", className)}>
-      <header className="agentlens-trajectory-header">
-        <div>
-          <div className="agentlens-trajectory-eyebrow">Trajectory</div>
-          <h2 className="agentlens-trajectory-title">{trajectory.group_key}</h2>
-        </div>
-        <div className="agentlens-trajectory-count">
-          {messages.length === trajectory.message_count
-            ? `${trajectory.message_count} messages`
-            : `${messages.length} / ${trajectory.message_count} messages`}
-        </div>
-      </header>
+      {showHeader ? (
+        <header className="agentlens-trajectory-header">
+          <div>
+            <div className="agentlens-trajectory-eyebrow">Trajectory</div>
+            <h2 className="agentlens-trajectory-title">{trajectory.group_key}</h2>
+          </div>
+          <div className="agentlens-trajectory-count">
+            {messages.length === trajectory.message_count
+              ? `${trajectory.message_count} messages`
+              : `${messages.length} / ${trajectory.message_count} messages`}
+          </div>
+        </header>
+      ) : null}
       <div className="agentlens-trajectory-stream">
         {messages.map((message, index) => (
           <MessageBubble
@@ -53,8 +56,14 @@ function filterMessagesByRole(
     return messages;
   }
 
-  const allowedRoles = new Set(filterRoles.map((role) => role.toLowerCase()));
-  return messages.filter((message) => allowedRoles.has(message.role.toLowerCase()));
+  const allowedRoles = new Set(filterRoles.map(normalizeRole));
+  return messages.filter((message) =>
+    allowedRoles.has(normalizeRole(message.role)),
+  );
+}
+
+function normalizeRole(role: string): string {
+  return role.trim().toLowerCase() || "unknown";
 }
 
 function joinClassNames(...names: Array<string | undefined | false>): string {
