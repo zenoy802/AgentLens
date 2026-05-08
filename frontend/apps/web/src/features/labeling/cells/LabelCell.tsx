@@ -8,25 +8,51 @@ import { labelFieldsEqual, labelValuesEqual } from "@/features/labeling/cells/ut
 
 type LabelCellProps = {
   queryId: number;
+  resultKey: string | null;
   field: LabelField;
   rowId: string;
   value: unknown;
 };
 
-function LabelCellComponent({ queryId, field, rowId, value }: LabelCellProps) {
+function LabelCellComponent({ queryId, resultKey, field, rowId, value }: LabelCellProps) {
   if (field.type === "single_select") {
-    return <SingleSelectCell queryId={queryId} field={field} rowId={rowId} value={value} />;
+    return (
+      <SingleSelectCell
+        queryId={queryId}
+        resultKey={resultKey}
+        field={field}
+        rowId={rowId}
+        value={value}
+      />
+    );
   }
   if (field.type === "multi_select") {
-    return <MultiSelectCell queryId={queryId} field={field} rowId={rowId} value={value} />;
+    return (
+      <MultiSelectCell
+        queryId={queryId}
+        resultKey={resultKey}
+        field={field}
+        rowId={rowId}
+        value={value}
+      />
+    );
   }
-  return <TextLabelCell queryId={queryId} field={field} rowId={rowId} value={value} />;
+  return (
+    <TextLabelCell
+      queryId={queryId}
+      resultKey={resultKey}
+      field={field}
+      rowId={rowId}
+      value={value}
+    />
+  );
 }
 
 export const LabelCell = memo(
   LabelCellComponent,
   (prev, next) =>
     prev.queryId === next.queryId &&
+    prev.resultKey === next.resultKey &&
     labelFieldsEqual(prev.field, next.field) &&
     prev.rowId === next.rowId &&
     labelValuesEqual(prev.value, next.value),

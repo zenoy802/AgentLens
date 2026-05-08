@@ -20,15 +20,22 @@ import {
 
 type MultiSelectCellProps = {
   queryId: number;
+  resultKey: string | null;
   field: MultiSelectLabelField;
   rowId: string;
   value: unknown;
 };
 
-export function MultiSelectCell({ queryId, field, rowId, value }: MultiSelectCellProps) {
+export function MultiSelectCell({
+  queryId,
+  resultKey,
+  field,
+  rowId,
+  value,
+}: MultiSelectCellProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { commitLabel } = useQueuedUpsertLabel(queryId);
+  const { commitLabel } = useQueuedUpsertLabel(queryId, resultKey);
   const options = getLabelOptions(field);
   const selectedValues = useMemo(() => coerceStringArrayValue(value), [value]);
   const [draftValues, setDraftValues] = useState<string[]>(selectedValues);

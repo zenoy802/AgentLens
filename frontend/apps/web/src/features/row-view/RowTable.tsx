@@ -127,11 +127,8 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       ),
     [columns, rowIdentityByRow, sortedRows],
   );
-  const labelsQuery = useLabels(
-    queryId,
-    rowIdentities,
-    execution?.executed_at ?? "no-execution",
-  );
+  const labelResultKey = execution?.executed_at ?? "no-execution";
+  const labelsQuery = useLabels(queryId, rowIdentities, labelResultKey);
   const labelsReady = !labelsQuery.isLoading && !labelsQuery.isError;
   const labelsError = labelsQuery.isError ? labelsQuery.error : null;
   const filteredRows = useMemo(
@@ -287,7 +284,14 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
             ),
             cell: ({ row }) => {
               const rowId = getRowIdentity(row.original, columns, row.index, rowIdentityByRow);
-              return <LabelTableCell queryId={queryId} field={field} rowId={rowId} />;
+              return (
+                <LabelTableCell
+                  queryId={queryId}
+                  resultKey={labelResultKey}
+                  field={field}
+                  rowId={rowId}
+                />
+              );
             },
             size: DEFAULT_LABEL_COLUMN_WIDTH,
             minSize: DEFAULT_LABEL_COLUMN_WIDTH,
@@ -299,6 +303,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       fieldRenders,
       labelStatsByField,
       labelFields,
+      labelResultKey,
       labelsQuery.isError,
       labelsQuery.isLoading,
       queryId,
@@ -394,6 +399,7 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
       <LabelFilterBar labelFields={labelFields} />
       <SelectionToolbar
         queryId={queryId}
+        resultKey={labelResultKey}
         labelFields={labelFields}
         filteredSelectedCount={filteredSelectedCount}
       />
@@ -830,15 +836,25 @@ function ColorDot({ color }: { color: string | null }) {
 
 function LabelTableCell({
   queryId,
+  resultKey,
   field,
   rowId,
 }: {
   queryId: number;
+  resultKey: string | null;
   field: LabelField;
   rowId: string;
 }) {
   const value = useLabelsStore((state) => state.labelsByRow[rowId]?.[field.key]);
-  return <LabelCell queryId={queryId} field={field} rowId={rowId} value={value} />;
+  return (
+    <LabelCell
+      queryId={queryId}
+      resultKey={resultKey}
+      field={field}
+      rowId={rowId}
+      value={value}
+    />
+  );
 }
 
 type VirtualizedTableBodyProps = {

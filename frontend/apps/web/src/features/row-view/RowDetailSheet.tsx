@@ -16,6 +16,7 @@ import { useQueryStore } from "@/stores/queryStore";
 interface RowDetailSheetProps {
   open: boolean;
   queryId: number | null;
+  resultKey: string | null;
   row: Row | null;
   rowId: string | null;
   columns: Column[];
@@ -26,6 +27,7 @@ interface RowDetailSheetProps {
 export function RowDetailSheet({
   open,
   queryId,
+  resultKey,
   row,
   rowId,
   columns,
@@ -50,6 +52,7 @@ export function RowDetailSheet({
           <div className="space-y-6 py-6">
             <LabelSection
               queryId={queryId}
+              resultKey={resultKey}
               rowId={rowId}
               fields={labelFields}
             />
@@ -75,10 +78,12 @@ export function RowDetailSheet({
 
 function LabelSection({
   queryId,
+  resultKey,
   rowId,
   fields,
 }: {
   queryId: number | null;
+  resultKey: string | null;
   rowId: string | null;
   fields: LabelField[];
 }) {
@@ -106,6 +111,7 @@ function LabelSection({
             <RowLabelEditor
               key={field.key}
               queryId={queryId}
+              resultKey={resultKey}
               rowId={rowId}
               field={field}
             />
@@ -118,10 +124,12 @@ function LabelSection({
 
 function RowLabelEditor({
   queryId,
+  resultKey,
   rowId,
   field,
 }: {
   queryId: number;
+  resultKey: string | null;
   rowId: string;
   field: LabelField;
 }) {
@@ -138,7 +146,13 @@ function RowLabelEditor({
         </div>
       </div>
       <div className="flex min-h-9 min-w-0 rounded-md border bg-muted/20 p-1">
-        <LabelCell queryId={queryId} field={field} rowId={rowId} value={value} />
+        <LabelCell
+          queryId={queryId}
+          resultKey={resultKey}
+          field={field}
+          rowId={rowId}
+          value={value}
+        />
       </div>
     </div>
   );
