@@ -5,42 +5,62 @@ type PendingLabelsByRow = Record<string, Record<string, true>>;
 
 export interface LabelsState {
   activeQueryId: number | null;
+  activeResultKey: string | null;
   labelsByRow: LabelsByRow;
   pendingLabelsByRow: PendingLabelsByRow;
-  setActiveQuery(queryId: number | null): void;
+  setActiveQuery(queryId: number | null, resultKey?: string | null): void;
   setLabels(data: LabelsByRow): void;
-  setLabelsForQuery(queryId: number, data: LabelsByRow): void;
+  setLabelsForQuery(queryId: number, resultKey: string | null, data: LabelsByRow): void;
   patchLabel(rowId: string, fieldKey: string, value: unknown): void;
   patchLabelForQuery(
     queryId: number,
+    resultKey: string | null,
     rowId: string,
     fieldKey: string,
     value: unknown,
   ): void;
   removeLabel(rowId: string, fieldKey: string): void;
-  removeLabelForQuery(queryId: number, rowId: string, fieldKey: string): void;
-  markPendingLabelForQuery(queryId: number, rowId: string, fieldKey: string): void;
-  clearPendingLabelForQuery(queryId: number, rowId: string, fieldKey: string): void;
+  removeLabelForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowId: string,
+    fieldKey: string,
+  ): void;
+  markPendingLabelForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowId: string,
+    fieldKey: string,
+  ): void;
+  clearPendingLabelForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowId: string,
+    fieldKey: string,
+  ): void;
 }
 
 export const useLabelsStore = create<LabelsState>((set) => ({
   activeQueryId: null,
+  activeResultKey: null,
   labelsByRow: {},
   pendingLabelsByRow: {},
-  setActiveQuery: (queryId) =>
-    set((state) =>
-      state.activeQueryId === queryId
+  setActiveQuery: (queryId, resultKey = null) =>
+    set((state) => {
+      const nextResultKey = queryId === null ? null : resultKey;
+      return state.activeQueryId === queryId && state.activeResultKey === nextResultKey
         ? {}
         : {
             activeQueryId: queryId,
+            activeResultKey: nextResultKey,
             labelsByRow: {},
             pendingLabelsByRow: {},
-          },
-    ),
+          };
+    }),
   setLabels: (data) => set({ labelsByRow: data, pendingLabelsByRow: {} }),
-  setLabelsForQuery: (queryId, data) =>
+  setLabelsForQuery: (queryId, resultKey, data) =>
     set((state) =>
-      state.activeQueryId === queryId
+      labelsContextMatches(state, queryId, resultKey)
         ? {
             labelsByRow: mergeServerLabelsWithPendingEdits(
               data,
@@ -60,9 +80,9 @@ export const useLabelsStore = create<LabelsState>((set) => ({
         },
       },
     })),
-  patchLabelForQuery: (queryId, rowId, fieldKey, value) =>
+  patchLabelForQuery: (queryId, resultKey, rowId, fieldKey, value) =>
     set((state) =>
-      state.activeQueryId === queryId
+      labelsContextMatches(state, queryId, resultKey)
         ? {
             labelsByRow: {
               ...state.labelsByRow,
@@ -93,9 +113,9 @@ export const useLabelsStore = create<LabelsState>((set) => ({
 
       return { labelsByRow };
     }),
-  removeLabelForQuery: (queryId, rowId, fieldKey) =>
+  removeLabelForQuery: (queryId, resultKey, rowId, fieldKey) =>
     set((state) => {
-      if (state.activeQueryId !== queryId) {
+      if (!labelsContextMatches(state, queryId, resultKey)) {
         return {};
       }
 
@@ -116,9 +136,9 @@ export const useLabelsStore = create<LabelsState>((set) => ({
 
       return { labelsByRow };
     }),
-  markPendingLabelForQuery: (queryId, rowId, fieldKey) =>
+  markPendingLabelForQuery: (queryId, resultKey, rowId, fieldKey) =>
     set((state) =>
-      state.activeQueryId === queryId
+      labelsContextMatches(state, queryId, resultKey)
         ? {
             pendingLabelsByRow: {
               ...state.pendingLabelsByRow,
@@ -130,9 +150,9 @@ export const useLabelsStore = create<LabelsState>((set) => ({
           }
         : {},
     ),
-  clearPendingLabelForQuery: (queryId, rowId, fieldKey) =>
+  clearPendingLabelForQuery: (queryId, resultKey, rowId, fieldKey) =>
     set((state) => {
-      if (state.activeQueryId !== queryId) {
+      if (!labelsContextMatches(state, queryId, resultKey)) {
         return {};
       }
 
@@ -154,6 +174,14 @@ export const useLabelsStore = create<LabelsState>((set) => ({
       return { pendingLabelsByRow };
     }),
 }));
+
+function labelsContextMatches(
+  state: Pick<LabelsState, "activeQueryId" | "activeResultKey">,
+  queryId: number,
+  resultKey: string | null,
+): boolean {
+  return state.activeQueryId === queryId && state.activeResultKey === resultKey;
+}
 
 function mergeServerLabelsWithPendingEdits(
   serverLabelsByRow: LabelsByRow,
