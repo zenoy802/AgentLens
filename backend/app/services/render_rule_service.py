@@ -10,8 +10,15 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, ValidationError
 from app.models.misc import GlobalRenderRule
-from app.schemas.render import FieldRender, TextRender, field_render_adapter
-from app.schemas.render_rule import MatchType, RenderRuleCreate, RenderRuleRead, RenderRuleUpdate
+from app.schemas.render import TextRender
+from app.schemas.render_rule import (
+    MatchType,
+    RenderRuleConfig,
+    RenderRuleCreate,
+    RenderRuleRead,
+    RenderRuleUpdate,
+    render_rule_config_adapter,
+)
 
 
 class RenderRuleService:
@@ -104,21 +111,21 @@ class RenderRuleService:
             ) from exc
 
     @staticmethod
-    def _dump_render_config(render_config: FieldRender) -> str:
+    def _dump_render_config(render_config: RenderRuleConfig) -> str:
         try:
-            validated = field_render_adapter.validate_python(render_config)
-            return field_render_adapter.dump_json(validated).decode()
+            validated = render_rule_config_adapter.validate_python(render_config)
+            return render_rule_config_adapter.dump_json(validated).decode()
         except PydanticValidationError as exc:
             raise ValidationError(
                 code="RENDER_RULE_INVALID_RENDER_CONFIG",
-                message="render_config must be a valid FieldRender.",
+                message="render_config must be a valid render rule config.",
                 detail={"errors": exc.errors()},
             ) from exc
 
     @staticmethod
-    def _load_render_config(rule: GlobalRenderRule) -> FieldRender:
+    def _load_render_config(rule: GlobalRenderRule) -> RenderRuleConfig:
         try:
-            return field_render_adapter.validate_json(rule.render_config)
+            return render_rule_config_adapter.validate_json(rule.render_config)
         except (PydanticValidationError, ValueError) as exc:
             logger.warning(
                 "Invalid stored render_config for global render rule {}: {}",

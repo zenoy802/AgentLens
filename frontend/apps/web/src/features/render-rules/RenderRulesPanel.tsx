@@ -10,7 +10,7 @@ import {
   type RenderRuleCreate,
   type RenderRuleRead,
 } from "@/api/hooks/useRenderRules";
-import type { FieldRender } from "@/api/types";
+import type { RenderRuleConfig } from "@/api/types";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -94,6 +94,45 @@ const DEFAULT_RENDER_RULES: RenderRuleCreate[] = [
     priority: 90,
     enabled: true,
   },
+  {
+    match_pattern: "session_id",
+    match_type: "exact",
+    render_config: { type: "trajectory_config", field: "group_by" },
+    priority: 100,
+    enabled: true,
+  },
+  {
+    match_pattern: "role",
+    match_type: "exact",
+    render_config: { type: "trajectory_config", field: "role_column" },
+    priority: 100,
+    enabled: true,
+  },
+  {
+    match_pattern: "content",
+    match_type: "exact",
+    render_config: { type: "trajectory_config", field: "content_column" },
+    priority: 100,
+    enabled: true,
+  },
+  {
+    match_pattern: "tool_calls",
+    match_type: "exact",
+    render_config: { type: "trajectory_config", field: "tool_calls_column" },
+    priority: 100,
+    enabled: true,
+  },
+  {
+    match_pattern: "created_at",
+    match_type: "exact",
+    render_config: {
+      type: "trajectory_config",
+      field: "order_by",
+      order_direction: "asc",
+    },
+    priority: 90,
+    enabled: true,
+  },
 ];
 
 export function RenderRulesPanel() {
@@ -150,7 +189,8 @@ export function RenderRulesPanel() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-          全局渲染规则在你执行新 SQL 时自动匹配字段名，建议初始渲染类型。你可以在任何查询的视图配置中覆盖这些建议。
+          全局渲染规则在你执行新 SQL 时自动匹配字段名，建议表格渲染类型或
+          Trajectory 聚合字段。你可以在任何查询的视图配置中覆盖这些建议。
         </p>
         <Button className="w-fit" onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -173,7 +213,7 @@ export function RenderRulesPanel() {
         <EmptyState
           icon={<Sparkles className="h-5 w-5" aria-hidden="true" />}
           title="还没有全局渲染规则"
-          description="可以先应用默认规则集，再按你的数据字段微调。"
+          description="可以先应用默认表格与 Trajectory 规则集，再按你的数据字段微调。"
           action={
             <Button onClick={() => void handleApplyDefaults()} disabled={createRule.isPending}>
               <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -288,7 +328,14 @@ export function RenderRulesPanel() {
   );
 }
 
-function renderConfigPreview(renderConfig: FieldRender): string {
+function renderConfigPreview(renderConfig: RenderRuleConfig): string {
+  if (renderConfig.type === "trajectory_config") {
+    const direction =
+      renderConfig.field === "order_by"
+        ? `, ${renderConfig.order_direction ?? "asc"}`
+        : "";
+    return `trajectory(${renderConfig.field}${direction})`;
+  }
   if (renderConfig.type === "code") {
     return `code(${renderConfig.language ?? "plain"})`;
   }

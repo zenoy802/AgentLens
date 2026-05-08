@@ -630,6 +630,7 @@ export interface components {
             suggested_field_renders: {
                 [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
             };
+            suggested_trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
             /** Warnings */
             warnings: components["schemas"]["WarningRead"][];
         };
@@ -941,7 +942,7 @@ export interface components {
              */
             match_type: "exact" | "prefix" | "suffix" | "regex";
             /** Render Config */
-            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"];
             /**
              * Priority
              * @default 0
@@ -964,7 +965,7 @@ export interface components {
              */
             match_type: "exact" | "prefix" | "suffix" | "regex";
             /** Render Config */
-            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"];
             /**
              * Priority
              * @default 0
@@ -995,7 +996,7 @@ export interface components {
             /** Match Type */
             match_type?: ("exact" | "prefix" | "suffix" | "regex") | null;
             /** Render Config */
-            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"]) | null;
+            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"]) | null;
             /** Priority */
             priority?: number | null;
             /** Enabled */
@@ -1146,6 +1147,21 @@ export interface components {
              * @enum {string}
              */
             order_direction: "asc" | "desc";
+        };
+        /** TrajectoryConfigRule */
+        TrajectoryConfigRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "trajectory_config";
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "group_by" | "role_column" | "content_column" | "tool_calls_column" | "order_by";
+            /** Order Direction */
+            order_direction?: ("asc" | "desc") | null;
         };
         /** TrajectoryMessage */
         TrajectoryMessage: {

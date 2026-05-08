@@ -74,6 +74,9 @@ export function SingleTrajectoryView({ trajectory, className }: SingleTrajectory
           filterRoles={activeRoles}
           showMetaLine
           metaFields={metaFields}
+          collapsibleMessages
+          expandLabel="展开"
+          collapseLabel="收起"
         />
       </div>
     </div>

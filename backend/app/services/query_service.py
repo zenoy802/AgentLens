@@ -24,8 +24,9 @@ from app.schemas.query import (
     NamedQueryUpdate,
 )
 from app.schemas.render import FieldRender
+from app.schemas.view_config import TrajectoryConfig
 from app.services.query_executor import ExecutorResult, ExecutorService
-from app.services.render_suggestion_service import suggest
+from app.services.render_suggestion_service import suggest, suggest_trajectory_config
 from app.services.row_identity_service import compute
 
 _TEMPORARY_QUERY_TTL_DAYS = 7
@@ -36,6 +37,7 @@ _NAMED_QUERY_TTL_DAYS = 90
 class ExecutionOutcome:
     execution_result: ExecutorResult
     suggested_field_renders: dict[str, FieldRender]
+    suggested_trajectory_config: TrajectoryConfig | None
     row_identities: list[str]
     executed_at: datetime
     warnings: list[WarningRead]
@@ -114,6 +116,11 @@ class QueryService:
                 self.session,
                 warnings=warnings,
             )
+            suggested_trajectory_config = suggest_trajectory_config(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
         except Exception as exc:
             self.session.rollback()
             self._record_query_history(
@@ -142,6 +149,7 @@ class QueryService:
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
+            suggested_trajectory_config=suggested_trajectory_config,
             row_identities=row_identities,
             executed_at=executed_at,
             warnings=warnings,
@@ -179,6 +187,11 @@ class QueryService:
                 self.session,
                 warnings=warnings,
             )
+            suggested_trajectory_config = suggest_trajectory_config(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
         except Exception:
             self.session.rollback()
             raise
@@ -186,6 +199,7 @@ class QueryService:
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
+            suggested_trajectory_config=suggested_trajectory_config,
             row_identities=row_identities,
             executed_at=_utcnow(),
             warnings=warnings,

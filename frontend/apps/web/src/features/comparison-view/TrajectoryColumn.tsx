@@ -73,6 +73,9 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
           showHeader={false}
           showMetaLine
           metaFields={metaFields}
+          collapsibleMessages
+          expandLabel="展开"
+          collapseLabel="收起"
           className="agentlens-trajectory-viewer--embedded"
         />
       </div>

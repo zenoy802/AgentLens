@@ -26,6 +26,7 @@ export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
 export type LabelFilters = Record<string, string[]>;
+export type TrajectoryConfigSource = "manual" | "suggested" | null;
 
 export interface SortConfig {
   column: string;
@@ -64,6 +65,7 @@ export interface QueryState {
   manualFieldRenderColumns: string[];
   tableConfig: TableConfig;
   trajectoryConfig: TrajectoryConfig | null;
+  trajectoryConfigSource: TrajectoryConfigSource;
   rowIdentityColumn: string | null;
   filters: LabelFilters;
   warnings: Warning[];
@@ -95,6 +97,7 @@ export interface QueryState {
   clearSelection(): void;
   applyViewConfig(vc: ViewConfigRead): void;
   mergeSuggestedRenders(suggested: Record<string, FieldRender>): void;
+  applySuggestedTrajectoryConfig(suggested: TrajectoryConfig | null | undefined): boolean;
   reset(): void;
 }
 
@@ -118,6 +121,7 @@ const initialResultState = {
   manualFieldRenderColumns: [] as string[],
   tableConfig: initialTableConfig,
   trajectoryConfig: null as TrajectoryConfig | null,
+  trajectoryConfigSource: null as TrajectoryConfigSource,
   rowIdentityColumn: null as string | null,
   filters: {} as LabelFilters,
   warnings: [] as Warning[],
@@ -292,7 +296,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     get().markDirty();
   },
   setTrajectoryConfig: (cfg) => {
-    set({ trajectoryConfig: cfg });
+    set({ trajectoryConfig: cfg, trajectoryConfigSource: "manual" });
     get().markDirty();
   },
   setRowIdentityColumn: (col) => {
@@ -368,13 +372,18 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     ),
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
-    set({
+    const trajectoryConfig = vc.trajectory_config ?? null;
+    set((state) => ({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
-      trajectoryConfig: vc.trajectory_config ?? null,
+      trajectoryConfig,
+      trajectoryConfigSource: resolveAppliedTrajectoryConfigSource(
+        state,
+        trajectoryConfig,
+      ),
       rowIdentityColumn: vc.row_identity_column ?? null,
-    });
+    }));
     get().markClean();
   },
   mergeSuggestedRenders: (suggested) =>
@@ -391,6 +400,30 @@ export const useQueryStore = create<QueryState>((set, get) => ({
 
       return changed ? { fieldRenders } : {};
     }),
+  applySuggestedTrajectoryConfig: (suggested) => {
+    let changed = false;
+    set((state) => {
+      if (state.trajectoryConfigSource === "manual") {
+        return {};
+      }
+
+      const nextConfig = suggested ?? null;
+      const nextSource: TrajectoryConfigSource = nextConfig === null ? null : "suggested";
+      if (
+        trajectoryConfigsEqual(state.trajectoryConfig, nextConfig) &&
+        state.trajectoryConfigSource === nextSource
+      ) {
+        return {};
+      }
+
+      changed = true;
+      return {
+        trajectoryConfig: nextConfig,
+        trajectoryConfigSource: nextSource,
+      };
+    });
+    return changed;
+  },
   reset: () =>
     set({
       connectionId: null,
@@ -413,6 +446,23 @@ function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
 
 function normalizeLabelFilterValues(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === "string")));
+}
+
+function trajectoryConfigsEqual(
+  left: TrajectoryConfig | null,
+  right: TrajectoryConfig | null,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function resolveAppliedTrajectoryConfigSource(
+  state: QueryState,
+  trajectoryConfig: TrajectoryConfig | null,
+): TrajectoryConfigSource {
+  if (trajectoryConfigsEqual(state.trajectoryConfig, trajectoryConfig)) {
+    return state.trajectoryConfigSource;
+  }
+  return trajectoryConfig === null ? null : "manual";
 }
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {

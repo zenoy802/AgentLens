@@ -339,6 +339,98 @@ async def test_execute_applies_suggested_renders(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+async def test_execute_applies_suggested_trajectory_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        session.add_all(
+            [
+                GlobalRenderRule(
+                    match_pattern="session_id",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "trajectory_config", "field": "group_by"}),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="role",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "trajectory_config", "field": "role_column"}),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="content",
+                    match_type="exact",
+                    render_config=json.dumps(
+                        {"type": "trajectory_config", "field": "content_column"}
+                    ),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="created_at",
+                    match_type="exact",
+                    render_config=json.dumps(
+                        {
+                            "type": "trajectory_config",
+                            "field": "order_by",
+                            "order_direction": "desc",
+                        }
+                    ),
+                    priority=90,
+                    enabled=True,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    _patch_executor(
+        monkeypatch,
+        ExecutorResult(
+            columns=[
+                Column(name="session_id", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="role", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="content", sql_type="TEXT", inferred_type="text"),
+                Column(name="created_at", sql_type="DATETIME", inferred_type="timestamp"),
+            ],
+            rows=[
+                {
+                    "session_id": "s1",
+                    "role": "user",
+                    "content": "hello",
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            ],
+            duration_ms=5,
+            truncated=False,
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/execute",
+            json={"connection_id": connection_id, "sql": "SELECT session_id, role, content FROM t"},
+        )
+
+    assert response.status_code == HTTP_OK
+    assert response.json()["suggested_trajectory_config"] == {
+        "group_by": "session_id",
+        "role_column": "role",
+        "content_column": "content",
+        "tool_calls_column": None,
+        "order_by": "created_at",
+        "order_direction": "desc",
+    }
+
+
+@pytest.mark.asyncio
 async def test_execute_truncation_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     initialize_metadata_database()
     session = get_session_factory()()

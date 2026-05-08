@@ -129,6 +129,7 @@ def build_execution_result_response(
         columns=columns,
         rows=rows,
         suggested_field_renders=outcome.suggested_field_renders,
+        suggested_trajectory_config=outcome.suggested_trajectory_config,
         warnings=warnings,
     )
 
