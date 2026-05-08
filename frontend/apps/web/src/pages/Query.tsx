@@ -341,7 +341,7 @@ export function Query() {
     setConnectionId(queryDetail.data.connection_id);
     setSql(queryDetail.data.sql_text);
     useQueryStore.setState({ queryId: queryDetail.data.id });
-    useLabelsStore.getState().setActiveQuery(queryDetail.data.id);
+    useLabelsStore.getState().setActiveQuery(queryDetail.data.id, "no-execution");
     setActiveQuery({
       id: queryDetail.data.id,
       name: queryDetail.data.name,
@@ -403,7 +403,9 @@ export function Query() {
       }
 
       setResult(result);
-      useLabelsStore.getState().setActiveQuery(result.query_id);
+      useLabelsStore
+        .getState()
+        .setActiveQuery(result.query_id, result.execution.executed_at);
       mergeSuggestedRenders(result.suggested_field_renders);
       if (
         !wasDirtyBeforeRun &&

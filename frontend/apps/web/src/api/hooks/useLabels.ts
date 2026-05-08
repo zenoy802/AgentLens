@@ -25,6 +25,10 @@ type UpsertLabelArgs = {
   value: LabelValue;
 };
 
+type UpsertLabelMutationArgs = UpsertLabelArgs & {
+  resultKey: string | null;
+};
+
 type BatchUpsertLabelArgs = {
   rowIdentities: string[];
   fieldKey: string;
@@ -33,6 +37,7 @@ type BatchUpsertLabelArgs = {
 
 type LabelSnapshot = {
   queryId: number;
+  resultKey: string | null;
   rowIdentity: string;
   fieldKey: string;
   hadPreviousValue: boolean;
@@ -105,8 +110,8 @@ export function useLabels(
   });
 
   useEffect(() => {
-    setActiveQuery(queryId);
-  }, [queryId, setActiveQuery]);
+    setActiveQuery(queryId, resultKey);
+  }, [queryId, resultKey, setActiveQuery]);
 
   useEffect(() => {
     if (!enabled) {
@@ -116,9 +121,9 @@ export function useLabels(
       return;
     }
     if (query.data !== undefined) {
-      setLabelsForQuery(queryId, query.data.labels_by_row);
+      setLabelsForQuery(queryId, resultKey, query.data.labels_by_row);
     }
-  }, [enabled, query.data, queryId, setLabels, setLabelsForQuery]);
+  }, [enabled, query.data, queryId, resultKey, setLabels, setLabelsForQuery]);
 
   return query;
 }
@@ -127,7 +132,7 @@ export function useUpsertLabel(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (args: UpsertLabelArgs): Promise<LabelRecordRead | null> => {
+    mutationFn: async (args: UpsertLabelMutationArgs): Promise<LabelRecordRead | null> => {
       const { data, error, response } = await apiClient.POST(
         "/queries/{query_id}/labels",
         {
@@ -153,9 +158,25 @@ export function useUpsertLabel(queryId: number) {
       await queryClient.cancelQueries({ queryKey: labelsKeys.query(queryId) });
       useLabelsStore
         .getState()
-        .markPendingLabelForQuery(queryId, args.rowIdentity, args.fieldKey);
-      const snapshot = getLabelSnapshot(queryId, args.rowIdentity, args.fieldKey);
-      applyOptimisticLabel(queryId, args.rowIdentity, args.fieldKey, args.value);
+        .markPendingLabelForQuery(
+          queryId,
+          args.resultKey,
+          args.rowIdentity,
+          args.fieldKey,
+        );
+      const snapshot = getLabelSnapshot(
+        queryId,
+        args.resultKey,
+        args.rowIdentity,
+        args.fieldKey,
+      );
+      applyOptimisticLabel(
+        queryId,
+        args.resultKey,
+        args.rowIdentity,
+        args.fieldKey,
+        args.value,
+      );
       return snapshot;
     },
     onError: (error, _args, snapshot) => {
@@ -164,22 +185,32 @@ export function useUpsertLabel(queryId: number) {
       }
       toast.error(formatApiError(error));
     },
-    onSuccess: (record, args) => {
+    onSuccess: (record, args, snapshot) => {
+      const resultKey = snapshot?.resultKey ?? args.resultKey;
       if (record === null) {
         useLabelsStore
           .getState()
-          .removeLabelForQuery(queryId, args.rowIdentity, args.fieldKey);
+          .removeLabelForQuery(queryId, resultKey, args.rowIdentity, args.fieldKey);
         return;
       }
       useLabelsStore
         .getState()
-        .patchLabelForQuery(queryId, record.row_identity, record.field_key, record.value);
+        .patchLabelForQuery(
+          queryId,
+          resultKey,
+          record.row_identity,
+          record.field_key,
+          record.value,
+        );
     },
-    onSettled: async (_data, _error, args) => {
+    onSettled: async (_data, _error, args, snapshot) => {
+      const resultKey = snapshot?.resultKey ?? args.resultKey;
       useLabelsStore
         .getState()
-        .clearPendingLabelForQuery(queryId, args.rowIdentity, args.fieldKey);
-      await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
+        .clearPendingLabelForQuery(queryId, resultKey, args.rowIdentity, args.fieldKey);
+      if (activeLabelContextMatches(queryId, resultKey)) {
+        await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
+      }
     },
   });
 }
@@ -190,12 +221,18 @@ export function useQueuedUpsertLabel(queryId: number) {
 
   const commitLabel = useCallback(
     (args: UpsertLabelArgs): Promise<void> => {
-      const queueKey = getCellMutationQueueKey(queryId, args.rowIdentity, args.fieldKey);
+      const resultKey = getActiveResultKey(queryId);
+      const queueKey = getCellMutationQueueKey(
+        queryId,
+        resultKey,
+        args.rowIdentity,
+        args.fieldKey,
+      );
       const previous = labelMutationQueues.get(queueKey) ?? Promise.resolve();
       const next = previous
         .catch(() => undefined)
         .then(() =>
-          mutateAsync(args).then(
+          mutateAsync({ ...args, resultKey }).then(
             () => undefined,
             () => undefined,
           ),
@@ -219,10 +256,13 @@ export function useQueuedUpsertLabel(queryId: number) {
 
 function getCellMutationQueueKey(
   queryId: number,
+  resultKey: string | null,
   rowIdentity: string,
   fieldKey: string,
 ): string {
-  return [queryId, rowIdentity, fieldKey].join(CELL_MUTATION_KEY_SEPARATOR);
+  return [queryId, resultKey ?? "", rowIdentity, fieldKey].join(
+    CELL_MUTATION_KEY_SEPARATOR,
+  );
 }
 
 export function useBatchUpsertLabels(queryId: number) {
@@ -253,13 +293,19 @@ export function useBatchUpsertLabels(queryId: number) {
     },
     onMutate: async (args): Promise<LabelSnapshot[]> => {
       await queryClient.cancelQueries({ queryKey: labelsKeys.query(queryId) });
+      const resultKey = getActiveResultKey(queryId);
       const snapshots = args.rowIdentities.map((rowIdentity) =>
-        getLabelSnapshot(queryId, rowIdentity, args.fieldKey),
+        getLabelSnapshot(queryId, resultKey, rowIdentity, args.fieldKey),
       );
       const labelsStore = useLabelsStore.getState();
       for (const rowIdentity of args.rowIdentities) {
-        labelsStore.markPendingLabelForQuery(queryId, rowIdentity, args.fieldKey);
-        applyOptimisticLabel(queryId, rowIdentity, args.fieldKey, args.value);
+        labelsStore.markPendingLabelForQuery(
+          queryId,
+          resultKey,
+          rowIdentity,
+          args.fieldKey,
+        );
+        applyOptimisticLabel(queryId, resultKey, rowIdentity, args.fieldKey, args.value);
       }
       return snapshots;
     },
@@ -282,13 +328,16 @@ export function useBatchUpsertLabels(queryId: number) {
         toast.warning(`${errors.length} 行失败`);
       }
     },
-    onSettled: async (_data, _error, args) => {
+    onSettled: async (_data, _error, args, snapshots) => {
+      const resultKey = snapshots?.[0]?.resultKey ?? getActiveResultKey(queryId);
       for (const rowIdentity of args.rowIdentities) {
         useLabelsStore
           .getState()
-          .clearPendingLabelForQuery(queryId, rowIdentity, args.fieldKey);
+          .clearPendingLabelForQuery(queryId, resultKey, rowIdentity, args.fieldKey);
       }
-      await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
+      if (activeLabelContextMatches(queryId, resultKey)) {
+        await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
+      }
     },
   });
 }
@@ -301,11 +350,20 @@ function chunkRowIdentities(rowIdentities: string[]): string[][] {
   return chunks;
 }
 
-function getLabelSnapshot(queryId: number, rowIdentity: string, fieldKey: string): LabelSnapshot {
+function getLabelSnapshot(
+  queryId: number,
+  resultKey: string | null,
+  rowIdentity: string,
+  fieldKey: string,
+): LabelSnapshot {
   const state = useLabelsStore.getState();
-  const rowLabels = state.activeQueryId === queryId ? state.labelsByRow[rowIdentity] : undefined;
+  const rowLabels =
+    state.activeQueryId === queryId && state.activeResultKey === resultKey
+      ? state.labelsByRow[rowIdentity]
+      : undefined;
   return {
     queryId,
+    resultKey,
     rowIdentity,
     fieldKey,
     hadPreviousValue: rowLabels !== undefined && fieldKey in rowLabels,
@@ -315,15 +373,18 @@ function getLabelSnapshot(queryId: number, rowIdentity: string, fieldKey: string
 
 function applyOptimisticLabel(
   queryId: number,
+  resultKey: string | null,
   rowIdentity: string,
   fieldKey: string,
   value: LabelValue,
 ) {
   if (value === null) {
-    useLabelsStore.getState().removeLabelForQuery(queryId, rowIdentity, fieldKey);
+    useLabelsStore.getState().removeLabelForQuery(queryId, resultKey, rowIdentity, fieldKey);
     return;
   }
-  useLabelsStore.getState().patchLabelForQuery(queryId, rowIdentity, fieldKey, value);
+  useLabelsStore
+    .getState()
+    .patchLabelForQuery(queryId, resultKey, rowIdentity, fieldKey, value);
 }
 
 function restoreLabelSnapshot(snapshot: LabelSnapshot) {
@@ -332,6 +393,7 @@ function restoreLabelSnapshot(snapshot: LabelSnapshot) {
       .getState()
       .patchLabelForQuery(
         snapshot.queryId,
+        snapshot.resultKey,
         snapshot.rowIdentity,
         snapshot.fieldKey,
         snapshot.previousValue,
@@ -340,13 +402,32 @@ function restoreLabelSnapshot(snapshot: LabelSnapshot) {
   }
   useLabelsStore
     .getState()
-    .removeLabelForQuery(snapshot.queryId, snapshot.rowIdentity, snapshot.fieldKey);
+    .removeLabelForQuery(
+      snapshot.queryId,
+      snapshot.resultKey,
+      snapshot.rowIdentity,
+      snapshot.fieldKey,
+    );
 }
 
 function restoreActiveQueryLabelSnapshots(snapshots: LabelSnapshot[]) {
   for (const snapshot of snapshots) {
-    if (useLabelsStore.getState().activeQueryId === snapshot.queryId) {
+    const state = useLabelsStore.getState();
+    if (
+      state.activeQueryId === snapshot.queryId &&
+      state.activeResultKey === snapshot.resultKey
+    ) {
       restoreLabelSnapshot(snapshot);
     }
   }
+}
+
+function getActiveResultKey(queryId: number): string | null {
+  const state = useLabelsStore.getState();
+  return state.activeQueryId === queryId ? state.activeResultKey : null;
+}
+
+function activeLabelContextMatches(queryId: number, resultKey: string | null): boolean {
+  const state = useLabelsStore.getState();
+  return state.activeQueryId === queryId && state.activeResultKey === resultKey;
 }
