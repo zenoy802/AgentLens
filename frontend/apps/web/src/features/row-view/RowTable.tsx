@@ -78,6 +78,7 @@ const ROW_NUMBER_COLUMN_ID = "__agentlens_internal_row_number";
 const DATA_COLUMN_ID_PREFIX = "__agentlens_internal_data_column_";
 const LABEL_COLUMN_ID_PREFIX = "__agentlens_internal_label_column_";
 const EMPTY_LABEL_FIELDS: LabelField[] = [];
+const EMPTY_FILTER_VALUES: string[] = [];
 
 const ROW_HEIGHT_OPTIONS: Array<{
   mode: RowHeightMode;
@@ -730,7 +731,9 @@ function LabelFilterMenu({
 }: {
   field: LabelField;
 }) {
-  const selectedValues = useQueryStore((state) => state.filters[field.key] ?? []);
+  const selectedValues = useQueryStore(
+    (state) => state.filters[field.key] ?? EMPTY_FILTER_VALUES,
+  );
   const toggleLabelFilterValue = useQueryStore((state) => state.toggleLabelFilterValue);
   const clearLabelFilter = useQueryStore((state) => state.clearLabelFilter);
   const active = selectedValues.length > 0;
