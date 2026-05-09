@@ -407,10 +407,10 @@ export const useQueryStore = create<QueryState>((set, get) => ({
   applySuggestedTrajectoryConfig: (suggested) => {
     let changed = false;
     set((state) => {
-      const legacyConfigIsStillValid =
+      const legacyConfigIsUnknown =
         state.trajectoryConfigSource === "legacy" &&
-        trajectoryConfigMatchesColumns(state.trajectoryConfig, state.columns);
-      if (state.trajectoryConfigSource === "manual" || legacyConfigIsStillValid) {
+        state.trajectoryConfig !== null;
+      if (state.trajectoryConfigSource === "manual" || legacyConfigIsUnknown) {
         return {};
       }
 
@@ -473,26 +473,6 @@ function normalizeAppliedTrajectoryConfigSource(
     return "suggested";
   }
   return trajectoryConfig === null ? null : "legacy";
-}
-
-function trajectoryConfigMatchesColumns(
-  config: TrajectoryConfig | null,
-  columns: Column[],
-): boolean {
-  if (config === null) {
-    return true;
-  }
-
-  const columnNames = new Set(columns.map((column) => column.name));
-  return [
-    config.group_by,
-    config.role_column,
-    config.content_column,
-    config.tool_calls_column,
-    config.order_by,
-  ]
-    .filter((columnName): columnName is string => columnName != null && columnName !== "")
-    .every((columnName) => columnNames.has(columnName));
 }
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {
