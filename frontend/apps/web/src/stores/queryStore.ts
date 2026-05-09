@@ -26,10 +26,11 @@ export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
 export type LabelFilters = Record<string, string[]>;
-export type TrajectoryConfigSource = Exclude<
+export type PersistedTrajectoryConfigSource = Exclude<
   ViewConfigPayload["trajectory_config_source"],
   undefined
 >;
+export type TrajectoryConfigSource = PersistedTrajectoryConfigSource | "legacy";
 
 export interface SortConfig {
   column: string;
@@ -406,7 +407,10 @@ export const useQueryStore = create<QueryState>((set, get) => ({
   applySuggestedTrajectoryConfig: (suggested) => {
     let changed = false;
     set((state) => {
-      if (state.trajectoryConfigSource === "manual") {
+      const legacyConfigIsStillValid =
+        state.trajectoryConfigSource === "legacy" &&
+        trajectoryConfigMatchesColumns(state.trajectoryConfig, state.columns);
+      if (state.trajectoryConfigSource === "manual" || legacyConfigIsStillValid) {
         return {};
       }
 
@@ -460,7 +464,7 @@ function trajectoryConfigsEqual(
 
 function normalizeAppliedTrajectoryConfigSource(
   trajectoryConfig: TrajectoryConfig | null,
-  source: TrajectoryConfigSource | undefined,
+  source: PersistedTrajectoryConfigSource | undefined,
 ): TrajectoryConfigSource {
   if (source === "manual") {
     return "manual";
@@ -468,7 +472,27 @@ function normalizeAppliedTrajectoryConfigSource(
   if (source === "suggested" && trajectoryConfig !== null) {
     return "suggested";
   }
-  return trajectoryConfig === null ? null : "manual";
+  return trajectoryConfig === null ? null : "legacy";
+}
+
+function trajectoryConfigMatchesColumns(
+  config: TrajectoryConfig | null,
+  columns: Column[],
+): boolean {
+  if (config === null) {
+    return true;
+  }
+
+  const columnNames = new Set(columns.map((column) => column.name));
+  return [
+    config.group_by,
+    config.role_column,
+    config.content_column,
+    config.tool_calls_column,
+    config.order_by,
+  ]
+    .filter((columnName): columnName is string => columnName != null && columnName !== "")
+    .every((columnName) => columnNames.has(columnName));
 }
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {
@@ -621,9 +645,15 @@ export function getViewConfigPayloadFromState(state: QueryState): ViewConfigPayl
     field_renders: state.fieldRenders,
     table_config: state.tableConfig,
     trajectory_config: state.trajectoryConfig,
-    trajectory_config_source: state.trajectoryConfigSource,
+    trajectory_config_source: getPersistedTrajectoryConfigSource(state.trajectoryConfigSource),
     row_identity_column: state.rowIdentityColumn,
   };
+}
+
+function getPersistedTrajectoryConfigSource(
+  source: TrajectoryConfigSource,
+): PersistedTrajectoryConfigSource {
+  return source === "legacy" ? null : source;
 }
 
 export function viewConfigPayloadMatchesState(

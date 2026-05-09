@@ -440,7 +440,9 @@ export function Query() {
         trajectorySuggestionApplied;
       const shouldSaveAppliedSuggestions =
         (persistedViewConfigWasEmpty && hasAppliedSuggestions) ||
-        (previousTrajectoryConfigSource === "suggested" && trajectorySuggestionApplied);
+        ((previousTrajectoryConfigSource === "suggested" ||
+          previousTrajectoryConfigSource === "legacy") &&
+          trajectorySuggestionApplied);
       if (
         !wasDirtyBeforeRun &&
         persistedViewConfigUnknown &&
