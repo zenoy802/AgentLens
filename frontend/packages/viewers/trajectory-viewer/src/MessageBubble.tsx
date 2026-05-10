@@ -1,6 +1,6 @@
 import { JsonRenderer } from "@agentlens/json-renderer";
 import { MarkdownRenderer } from "@agentlens/markdown-renderer";
-import type { ReactNode } from "react";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { TrajectoryMessage } from "./types";
 
@@ -11,9 +11,17 @@ interface MessageBubbleProps {
   showMetaLine?: boolean;
   metaFields?: string[];
   className?: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  collapsedContentHeight?: number;
+  expandLabel?: string;
+  collapseLabel?: string;
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
+const DEFAULT_COLLAPSED_CONTENT_HEIGHT = 280;
+const DEFAULT_EXPAND_LABEL = "Expand";
+const DEFAULT_COLLAPSE_LABEL = "Collapse";
 
 export function MessageBubble({
   message,
@@ -22,10 +30,20 @@ export function MessageBubble({
   showMetaLine = false,
   metaFields = DEFAULT_META_FIELDS,
   className,
+  collapsible = false,
+  defaultCollapsed = false,
+  collapsedContentHeight = DEFAULT_COLLAPSED_CONTENT_HEIGHT,
+  expandLabel = DEFAULT_EXPAND_LABEL,
+  collapseLabel = DEFAULT_COLLAPSE_LABEL,
 }: MessageBubbleProps) {
   const roleKind = getRoleKind(message.role);
   const metaItems = showMetaLine ? getMetaItems(message, metaFields) : [];
   const hasToolCalls = message.tool_calls !== undefined && message.tool_calls !== null;
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const bodyStyle = {
+    "--trajectory-collapsed-content-height": `${collapsedContentHeight}px`,
+  } as CSSProperties;
 
   return (
     <article
@@ -37,22 +55,46 @@ export function MessageBubble({
     >
       <div className="agentlens-trajectory-bubble">
         <header className="agentlens-trajectory-message-header">
-          <span className="agentlens-trajectory-role-label">{getRoleLabel(message.role)}</span>
-          {metaItems.length > 0 ? (
-            <span className="agentlens-trajectory-meta-line">{metaItems.join(" · ")}</span>
+          <div className="agentlens-trajectory-message-header-main">
+            <span className="agentlens-trajectory-role-label">{getRoleLabel(message.role)}</span>
+            {metaItems.length > 0 ? (
+              <span className="agentlens-trajectory-meta-line">{metaItems.join(" · ")}</span>
+            ) : null}
+          </div>
+          {collapsible ? (
+            <button
+              type="button"
+              className="agentlens-trajectory-collapse-button"
+              aria-controls={contentId}
+              aria-expanded={expanded}
+              aria-label={expanded ? collapseLabel : expandLabel}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? collapseLabel : expandLabel}
+            </button>
           ) : null}
         </header>
-        <div className="agentlens-trajectory-content">
-          {renderContent ? renderContent(message) : renderDefaultContent(message.content)}
+        <div
+          id={contentId}
+          role="region"
+          className={joinClassNames(
+            "agentlens-trajectory-bubble-body",
+            collapsible && !expanded && "agentlens-trajectory-bubble-body--collapsed",
+          )}
+          style={bodyStyle}
+        >
+          <div className="agentlens-trajectory-content">
+            {renderContent ? renderContent(message) : renderDefaultContent(message.content)}
+          </div>
+          {hasToolCalls ? (
+            <details className="agentlens-trajectory-tool-calls">
+              <summary>Tool calls</summary>
+              <div className="agentlens-trajectory-tool-calls-body">
+                {renderToolCalls ? renderToolCalls(message) : renderDefaultToolCalls(message)}
+              </div>
+            </details>
+          ) : null}
         </div>
-        {hasToolCalls ? (
-          <details className="agentlens-trajectory-tool-calls">
-            <summary>Tool calls</summary>
-            <div className="agentlens-trajectory-tool-calls-body">
-              {renderToolCalls ? renderToolCalls(message) : renderDefaultToolCalls(message)}
-            </div>
-          </details>
-        ) : null}
       </div>
     </article>
   );

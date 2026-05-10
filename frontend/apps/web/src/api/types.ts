@@ -55,6 +55,7 @@ export type Trajectory = Schemas["Trajectory"];
 export type TrajectoryAggregateRequest = Schemas["TrajectoryAggregateRequest"];
 export type TrajectoryAggregateResponse = Schemas["TrajectoryAggregateResponse"];
 export type TrajectoryConfig = Schemas["TrajectoryConfig"];
+export type TrajectoryConfigRule = Schemas["TrajectoryConfigRule"];
 export type TrajectoryMessage = Schemas["TrajectoryMessage"];
 export type ValidationError = Schemas["ValidationError"];
 export type ViewConfigPayload = Schemas["ViewConfigPayload"];
@@ -63,6 +64,7 @@ export type Warning = Schemas["WarningRead"];
 export type WarningRead = Schemas["WarningRead"];
 
 export type Row = Record<string, unknown>;
+export type RenderRuleConfig = FieldRender | TrajectoryConfigRule;
 export type ExecutionResult = Omit<Schemas["ExecutionResult"], "rows"> & {
   rows: Row[];
 };

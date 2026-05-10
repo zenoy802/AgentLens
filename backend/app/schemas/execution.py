@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.schemas.common import WarningRead
 from app.schemas.datetime import ensure_utc
 from app.schemas.render import FieldRender
+from app.schemas.view_config import TrajectoryConfig
 from app.services.inferred_type import InferredType
 
 
@@ -49,4 +50,5 @@ class ExecutionResult(BaseModel):
     columns: list[ColumnRead]
     rows: list[dict[str, Any]]
     suggested_field_renders: dict[str, FieldRender]
+    suggested_trajectory_config: TrajectoryConfig | None = None
     warnings: list[WarningRead]

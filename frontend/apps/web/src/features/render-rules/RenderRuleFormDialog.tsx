@@ -8,7 +8,7 @@ import {
   type RenderRuleCreate,
   type RenderRuleRead,
 } from "@/api/hooks/useRenderRules";
-import type { FieldRender } from "@/api/types";
+import type { RenderRuleConfig } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { formatApiError } from "@/lib/formatApiError";
 
-import type { CodeLanguage, MatchType, RenderRuleFormValues, RenderType } from "./types";
+import type {
+  CodeLanguage,
+  MatchType,
+  RenderRuleFormValues,
+  RenderRuleTarget,
+  RenderType,
+  TrajectoryRuleField,
+} from "./types";
 
 type RenderRuleFormDialogProps = {
   open: boolean;
@@ -37,17 +44,28 @@ type RenderRuleFormDialogProps = {
 };
 
 const MATCH_TYPES: MatchType[] = ["exact", "prefix", "suffix", "regex"];
+const RULE_TARGETS: RenderRuleTarget[] = ["field_render", "trajectory_config"];
 const RENDER_TYPES: RenderType[] = ["text", "markdown", "json", "code", "timestamp", "tag"];
 const CODE_LANGUAGES: CodeLanguage[] = ["sql", "python", "javascript", "json", "plain"];
+const TRAJECTORY_FIELDS: TrajectoryRuleField[] = [
+  "group_by",
+  "role_column",
+  "content_column",
+  "tool_calls_column",
+  "order_by",
+];
 const DEFAULT_TIMESTAMP_FORMAT = "YYYY-MM-DD HH:mm:ss";
 
 const DEFAULT_VALUES: RenderRuleFormValues = {
   matchPattern: "",
   matchType: "exact",
+  target: "field_render",
   renderType: "text",
   codeLanguage: "plain",
   jsonCollapsed: true,
   timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+  trajectoryField: "content_column",
+  trajectoryOrderDirection: "asc",
   priority: 0,
   enabled: true,
 };
@@ -123,7 +141,9 @@ export function RenderRuleFormDialog({
             <Braces className="h-5 w-5" aria-hidden="true" />
             <DialogTitle>{isEditMode ? "编辑规则" : "新建规则"}</DialogTitle>
           </div>
-          <DialogDescription>配置字段名匹配方式和默认渲染类型。</DialogDescription>
+          <DialogDescription>
+            配置字段名匹配方式，并用于表格字段渲染或 Trajectory 聚合字段建议。
+          </DialogDescription>
         </DialogHeader>
 
         <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
@@ -164,6 +184,27 @@ export function RenderRuleFormDialog({
             </label>
           </div>
 
+          <label className="block text-sm font-medium">
+            Rule Target
+            <Select
+              value={values.target}
+              onValueChange={(value) =>
+                updateValues({ target: value as RenderRuleTarget })
+              }
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RULE_TARGETS.map((target) => (
+                  <SelectItem key={target} value={target}>
+                    {target === "field_render" ? "Table field render" : "Trajectory config"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
           <div className="rounded-md border bg-muted/30 p-3">
             <label className="block text-sm font-medium">
               示例字段名
@@ -190,77 +231,124 @@ export function RenderRuleFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="block text-sm font-medium">
-              Render Type
-              <Select
-                value={values.renderType}
-                onValueChange={(value) =>
-                  updateValues({ renderType: value as RenderType })
-                }
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RENDER_TYPES.map((renderType) => (
-                    <SelectItem key={renderType} value={renderType}>
-                      {renderType}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            {values.renderType === "code" ? (
+          {values.target === "field_render" ? (
+            <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm font-medium">
-                语言
+                Render Type
                 <Select
-                  value={values.codeLanguage}
+                  value={values.renderType}
                   onValueChange={(value) =>
-                    updateValues({ codeLanguage: value as CodeLanguage })
+                    updateValues({ renderType: value as RenderType })
                   }
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {CODE_LANGUAGES.map((language) => (
-                      <SelectItem key={language} value={language}>
-                        {language}
+                    {RENDER_TYPES.map((renderType) => (
+                      <SelectItem key={renderType} value={renderType}>
+                        {renderType}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </label>
-            ) : null}
 
-            {values.renderType === "json" ? (
-              <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
-                <div className="text-sm font-medium">默认折叠</div>
-                <Switch
-                  checked={values.jsonCollapsed}
-                  onCheckedChange={(checked) =>
-                    updateValues({ jsonCollapsed: checked })
-                  }
-                />
-              </div>
-            ) : null}
+              {values.renderType === "code" ? (
+                <label className="block text-sm font-medium">
+                  语言
+                  <Select
+                    value={values.codeLanguage}
+                    onValueChange={(value) =>
+                      updateValues({ codeLanguage: value as CodeLanguage })
+                    }
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CODE_LANGUAGES.map((language) => (
+                        <SelectItem key={language} value={language}>
+                          {language}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : null}
 
-            {values.renderType === "timestamp" ? (
+              {values.renderType === "json" ? (
+                <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                  <div className="text-sm font-medium">默认折叠</div>
+                  <Switch
+                    checked={values.jsonCollapsed}
+                    onCheckedChange={(checked) =>
+                      updateValues({ jsonCollapsed: checked })
+                    }
+                  />
+                </div>
+              ) : null}
+
+              {values.renderType === "timestamp" ? (
+                <label className="block text-sm font-medium">
+                  格式
+                  <input
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    value={values.timestampFormat}
+                    onChange={(event) =>
+                      updateValues({ timestampFormat: event.target.value })
+                    }
+                    placeholder={DEFAULT_TIMESTAMP_FORMAT}
+                  />
+                </label>
+              ) : null}
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm font-medium">
-                格式
-                <input
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
-                  value={values.timestampFormat}
-                  onChange={(event) =>
-                    updateValues({ timestampFormat: event.target.value })
+                Trajectory Field
+                <Select
+                  value={values.trajectoryField}
+                  onValueChange={(value) =>
+                    updateValues({ trajectoryField: value as TrajectoryRuleField })
                   }
-                  placeholder={DEFAULT_TIMESTAMP_FORMAT}
-                />
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRAJECTORY_FIELDS.map((field) => (
+                      <SelectItem key={field} value={field}>
+                        {field}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
-            ) : null}
-          </div>
+
+              {values.trajectoryField === "order_by" ? (
+                <label className="block text-sm font-medium">
+                  Order Direction
+                  <Select
+                    value={values.trajectoryOrderDirection}
+                    onValueChange={(value) => {
+                      if (value === "asc" || value === "desc") {
+                        updateValues({ trajectoryOrderDirection: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">asc</SelectItem>
+                      <SelectItem value="desc">desc</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : null}
+            </div>
+          )}
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block text-sm font-medium">
@@ -300,9 +388,26 @@ export function RenderRuleFormDialog({
 
 function valuesFromRule(rule: RenderRuleRead): RenderRuleFormValues {
   const renderConfig = rule.render_config;
+  if (renderConfig.type === "trajectory_config") {
+    return {
+      matchPattern: rule.match_pattern,
+      matchType: rule.match_type,
+      target: "trajectory_config",
+      renderType: "text",
+      codeLanguage: "plain",
+      jsonCollapsed: true,
+      timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+      trajectoryField: renderConfig.field,
+      trajectoryOrderDirection: renderConfig.order_direction ?? "asc",
+      priority: rule.priority,
+      enabled: rule.enabled,
+    };
+  }
+
   return {
     matchPattern: rule.match_pattern,
     matchType: rule.match_type,
+    target: "field_render",
     renderType: renderConfig.type,
     codeLanguage:
       renderConfig.type === "code" && isCodeLanguage(renderConfig.language)
@@ -313,12 +418,23 @@ function valuesFromRule(rule: RenderRuleRead): RenderRuleFormValues {
       renderConfig.type === "timestamp"
         ? renderConfig.format ?? DEFAULT_TIMESTAMP_FORMAT
         : DEFAULT_TIMESTAMP_FORMAT,
+    trajectoryField: "content_column",
+    trajectoryOrderDirection: "asc",
     priority: rule.priority,
     enabled: rule.enabled,
   };
 }
 
-function buildRenderConfig(values: RenderRuleFormValues): FieldRender {
+function buildRenderConfig(values: RenderRuleFormValues): RenderRuleConfig {
+  if (values.target === "trajectory_config") {
+    return {
+      type: "trajectory_config",
+      field: values.trajectoryField,
+      order_direction:
+        values.trajectoryField === "order_by" ? values.trajectoryOrderDirection : null,
+    };
+  }
+
   switch (values.renderType) {
     case "markdown":
       return { type: "markdown" };

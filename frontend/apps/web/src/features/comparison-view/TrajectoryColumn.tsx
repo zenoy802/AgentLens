@@ -1,5 +1,5 @@
 import { TrajectoryViewer } from "@agentlens/trajectory-viewer";
-import { memo, useCallback, useMemo, type UIEvent } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import type { Trajectory } from "@/api/types";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,7 +13,6 @@ interface TrajectoryColumnProps {
   roleFilter: string[];
   setScrollRef: (index: number, node: HTMLDivElement | null) => void;
   onSelectedChange: (trajectoryKey: string, selected: boolean) => void;
-  onScroll: (index: number, event: UIEvent<HTMLDivElement>) => void;
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
@@ -27,22 +26,18 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
   roleFilter,
   setScrollRef,
   onSelectedChange,
-  onScroll,
 }: TrajectoryColumnProps) {
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
   const setColumnScrollRef = useCallback(
     (node: HTMLDivElement | null) => setScrollRef(index, node),
     [index, setScrollRef],
   );
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => onScroll(index, event),
-    [index, onScroll],
-  );
 
   return (
     <section
       className="flex h-full w-[400px] shrink-0 flex-col border-r bg-background last:border-r-0"
       aria-label={`Trajectory ${displayLabel}`}
+      data-trajectory-column={trajectoryKey}
     >
       <header className="sticky top-0 z-10 border-b bg-muted/40 px-3 py-2">
         <label className="flex min-w-0 items-start gap-2">
@@ -65,7 +60,7 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
       <div
         ref={setColumnScrollRef}
         className="min-h-0 flex-1 overflow-y-auto bg-muted/10"
-        onScroll={handleScroll}
+        data-trajectory-column-scroll={trajectoryKey}
       >
         <TrajectoryViewer
           trajectory={trajectory}
@@ -73,6 +68,9 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
           showHeader={false}
           showMetaLine
           metaFields={metaFields}
+          collapsibleMessages
+          expandLabel="展开"
+          collapseLabel="收起"
           className="agentlens-trajectory-viewer--embedded"
         />
       </div>

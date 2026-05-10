@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from loguru import logger
 from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
@@ -10,7 +12,13 @@ from app.core.errors import NotFoundError
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
 from app.schemas.render import FieldRender
-from app.schemas.view_config import TableConfig, TrajectoryConfig, ViewConfigPayload, ViewConfigRead
+from app.schemas.view_config import (
+    TableConfig,
+    TrajectoryConfig,
+    TrajectoryConfigSource,
+    ViewConfigPayload,
+    ViewConfigRead,
+)
 
 _field_renders_adapter: TypeAdapter[dict[str, FieldRender]] = TypeAdapter(dict[str, FieldRender])
 _table_config_adapter: TypeAdapter[TableConfig] = TypeAdapter(TableConfig)
@@ -27,6 +35,7 @@ class ViewConfigService:
             field_renders=self._load_field_renders(view_config),
             table_config=self._load_table_config(view_config),
             trajectory_config=self._load_trajectory_config(view_config),
+            trajectory_config_source=self._load_trajectory_config_source(view_config),
             row_identity_column=view_config.row_identity_column,
             updated_at=view_config.updated_at,
         )
@@ -57,6 +66,7 @@ class ViewConfigService:
             if payload.trajectory_config is None
             else payload.trajectory_config.model_dump_json()
         )
+        view_config.trajectory_config_source = payload.trajectory_config_source
         view_config.row_identity_column = payload.row_identity_column
 
         db.commit()
@@ -125,6 +135,21 @@ class ViewConfigService:
                 exc,
             )
             return None
+
+    @staticmethod
+    def _load_trajectory_config_source(
+        view_config: ViewConfig,
+    ) -> TrajectoryConfigSource | None:
+        source = view_config.trajectory_config_source
+        if source in ("manual", "suggested"):
+            return cast(TrajectoryConfigSource, source)
+        if source is not None:
+            logger.warning(
+                "Invalid view_config.trajectory_config_source for query {}: {}",
+                view_config.query_id,
+                source,
+            )
+        return None
 
 
 view_config_service = ViewConfigService()

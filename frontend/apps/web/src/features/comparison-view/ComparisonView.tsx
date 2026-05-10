@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Maximize2 } from "lucide-react";
 
 import type { Trajectory } from "@/api/types";
+import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +20,7 @@ export interface ComparisonViewProps {
   onSelectionChange: (keys: string[]) => void;
   syncScroll: boolean;
   roleFilter: string[];
+  isFullscreen?: boolean;
   onSyncScrollChange: (enabled: boolean) => void;
   onRoleFilterChange: (roles: string[]) => void;
 }
@@ -30,11 +33,13 @@ export function ComparisonView({
   onSelectionChange,
   syncScroll,
   roleFilter,
+  isFullscreen = false,
   onSyncScrollChange,
   onRoleFilterChange,
 }: ComparisonViewProps) {
   const scrollRefs = useRef<Array<HTMLDivElement | null>>([]);
   const syncingRef = useRef(false);
+  const [scrollRefVersion, setScrollRefVersion] = useState(0);
   const trajectoryOptions = useMemo(() => getTrajectoryOptions(trajectories), [trajectories]);
   const allKeys = useMemo(() => trajectoryOptions.map((option) => option.key), [
     trajectoryOptions,
@@ -45,22 +50,48 @@ export function ComparisonView({
     () => trajectoryOptions.filter((option) => selectedKeySet.has(option.key)),
     [selectedKeySet, trajectoryOptions],
   );
-  const showSidebar = trajectoryOptions.length > 6;
 
   useEffect(() => {
     scrollRefs.current.length = visibleTrajectories.length;
   }, [visibleTrajectories.length]);
 
-  useEffect(
-    () => () => {
-      scrollRefs.current = [];
+  const handleScroll = useCallback(
+    (sourceIdx: number, source: HTMLDivElement) => {
+      if (!syncScroll) {
+        return;
+      }
+      if (syncingRef.current) {
+        return;
+      }
+
+      syncingRef.current = true;
+      const sourceScrollable = source.scrollHeight - source.clientHeight;
+      const ratio = sourceScrollable <= 0 ? 0 : source.scrollTop / sourceScrollable;
+
+      scrollRefs.current.forEach((ref, index) => {
+        if (index !== sourceIdx && ref !== null) {
+          const targetScrollable = ref.scrollHeight - ref.clientHeight;
+          ref.scrollTop = ratio * Math.max(0, targetScrollable);
+        }
+      });
+
+      requestAnimationFrame(() => {
+        syncingRef.current = false;
+      });
+    },
+    [syncScroll],
+  );
+
+  const setScrollRef = useCallback(
+    (index: number, node: HTMLDivElement | null) => {
+      if (scrollRefs.current[index] === node) {
+        return;
+      }
+      scrollRefs.current[index] = node;
+      setScrollRefVersion((version) => version + 1);
     },
     [],
   );
-
-  const setScrollRef = useCallback((index: number, node: HTMLDivElement | null) => {
-    scrollRefs.current[index] = node;
-  }, []);
 
   const handleSelectedChange = useCallback(
     (trajectoryKey: string, selected: boolean) => {
@@ -80,36 +111,37 @@ export function ComparisonView({
     [allKeys, onSelectionChange, selectedKeys],
   );
 
-  const handleScroll = useCallback(
-    (sourceIdx: number, ev: UIEvent<HTMLDivElement>) => {
-      if (!syncScroll) {
-        return;
-      }
-      if (syncingRef.current) {
-        return;
-      }
+  useEffect(() => {
+    if (!syncScroll) {
+      return;
+    }
 
-      syncingRef.current = true;
-      const source = scrollRefs.current[sourceIdx] ?? ev.currentTarget;
-      const sourceScrollable = source.scrollHeight - source.clientHeight;
-      const ratio = sourceScrollable <= 0 ? 0 : source.scrollTop / sourceScrollable;
-
-      scrollRefs.current.forEach((ref, index) => {
-        if (index !== sourceIdx && ref !== null) {
-          const targetScrollable = ref.scrollHeight - ref.clientHeight;
-          ref.scrollTop = ratio * Math.max(0, targetScrollable);
+    const cleanupCallbacks = visibleTrajectories
+      .map((_, index) => {
+        const node = scrollRefs.current[index];
+        if (node === null || node === undefined) {
+          return null;
         }
-      });
 
-      requestAnimationFrame(() => {
-        syncingRef.current = false;
-      });
-    },
-    [syncScroll],
-  );
+        const handleNativeScroll = () => handleScroll(index, node);
+        node.addEventListener("scroll", handleNativeScroll, { passive: true });
+        return () => node.removeEventListener("scroll", handleNativeScroll);
+      })
+      .filter((cleanup): cleanup is () => void => cleanup !== null);
+
+    return () => {
+      cleanupCallbacks.forEach((cleanup) => cleanup());
+    };
+  }, [handleScroll, scrollRefVersion, syncScroll, visibleTrajectories]);
 
   return (
-    <div className="space-y-3">
+    <div
+      className={cn(
+        "space-y-3",
+        isFullscreen && "flex h-full min-h-0 flex-col space-y-0 gap-3",
+      )}
+      data-trajectory-comparison-view
+    >
       <ComparisonToolbar
         allKeys={allKeys}
         selectedKeys={selectedKeys}
@@ -117,6 +149,35 @@ export function ComparisonView({
         roleFilter={roleFilter}
         syncScroll={syncScroll}
         maxSelection={MAX_SELECTED_TRAJECTORIES}
+        trailingAction={
+          !isFullscreen ? (
+            <FullscreenViewDialog
+              title="Trajectory 对比"
+              description={`显示 ${visibleTrajectories.length} / ${trajectoryOptions.length} 条`}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:text-foreground"
+                  aria-label="全屏查看 trajectory 对比"
+                  title="全屏"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              }
+            >
+              <ComparisonView
+                trajectories={trajectories}
+                selectedKeys={selectedKeys}
+                onSelectionChange={onSelectionChange}
+                syncScroll={syncScroll}
+                roleFilter={roleFilter}
+                isFullscreen
+                onSyncScrollChange={onSyncScrollChange}
+                onRoleFilterChange={onRoleFilterChange}
+              />
+            </FullscreenViewDialog>
+          ) : null
+        }
         onSelectionChange={onSelectionChange}
         onRoleFilterChange={onRoleFilterChange}
         onSyncScrollChange={onSyncScrollChange}
@@ -124,22 +185,26 @@ export function ComparisonView({
 
       <div
         className={cn(
-          "overflow-hidden rounded-lg border bg-background",
-          showSidebar && "grid grid-cols-[220px_minmax(0,1fr)]",
+          "grid grid-cols-[180px_minmax(0,1fr)] overflow-hidden rounded-lg border bg-background md:grid-cols-[220px_minmax(0,1fr)]",
+          isFullscreen && "min-h-0 flex-1",
         )}
       >
-        {showSidebar ? (
-          <SelectionSidebar
-            trajectoryOptions={trajectoryOptions}
-            selectedKeys={selectedKeys}
-            maxSelection={MAX_SELECTED_TRAJECTORIES}
-            onSelectedChange={handleSelectedChange}
-          />
-        ) : null}
-        <div className="min-w-0">
+        <SelectionSidebar
+          trajectoryOptions={trajectoryOptions}
+          selectedKeys={selectedKeys}
+          maxSelection={MAX_SELECTED_TRAJECTORIES}
+          isFullscreen={isFullscreen}
+          onSelectedChange={handleSelectedChange}
+        />
+        <div className={cn("min-w-0", isFullscreen && "min-h-0")}>
           {visibleTrajectories.length > 0 ? (
-            <div className="overflow-x-auto">
-              <div className="flex h-[680px] min-w-max">
+            <div className={cn("overflow-x-auto", isFullscreen && "h-full min-h-0")}>
+              <div
+                className={cn(
+                  "flex min-w-max",
+                  isFullscreen ? "h-full min-h-0" : "h-[680px]",
+                )}
+              >
                 {visibleTrajectories.map((option, index) => (
                   <TrajectoryColumn
                     key={option.key}
@@ -151,13 +216,17 @@ export function ComparisonView({
                     roleFilter={roleFilter}
                     setScrollRef={setScrollRef}
                     onSelectedChange={handleSelectedChange}
-                    onScroll={handleScroll}
                   />
                 ))}
               </div>
             </div>
           ) : (
-            <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+            <div
+              className={cn(
+                "flex items-center justify-center text-sm text-muted-foreground",
+                isFullscreen ? "h-full min-h-[320px]" : "h-[320px]",
+              )}
+            >
               请选择至少一条 trajectory 进行对比。
             </div>
           )}
@@ -171,11 +240,13 @@ function SelectionSidebar({
   trajectoryOptions,
   selectedKeys,
   maxSelection,
+  isFullscreen,
   onSelectedChange,
 }: {
   trajectoryOptions: TrajectoryOption[];
   selectedKeys: string[];
   maxSelection: number;
+  isFullscreen: boolean;
   onSelectedChange: (trajectoryKey: string, selected: boolean) => void;
 }) {
   const selectedKeySet = new Set(selectedKeys);
@@ -184,14 +255,19 @@ function SelectionSidebar({
   ).length;
 
   return (
-    <aside className="border-r bg-muted/20">
+    <aside className="flex min-h-0 flex-col border-r bg-muted/20">
       <div className="border-b px-3 py-2">
         <div className="text-sm font-semibold">选择对比</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
           最多 {maxSelection} 条
         </div>
       </div>
-      <div className="max-h-[680px] space-y-1 overflow-y-auto p-2">
+      <div
+        className={cn(
+          "min-h-0 flex-1 space-y-1 overflow-y-auto p-2",
+          !isFullscreen && "max-h-[680px]",
+        )}
+      >
         {trajectoryOptions.map((option) => {
           const checked = selectedKeySet.has(option.key);
           const disabled = !checked && selectedCount >= maxSelection;

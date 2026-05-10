@@ -1,5 +1,5 @@
 import { CheckSquare, ChevronDown, Filter, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ interface ComparisonToolbarProps {
   roleFilter: string[];
   syncScroll: boolean;
   maxSelection: number;
+  trailingAction?: ReactNode;
   onSelectionChange: (keys: string[]) => void;
   onRoleFilterChange: (roles: string[]) => void;
   onSyncScrollChange: (enabled: boolean) => void;
@@ -31,6 +32,7 @@ export function ComparisonToolbar({
   roleFilter,
   syncScroll,
   maxSelection,
+  trailingAction,
   onSelectionChange,
   onRoleFilterChange,
   onSyncScrollChange,
@@ -134,6 +136,7 @@ export function ComparisonToolbar({
         显示 <span className="font-medium text-foreground">{selectedCount}</span> /{" "}
         {allKeys.length} 条
       </div>
+      {trailingAction}
     </div>
   );
 }
