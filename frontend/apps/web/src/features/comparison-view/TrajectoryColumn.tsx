@@ -1,5 +1,5 @@
 import { TrajectoryViewer } from "@agentlens/trajectory-viewer";
-import { memo, useCallback, useMemo, type UIEvent } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import type { Trajectory } from "@/api/types";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,7 +13,6 @@ interface TrajectoryColumnProps {
   roleFilter: string[];
   setScrollRef: (index: number, node: HTMLDivElement | null) => void;
   onSelectedChange: (trajectoryKey: string, selected: boolean) => void;
-  onScroll: (index: number, event: UIEvent<HTMLDivElement>) => void;
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
@@ -27,16 +26,11 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
   roleFilter,
   setScrollRef,
   onSelectedChange,
-  onScroll,
 }: TrajectoryColumnProps) {
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
   const setColumnScrollRef = useCallback(
     (node: HTMLDivElement | null) => setScrollRef(index, node),
     [index, setScrollRef],
-  );
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => onScroll(index, event),
-    [index, onScroll],
   );
 
   return (
@@ -67,7 +61,6 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
         ref={setColumnScrollRef}
         className="min-h-0 flex-1 overflow-y-auto bg-muted/10"
         data-trajectory-column-scroll={trajectoryKey}
-        onScroll={handleScroll}
       >
         <TrajectoryViewer
           trajectory={trajectory}
