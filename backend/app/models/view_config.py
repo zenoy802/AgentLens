@@ -23,6 +23,7 @@ class ViewConfig(Base, TimestampMixin):
     field_renders: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     table_config: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     trajectory_config: Mapped[str | None] = mapped_column(Text)
+    trajectory_config_source: Mapped[str | None] = mapped_column(String(20))
     row_identity_column: Mapped[str | None] = mapped_column(String(200))
 
     named_query: Mapped[NamedQuery] = relationship(back_populates="view_config")

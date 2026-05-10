@@ -109,6 +109,9 @@ export function Query() {
   const setResult = useQueryStore((state) => state.setResult);
   const applyViewConfig = useQueryStore((state) => state.applyViewConfig);
   const mergeSuggestedRenders = useQueryStore((state) => state.mergeSuggestedRenders);
+  const applySuggestedTrajectoryConfig = useQueryStore(
+    (state) => state.applySuggestedTrajectoryConfig,
+  );
   const reset = useQueryStore((state) => state.reset);
   const clearSelection = useQueryStore((state) => state.clearSelection);
 
@@ -427,10 +430,22 @@ export function Query() {
         .getState()
         .setActiveQuery(result.query_id, result.execution.executed_at);
       mergeSuggestedRenders(result.suggested_field_renders);
+      const previousTrajectoryConfigSource =
+        useQueryStore.getState().trajectoryConfigSource;
+      const trajectorySuggestionApplied = applySuggestedTrajectoryConfig(
+        result.suggested_trajectory_config,
+      );
+      const hasAppliedSuggestions =
+        Object.keys(result.suggested_field_renders).length > 0 ||
+        trajectorySuggestionApplied;
+      const shouldSaveAppliedSuggestions =
+        (persistedViewConfigWasEmpty && hasAppliedSuggestions) ||
+        (previousTrajectoryConfigSource === "suggested" &&
+          trajectorySuggestionApplied);
       if (
         !wasDirtyBeforeRun &&
         persistedViewConfigUnknown &&
-        Object.keys(result.suggested_field_renders).length > 0
+        hasAppliedSuggestions
       ) {
         useQueryStore.getState().markDirty();
       }
@@ -454,8 +469,7 @@ export function Query() {
 
       if (
         !wasDirtyBeforeRun &&
-        persistedViewConfigWasEmpty &&
-        Object.keys(result.suggested_field_renders).length > 0 &&
+        shouldSaveAppliedSuggestions &&
         result.query_id > 0
       ) {
         const payload = getViewConfigPayloadFromState(useQueryStore.getState());
@@ -621,6 +635,7 @@ export function Query() {
       nextState.manualFieldRenderColumns = [];
       nextState.tableConfig = initialTableConfig;
       nextState.trajectoryConfig = null;
+      nextState.trajectoryConfigSource = null;
       nextState.rowIdentityColumn = null;
       nextState.isDirty = false;
     }

@@ -8,7 +8,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.models.misc import GlobalRenderRule
 from app.schemas.render import MarkdownRender, TextRender
-from app.schemas.render_rule import RenderRuleCreate, RenderRuleUpdate
+from app.schemas.render_rule import RenderRuleCreate, RenderRuleUpdate, TrajectoryConfigRule
 from app.services.render_rule_service import RenderRuleService
 
 
@@ -76,6 +76,28 @@ def test_render_rule_service_rejects_invalid_regex() -> None:
         session.close()
 
     assert exc_info.value.code == "RENDER_RULE_INVALID_REGEX"
+
+
+def test_render_rule_service_accepts_trajectory_config_rule() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        service = RenderRuleService(session)
+
+        created = service.create_rule(
+            RenderRuleCreate(
+                match_pattern="session_id",
+                match_type="exact",
+                render_config=TrajectoryConfigRule(field="group_by"),
+                priority=100,
+                enabled=True,
+            )
+        )
+    finally:
+        session.close()
+
+    assert isinstance(created.render_config, TrajectoryConfigRule)
+    assert created.render_config.field == "group_by"
 
 
 def test_render_rule_service_falls_back_for_invalid_stored_render_config() -> None:

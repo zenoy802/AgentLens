@@ -38,9 +38,30 @@ async def test_render_rules_api_crud() -> None:
         assert created["match_pattern"] == "content"
         assert created["render_config"] == {"type": "markdown"}
 
+        trajectory_response = await client.post(
+            "/api/v1/render-rules",
+            json={
+                "match_pattern": "session_id",
+                "match_type": "exact",
+                "render_config": {"type": "trajectory_config", "field": "group_by"},
+                "priority": 100,
+                "enabled": True,
+            },
+        )
+        assert trajectory_response.status_code == HTTP_CREATED
+        trajectory_rule = trajectory_response.json()
+        assert trajectory_rule["render_config"] == {
+            "type": "trajectory_config",
+            "field": "group_by",
+            "order_direction": None,
+        }
+
         list_response = await client.get("/api/v1/render-rules")
         assert list_response.status_code == HTTP_OK
-        assert [rule["id"] for rule in list_response.json()] == [created["id"]]
+        assert [rule["id"] for rule in list_response.json()] == [
+            created["id"],
+            trajectory_rule["id"],
+        ]
 
         get_response = await client.get(f"/api/v1/render-rules/{created['id']}")
         assert get_response.status_code == HTTP_OK
@@ -95,6 +116,21 @@ async def test_render_rules_api_rejects_invalid_regex_and_render_config() -> Non
         )
         assert invalid_render.status_code == HTTP_UNPROCESSABLE_ENTITY
         assert invalid_render.json()["error"]["code"] == "VALIDATION_ERROR"
+
+        invalid_trajectory_order = await client.post(
+            "/api/v1/render-rules",
+            json={
+                "match_pattern": "session_id",
+                "match_type": "exact",
+                "render_config": {
+                    "type": "trajectory_config",
+                    "field": "group_by",
+                    "order_direction": "desc",
+                },
+            },
+        )
+        assert invalid_trajectory_order.status_code == HTTP_UNPROCESSABLE_ENTITY
+        assert invalid_trajectory_order.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 @pytest.mark.asyncio

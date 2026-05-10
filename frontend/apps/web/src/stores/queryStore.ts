@@ -26,6 +26,11 @@ export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
 export type LabelFilters = Record<string, string[]>;
+export type PersistedTrajectoryConfigSource = Exclude<
+  ViewConfigPayload["trajectory_config_source"],
+  undefined
+>;
+export type TrajectoryConfigSource = PersistedTrajectoryConfigSource | "legacy";
 
 export interface SortConfig {
   column: string;
@@ -64,6 +69,7 @@ export interface QueryState {
   manualFieldRenderColumns: string[];
   tableConfig: TableConfig;
   trajectoryConfig: TrajectoryConfig | null;
+  trajectoryConfigSource: TrajectoryConfigSource;
   rowIdentityColumn: string | null;
   filters: LabelFilters;
   warnings: Warning[];
@@ -95,6 +101,7 @@ export interface QueryState {
   clearSelection(): void;
   applyViewConfig(vc: ViewConfigRead): void;
   mergeSuggestedRenders(suggested: Record<string, FieldRender>): void;
+  applySuggestedTrajectoryConfig(suggested: TrajectoryConfig | null | undefined): boolean;
   reset(): void;
 }
 
@@ -118,6 +125,7 @@ const initialResultState = {
   manualFieldRenderColumns: [] as string[],
   tableConfig: initialTableConfig,
   trajectoryConfig: null as TrajectoryConfig | null,
+  trajectoryConfigSource: null as TrajectoryConfigSource,
   rowIdentityColumn: null as string | null,
   filters: {} as LabelFilters,
   warnings: [] as Warning[],
@@ -292,7 +300,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     get().markDirty();
   },
   setTrajectoryConfig: (cfg) => {
-    set({ trajectoryConfig: cfg });
+    set({ trajectoryConfig: cfg, trajectoryConfigSource: "manual" });
     get().markDirty();
   },
   setRowIdentityColumn: (col) => {
@@ -368,11 +376,16 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     ),
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
+    const trajectoryConfig = vc.trajectory_config ?? null;
     set({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
-      trajectoryConfig: vc.trajectory_config ?? null,
+      trajectoryConfig,
+      trajectoryConfigSource: normalizeAppliedTrajectoryConfigSource(
+        trajectoryConfig,
+        vc.trajectory_config_source,
+      ),
       rowIdentityColumn: vc.row_identity_column ?? null,
     });
     get().markClean();
@@ -391,6 +404,33 @@ export const useQueryStore = create<QueryState>((set, get) => ({
 
       return changed ? { fieldRenders } : {};
     }),
+  applySuggestedTrajectoryConfig: (suggested) => {
+    let changed = false;
+    set((state) => {
+      const legacyConfigIsUnknown =
+        state.trajectoryConfigSource === "legacy" &&
+        state.trajectoryConfig !== null;
+      if (state.trajectoryConfigSource === "manual" || legacyConfigIsUnknown) {
+        return {};
+      }
+
+      const nextConfig = suggested ?? null;
+      const nextSource: TrajectoryConfigSource = nextConfig === null ? null : "suggested";
+      if (
+        trajectoryConfigsEqual(state.trajectoryConfig, nextConfig) &&
+        state.trajectoryConfigSource === nextSource
+      ) {
+        return {};
+      }
+
+      changed = true;
+      return {
+        trajectoryConfig: nextConfig,
+        trajectoryConfigSource: nextSource,
+      };
+    });
+    return changed;
+  },
   reset: () =>
     set({
       connectionId: null,
@@ -413,6 +453,26 @@ function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
 
 function normalizeLabelFilterValues(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === "string")));
+}
+
+function trajectoryConfigsEqual(
+  left: TrajectoryConfig | null,
+  right: TrajectoryConfig | null,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function normalizeAppliedTrajectoryConfigSource(
+  trajectoryConfig: TrajectoryConfig | null,
+  source: PersistedTrajectoryConfigSource | undefined,
+): TrajectoryConfigSource {
+  if (source === "manual") {
+    return "manual";
+  }
+  if (source === "suggested" && trajectoryConfig !== null) {
+    return "suggested";
+  }
+  return trajectoryConfig === null ? null : "legacy";
 }
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {
@@ -565,8 +625,15 @@ export function getViewConfigPayloadFromState(state: QueryState): ViewConfigPayl
     field_renders: state.fieldRenders,
     table_config: state.tableConfig,
     trajectory_config: state.trajectoryConfig,
+    trajectory_config_source: getPersistedTrajectoryConfigSource(state.trajectoryConfigSource),
     row_identity_column: state.rowIdentityColumn,
   };
+}
+
+function getPersistedTrajectoryConfigSource(
+  source: TrajectoryConfigSource,
+): PersistedTrajectoryConfigSource {
+  return source === "legacy" ? null : source;
 }
 
 export function viewConfigPayloadMatchesState(
@@ -581,6 +648,7 @@ export function viewConfigIsEmpty(viewConfig: ViewConfigRead): boolean {
     Object.keys(viewConfig.field_renders ?? {}).length === 0 &&
     tableConfigIsEmpty(viewConfig.table_config) &&
     viewConfig.trajectory_config == null &&
+    viewConfig.trajectory_config_source == null &&
     viewConfig.row_identity_column == null
   );
 }
