@@ -1,40 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
 import { TrajectoryViewer } from "@agentlens/trajectory-viewer";
 import type { Trajectory } from "@agentlens/trajectory-viewer";
+import { Maximize2 } from "lucide-react";
 
+import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getTrajectoryRoles } from "@/features/trajectory-view/trajectoryRoles";
 
 interface SingleTrajectoryViewProps {
   trajectory: Trajectory;
   className?: string;
+  isFullscreen?: boolean;
+  selectedRoles?: string[];
+  onSelectedRolesChange?: (roles: string[]) => void;
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
 
-export function SingleTrajectoryView({ trajectory, className }: SingleTrajectoryViewProps) {
+export function SingleTrajectoryView({
+  trajectory,
+  className,
+  isFullscreen = false,
+  selectedRoles: controlledSelectedRoles,
+  onSelectedRolesChange,
+}: SingleTrajectoryViewProps) {
   const roles = useMemo(() => getTrajectoryRoles([trajectory]), [trajectory]);
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(roles);
+  const [localSelectedRoles, setLocalSelectedRoles] = useState<string[]>(roles);
+  const usesControlledRoles =
+    controlledSelectedRoles !== undefined && onSelectedRolesChange !== undefined;
+  const selectedRoles = usesControlledRoles ? controlledSelectedRoles : localSelectedRoles;
   const activeRoles = selectedRoles.length === roles.length ? undefined : selectedRoles;
 
   useEffect(() => {
-    setSelectedRoles(roles);
-  }, [roles]);
+    if (!usesControlledRoles) {
+      setLocalSelectedRoles(roles);
+    }
+  }, [roles, usesControlledRoles]);
+
+  function updateSelectedRoles(nextRoles: string[]) {
+    if (usesControlledRoles) {
+      onSelectedRolesChange(nextRoles);
+      return;
+    }
+    setLocalSelectedRoles(nextRoles);
+  }
 
   function toggleRole(role: string) {
-    setSelectedRoles((current) => {
-      if (current.includes(role)) {
-        return current.filter((item) => item !== role);
-      }
-      return [...current, role];
-    });
+    if (selectedRoles.includes(role)) {
+      updateSelectedRoles(selectedRoles.filter((item) => item !== role));
+      return;
+    }
+    updateSelectedRoles([...selectedRoles, role]);
   }
 
   return (
     <div
       className={cn(
-        "flex h-[620px] min-h-0 flex-col rounded-lg border bg-background",
+        "flex min-h-0 flex-col rounded-lg border bg-background",
+        isFullscreen ? "h-full" : "h-[620px]",
         className,
       )}
     >
@@ -60,13 +85,40 @@ export function SingleTrajectoryView({ trajectory, className }: SingleTrajectory
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          className="rounded-md border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-          onClick={() => setSelectedRoles(roles)}
-        >
-          全部显示
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => updateSelectedRoles(roles)}
+          >
+            全部显示
+          </Button>
+          {!isFullscreen ? (
+            <FullscreenViewDialog
+              title={`Trajectory ${trajectory.group_key}`}
+              description={`${trajectory.message_count} messages`}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:text-foreground"
+                  aria-label="全屏查看单个 trajectory"
+                  title="全屏"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              }
+            >
+              <SingleTrajectoryView
+                trajectory={trajectory}
+                selectedRoles={selectedRoles}
+                isFullscreen
+                onSelectedRolesChange={updateSelectedRoles}
+              />
+            </FullscreenViewDialog>
+          ) : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <TrajectoryViewer
