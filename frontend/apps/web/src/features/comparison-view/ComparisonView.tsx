@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 
 import type { Trajectory } from "@/api/types";
@@ -39,6 +39,7 @@ export function ComparisonView({
 }: ComparisonViewProps) {
   const scrollRefs = useRef<Array<HTMLDivElement | null>>([]);
   const syncingRef = useRef(false);
+  const [scrollRefVersion, setScrollRefVersion] = useState(0);
   const trajectoryOptions = useMemo(() => getTrajectoryOptions(trajectories), [trajectories]);
   const allKeys = useMemo(() => trajectoryOptions.map((option) => option.key), [
     trajectoryOptions,
@@ -54,16 +55,43 @@ export function ComparisonView({
     scrollRefs.current.length = visibleTrajectories.length;
   }, [visibleTrajectories.length]);
 
-  useEffect(
-    () => () => {
-      scrollRefs.current = [];
+  const handleScroll = useCallback(
+    (sourceIdx: number, source: HTMLDivElement) => {
+      if (!syncScroll) {
+        return;
+      }
+      if (syncingRef.current) {
+        return;
+      }
+
+      syncingRef.current = true;
+      const sourceScrollable = source.scrollHeight - source.clientHeight;
+      const ratio = sourceScrollable <= 0 ? 0 : source.scrollTop / sourceScrollable;
+
+      scrollRefs.current.forEach((ref, index) => {
+        if (index !== sourceIdx && ref !== null) {
+          const targetScrollable = ref.scrollHeight - ref.clientHeight;
+          ref.scrollTop = ratio * Math.max(0, targetScrollable);
+        }
+      });
+
+      requestAnimationFrame(() => {
+        syncingRef.current = false;
+      });
+    },
+    [syncScroll],
+  );
+
+  const setScrollRef = useCallback(
+    (index: number, node: HTMLDivElement | null) => {
+      if (scrollRefs.current[index] === node) {
+        return;
+      }
+      scrollRefs.current[index] = node;
+      setScrollRefVersion((version) => version + 1);
     },
     [],
   );
-
-  const setScrollRef = useCallback((index: number, node: HTMLDivElement | null) => {
-    scrollRefs.current[index] = node;
-  }, []);
 
   const handleSelectedChange = useCallback(
     (trajectoryKey: string, selected: boolean) => {
@@ -83,33 +111,28 @@ export function ComparisonView({
     [allKeys, onSelectionChange, selectedKeys],
   );
 
-  const handleScroll = useCallback(
-    (sourceIdx: number, ev: UIEvent<HTMLDivElement>) => {
-      if (!syncScroll) {
-        return;
-      }
-      if (syncingRef.current) {
-        return;
-      }
+  useEffect(() => {
+    if (!syncScroll) {
+      return;
+    }
 
-      syncingRef.current = true;
-      const source = ev.currentTarget;
-      const sourceScrollable = source.scrollHeight - source.clientHeight;
-      const ratio = sourceScrollable <= 0 ? 0 : source.scrollTop / sourceScrollable;
-
-      scrollRefs.current.forEach((ref, index) => {
-        if (index !== sourceIdx && ref !== null) {
-          const targetScrollable = ref.scrollHeight - ref.clientHeight;
-          ref.scrollTop = ratio * Math.max(0, targetScrollable);
+    const cleanupCallbacks = visibleTrajectories
+      .map((_, index) => {
+        const node = scrollRefs.current[index];
+        if (node === null || node === undefined) {
+          return null;
         }
-      });
 
-      requestAnimationFrame(() => {
-        syncingRef.current = false;
-      });
-    },
-    [syncScroll],
-  );
+        const handleNativeScroll = () => handleScroll(index, node);
+        node.addEventListener("scroll", handleNativeScroll, { passive: true });
+        return () => node.removeEventListener("scroll", handleNativeScroll);
+      })
+      .filter((cleanup): cleanup is () => void => cleanup !== null);
+
+    return () => {
+      cleanupCallbacks.forEach((cleanup) => cleanup());
+    };
+  }, [handleScroll, scrollRefVersion, syncScroll, visibleTrajectories]);
 
   return (
     <div
@@ -193,7 +216,6 @@ export function ComparisonView({
                     roleFilter={roleFilter}
                     setScrollRef={setScrollRef}
                     onSelectedChange={handleSelectedChange}
-                    onScroll={handleScroll}
                   />
                 ))}
               </div>
