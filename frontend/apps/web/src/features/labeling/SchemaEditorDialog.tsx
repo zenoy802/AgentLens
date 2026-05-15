@@ -165,7 +165,7 @@ export function SchemaEditorDialog({ open, queryId, onOpenChange }: SchemaEditor
                           <span className="shrink-0 text-sm text-muted-foreground">
                             {index + 1}.
                           </span>
-                          <span className="truncate font-medium">{field.key}</span>
+                          <span className="truncate font-medium">{field.label}</span>
                           <Badge variant="muted">{getTypeLabel(field)}</Badge>
                         </div>
                         <div className="mt-1 truncate text-sm text-muted-foreground">
@@ -284,12 +284,12 @@ function getTypeLabel(field: LabelField): string {
 
 function getFieldSummary(field: LabelField): string {
   if (field.type === "single_select") {
-    return `单选 · ${getFieldOptions(field).length} 个选项 · ${field.label}`;
+    return `Key: ${field.key} · ${getFieldOptions(field).length} 个选项`;
   }
   if (field.type === "multi_select") {
-    return `多选 · ${getFieldOptions(field).length} 个选项 · ${field.label}`;
+    return `Key: ${field.key} · ${getFieldOptions(field).length} 个选项`;
   }
-  return `文本 · ${field.label}`;
+  return `Key: ${field.key}`;
 }
 
 function getRemovedKeys(oldFields: LabelField[], newFields: LabelField[]): string[] {
