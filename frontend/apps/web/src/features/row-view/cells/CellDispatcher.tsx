@@ -1,6 +1,7 @@
 import type { FieldRender } from "@/api/types";
 import type { CellPresentation } from "@/features/row-view/cells/cellUtils";
 import { CodeCell } from "@/features/row-view/cells/CodeCell";
+import { EnumCell } from "@/features/row-view/cells/EnumCell";
 import { JsonCell } from "@/features/row-view/cells/JsonCell";
 import { MarkdownCell } from "@/features/row-view/cells/MarkdownCell";
 import { RawCell } from "@/features/row-view/cells/RawCell";
@@ -54,6 +55,8 @@ export function CellDispatcher({
       );
     case "timestamp":
       return <TimestampCell value={value} format={render.format ?? "YYYY-MM-DD HH:mm:ss"} />;
+    case "enum":
+      return <EnumCell value={value} colors={render.colors ?? {}} />;
     case "text":
     case "tag":
       return <TextCell value={value} previewLines={previewLines} />;

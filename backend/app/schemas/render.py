@@ -36,8 +36,19 @@ class TagRender(RenderBase):
     type: Literal["tag"] = "tag"
 
 
+class EnumRender(RenderBase):
+    type: Literal["enum"] = "enum"
+    colors: dict[str, str] = Field(default_factory=dict)
+
+
 FieldRender: TypeAlias = Annotated[
-    TextRender | MarkdownRender | JsonRender | CodeRender | TimestampRender | TagRender,
+    TextRender
+    | MarkdownRender
+    | JsonRender
+    | CodeRender
+    | TimestampRender
+    | TagRender
+    | EnumRender,
     Field(discriminator="type"),
 ]
 

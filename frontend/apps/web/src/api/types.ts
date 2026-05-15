@@ -22,7 +22,8 @@ export type FieldRender =
   | Schemas["JsonRender"]
   | Schemas["CodeRender"]
   | Schemas["TimestampRender"]
-  | Schemas["TagRender"];
+  | Schemas["TagRender"]
+  | Schemas["EnumRender"];
 export type HealthResponse = Schemas["HealthResponse"];
 export type HTTPValidationError = Schemas["HTTPValidationError"];
 export type LabelField =
