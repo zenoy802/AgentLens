@@ -185,6 +185,13 @@
   justify-content: center;
 }
 
+.agentlens-trajectory-message-header-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
 .agentlens-trajectory-role-label {
   border-radius: 999px;
   background: rgb(15 23 42 / 9%);
@@ -219,6 +226,11 @@
 .agentlens-trajectory-collapse-button:hover,
 .agentlens-trajectory-collapse-button:focus-visible {
   color: var(--trajectory-text);
+}
+
+.agentlens-trajectory-message--pinned .agentlens-trajectory-bubble {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 28%);
 }
 
 .agentlens-trajectory-bubble-body {
