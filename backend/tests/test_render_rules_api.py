@@ -56,11 +56,26 @@ async def test_render_rules_api_crud() -> None:
             "order_direction": None,
         }
 
+        enum_response = await client.post(
+            "/api/v1/render-rules",
+            json={
+                "match_pattern": "status",
+                "match_type": "exact",
+                "render_config": {"type": "enum", "colors": {"ok": "#10b981"}},
+                "priority": 80,
+                "enabled": True,
+            },
+        )
+        assert enum_response.status_code == HTTP_CREATED
+        enum_rule = enum_response.json()
+        assert enum_rule["render_config"] == {"type": "enum", "colors": {"ok": "#10b981"}}
+
         list_response = await client.get("/api/v1/render-rules")
         assert list_response.status_code == HTTP_OK
         assert [rule["id"] for rule in list_response.json()] == [
             created["id"],
             trajectory_rule["id"],
+            enum_rule["id"],
         ]
 
         get_response = await client.get(f"/api/v1/render-rules/{created['id']}")

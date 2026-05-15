@@ -583,6 +583,20 @@ export interface components {
             /** Default Row Limit */
             default_row_limit?: number | null;
         };
+        /** EnumRender */
+        EnumRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "enum";
+            /** Colors */
+            colors?: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /** ExecuteRequest */
         ExecuteRequest: {
             /** Connection Id */
@@ -628,7 +642,7 @@ export interface components {
             }[];
             /** Suggested Field Renders */
             suggested_field_renders: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
             suggested_trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
             /** Warnings */
@@ -942,7 +956,7 @@ export interface components {
              */
             match_type: "exact" | "prefix" | "suffix" | "regex";
             /** Render Config */
-            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"];
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"];
             /**
              * Priority
              * @default 0
@@ -965,7 +979,7 @@ export interface components {
              */
             match_type: "exact" | "prefix" | "suffix" | "regex";
             /** Render Config */
-            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"];
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"];
             /**
              * Priority
              * @default 0
@@ -996,7 +1010,7 @@ export interface components {
             /** Match Type */
             match_type?: ("exact" | "prefix" | "suffix" | "regex") | null;
             /** Render Config */
-            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["TrajectoryConfigRule"]) | null;
+            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"]) | null;
             /** Priority */
             priority?: number | null;
             /** Enabled */
@@ -1195,7 +1209,7 @@ export interface components {
         ViewConfigPayload: {
             /** Field Renders */
             field_renders?: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
@@ -1208,7 +1222,7 @@ export interface components {
         ViewConfigRead: {
             /** Field Renders */
             field_renders?: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
