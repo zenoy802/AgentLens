@@ -8,6 +8,7 @@ interface MessageBubbleProps {
   message: TrajectoryMessage;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
   renderToolCalls?: (msg: TrajectoryMessage) => ReactNode;
+  actions?: ReactNode;
   showMetaLine?: boolean;
   metaFields?: string[];
   className?: string;
@@ -27,6 +28,7 @@ export function MessageBubble({
   message,
   renderContent,
   renderToolCalls,
+  actions,
   showMetaLine = false,
   metaFields = DEFAULT_META_FIELDS,
   className,
@@ -61,17 +63,22 @@ export function MessageBubble({
               <span className="agentlens-trajectory-meta-line">{metaItems.join(" · ")}</span>
             ) : null}
           </div>
-          {collapsible ? (
-            <button
-              type="button"
-              className="agentlens-trajectory-collapse-button"
-              aria-controls={contentId}
-              aria-expanded={expanded}
-              aria-label={expanded ? collapseLabel : expandLabel}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              {expanded ? collapseLabel : expandLabel}
-            </button>
+          {actions !== undefined || collapsible ? (
+            <div className="agentlens-trajectory-message-header-actions">
+              {actions}
+              {collapsible ? (
+                <button
+                  type="button"
+                  className="agentlens-trajectory-collapse-button"
+                  aria-controls={contentId}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? collapseLabel : expandLabel}
+                  onClick={() => setExpanded((current) => !current)}
+                >
+                  {expanded ? collapseLabel : expandLabel}
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </header>
         <div

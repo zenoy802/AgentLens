@@ -45,7 +45,6 @@ import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
 import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
 import { getTrajectoryOptions } from "@/features/trajectory-view/trajectoryOptions";
-import { getTrajectoryRoles } from "@/features/trajectory-view/trajectoryRoles";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
 import { useLabelsStore } from "@/stores/labelsStore";
@@ -1061,16 +1060,10 @@ function TrajectoryResult({
     () => trajectoryOptions.map((option) => option.key),
     [trajectoryOptions],
   );
-  const allRoles = useMemo(
-    () => (trajectories === undefined ? [] : getTrajectoryRoles(trajectories)),
-    [trajectories],
-  );
   const [trajectoryMode, setTrajectoryMode] = useState<TrajectoryDetailMode>("comparison");
   const [comparisonSelectedKeys, setComparisonSelectedKeys] = useState<string[]>([]);
   const [comparisonSyncScroll, setComparisonSyncScroll] = useState(false);
-  const [comparisonRoleFilter, setComparisonRoleFilter] = useState<string[] | null>(null);
   const [singleTrajectoryIndex, setSingleTrajectoryIndex] = useState(0);
-  const activeComparisonRoleFilter = comparisonRoleFilter ?? allRoles;
 
   useEffect(() => {
     if (trajectories === undefined) {
@@ -1083,10 +1076,9 @@ function TrajectoryResult({
         trajectories.length > 6 ? MAX_COMPARISON_TRAJECTORIES : trajectories.length,
       ),
     );
-    setComparisonRoleFilter(allRoles);
     setSingleTrajectoryIndex(0);
     setTrajectoryMode(trajectories.length > 1 ? "comparison" : "single");
-  }, [allRoles, allTrajectoryKeys, trajectories]);
+  }, [allTrajectoryKeys, trajectories]);
 
   if (isLoading) {
     return <LoadingState label="正在聚合 Trajectory..." rows={5} />;
@@ -1119,16 +1111,19 @@ function TrajectoryResult({
   return (
     <div className="space-y-3">
       {warnings !== undefined && warnings.length > 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <div className="font-medium">聚合 warning</div>
-          <ul className="mt-1 space-y-1">
-            {warnings.map((warning, index) => (
-              <li key={`${warning.code}:${index}`}>
-                {warning.code}: {warning.message}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          <AlertTitle>Trajectory 聚合 warnings</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-1">
+              {warnings.map((warning, index) => (
+                <li key={`${warning.code}:${index}`}>
+                  {warning.code}: {warning.message}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
       ) : null}
       {trajectories.length === 1 ? (
         <SingleTrajectoryView trajectory={trajectories[0]} />
@@ -1147,9 +1142,7 @@ function TrajectoryResult({
             selectedKeys={comparisonSelectedKeys}
             onSelectionChange={setComparisonSelectedKeys}
             syncScroll={comparisonSyncScroll}
-            roleFilter={activeComparisonRoleFilter}
             onSyncScrollChange={setComparisonSyncScroll}
-            onRoleFilterChange={setComparisonRoleFilter}
           />
         </>
       ) : (

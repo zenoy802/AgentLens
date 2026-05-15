@@ -1,5 +1,10 @@
 import { MessageBubble } from "./MessageBubble";
-import type { MessageCollapseResolver, TrajectoryMessage, TrajectoryViewerProps } from "./types";
+import type {
+  MessageClassNameResolver,
+  MessageCollapseResolver,
+  TrajectoryMessage,
+  TrajectoryViewerProps,
+} from "./types";
 
 import "./styles.css";
 
@@ -12,6 +17,7 @@ export function TrajectoryViewer({
   filterRoles,
   className,
   messageClassName,
+  renderMessageActions,
   showHeader = true,
   showMetaLine = false,
   metaFields,
@@ -45,6 +51,7 @@ export function TrajectoryViewer({
             message={message}
             renderContent={renderContent}
             renderToolCalls={renderToolCalls}
+            actions={renderMessageActions?.(message, originalIndex)}
             showMetaLine={showMetaLine}
             metaFields={metaFields}
             collapsible={collapsibleMessages}
@@ -52,7 +59,7 @@ export function TrajectoryViewer({
             collapsedContentHeight={collapsedContentHeight}
             expandLabel={expandLabel}
             collapseLabel={collapseLabel}
-            className={messageClassName}
+            className={resolveMessageClassName(message, originalIndex, messageClassName)}
           />
         ))}
       </div>
@@ -94,6 +101,17 @@ function resolveDefaultCollapsed(
     return resolver;
   }
   return estimateMessageLength(message) > DEFAULT_AUTO_COLLAPSE_CHAR_LIMIT;
+}
+
+function resolveMessageClassName(
+  message: TrajectoryMessage,
+  originalIndex: number,
+  resolver: MessageClassNameResolver | undefined,
+): string | undefined {
+  if (typeof resolver === "function") {
+    return resolver(message, originalIndex);
+  }
+  return resolver;
 }
 
 function estimateMessageLength(message: TrajectoryMessage): number {

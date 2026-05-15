@@ -1,55 +1,80 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
+import { toast } from "sonner";
 
 import type { Trajectory } from "@/api/types";
+import { EmptyState } from "@/components/common/EmptyState";
 import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { cn } from "@/lib/utils";
 import {
   getTrajectoryOptions,
   type TrajectoryOption,
 } from "@/features/trajectory-view/trajectoryOptions";
-import { getTrajectoryRoles } from "@/features/trajectory-view/trajectoryRoles";
+import {
+  getTrajectoryRoles,
+  normalizeTrajectoryRole,
+} from "@/features/trajectory-view/trajectoryRoles";
+import { downloadBlob } from "@/lib/download";
+import { cn } from "@/lib/utils";
 
 import { ComparisonToolbar } from "./ComparisonToolbar";
+import { generateComparisonMarkdown } from "./exportComparison";
 import { TrajectoryColumn } from "./TrajectoryColumn";
+import { DEFAULT_COLUMN_WIDTH, type ColumnDisplayMode } from "./types";
 
 export interface ComparisonViewProps {
   trajectories: Trajectory[];
   selectedKeys: string[];
   onSelectionChange: (keys: string[]) => void;
   syncScroll: boolean;
-  roleFilter: string[];
   isFullscreen?: boolean;
   onSyncScrollChange: (enabled: boolean) => void;
-  onRoleFilterChange: (roles: string[]) => void;
 }
 
 const MAX_SELECTED_TRAJECTORIES = 10;
+const DEFAULT_SHOW_META = true;
+const EMPTY_MESSAGE_KEYS = new Set<string>();
 
 export function ComparisonView({
   trajectories,
   selectedKeys,
   onSelectionChange,
   syncScroll,
-  roleFilter,
   isFullscreen = false,
   onSyncScrollChange,
-  onRoleFilterChange,
 }: ComparisonViewProps) {
   const scrollRefs = useRef<Array<HTMLDivElement | null>>([]);
   const syncingRef = useRef(false);
   const [scrollRefVersion, setScrollRefVersion] = useState(0);
+  const [columnDisplayModes, setColumnDisplayModes] = useState<
+    Map<string, ColumnDisplayMode>
+  >(() => new Map());
+  const [columnRoleFilters, setColumnRoleFilters] = useState<Map<string, string[]>>(
+    () => new Map(),
+  );
+  const [columnMetaVisibility, setColumnMetaVisibility] = useState<Map<string, boolean>>(
+    () => new Map(),
+  );
+  const [columnWidths, setColumnWidths] = useState<Map<string, number>>(() => new Map());
+  const [pinnedMessagesByColumn, setPinnedMessagesByColumn] = useState<
+    Map<string, Set<string>>
+  >(() => new Map());
   const trajectoryOptions = useMemo(() => getTrajectoryOptions(trajectories), [trajectories]);
   const allKeys = useMemo(() => trajectoryOptions.map((option) => option.key), [
     trajectoryOptions,
   ]);
-  const allRoles = useMemo(() => getTrajectoryRoles(trajectories), [trajectories]);
   const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
   const visibleTrajectories = useMemo(
     () => trajectoryOptions.filter((option) => selectedKeySet.has(option.key)),
     [selectedKeySet, trajectoryOptions],
   );
+  const pinnedMessageCount = useMemo(() => {
+    let count = 0;
+    pinnedMessagesByColumn.forEach((messages) => {
+      count += messages.size;
+    });
+    return count;
+  }, [pinnedMessagesByColumn]);
 
   useEffect(() => {
     scrollRefs.current.length = visibleTrajectories.length;
@@ -98,6 +123,7 @@ export function ComparisonView({
       const nextSet = new Set(selectedKeys);
       if (selected) {
         if (nextSet.size >= MAX_SELECTED_TRAJECTORIES) {
+          toast.warning(`最多选择 ${MAX_SELECTED_TRAJECTORIES} 条 trajectory`);
           return;
         }
         nextSet.add(trajectoryKey);
@@ -110,6 +136,81 @@ export function ComparisonView({
     },
     [allKeys, onSelectionChange, selectedKeys],
   );
+
+  const handleColumnDisplayModeChange = useCallback(
+    (columnKey: string, mode: ColumnDisplayMode, nextRoles: string[]) => {
+      setColumnDisplayModes((current) => {
+        const next = new Map(current);
+        next.set(columnKey, mode);
+        return next;
+      });
+      setColumnRoleFilters((current) => {
+        const next = new Map(current);
+        next.set(columnKey, nextRoles);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleColumnMetaVisibilityChange = useCallback(
+    (columnKey: string, showMeta: boolean) => {
+      setColumnMetaVisibility((current) => {
+        const next = new Map(current);
+        next.set(columnKey, showMeta);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleColumnWidthChange = useCallback((columnKey: string, width: number) => {
+    setColumnWidths((current) => {
+      const next = new Map(current);
+      next.set(columnKey, width);
+      return next;
+    });
+  }, []);
+
+  const handleMessagePinnedChange = useCallback(
+    (columnKey: string, messageKey: string, pinned: boolean) => {
+      setPinnedMessagesByColumn((current) => {
+        const next = new Map(current);
+        const messageKeys = new Set(next.get(columnKey) ?? EMPTY_MESSAGE_KEYS);
+        if (pinned) {
+          messageKeys.add(messageKey);
+        } else {
+          messageKeys.delete(messageKey);
+        }
+
+        if (messageKeys.size === 0) {
+          next.delete(columnKey);
+        } else {
+          next.set(columnKey, messageKeys);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleExportComparison = useCallback(() => {
+    if (visibleTrajectories.length === 0) {
+      toast.warning("请选择至少 1 条 trajectory");
+      return;
+    }
+
+    const exportTrajectories = visibleTrajectories.map((option) =>
+      filterTrajectoryForExport(
+        option.trajectory,
+        columnRoleFilters.get(option.key),
+      ),
+    );
+    const markdown = generateComparisonMarkdown(exportTrajectories);
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    downloadBlob(blob, getExportFilename());
+    toast.success("对比视图已导出");
+  }, [columnRoleFilters, visibleTrajectories]);
 
   useEffect(() => {
     if (!syncScroll) {
@@ -145,8 +246,7 @@ export function ComparisonView({
       <ComparisonToolbar
         allKeys={allKeys}
         selectedKeys={selectedKeys}
-        allRoles={allRoles}
-        roleFilter={roleFilter}
+        selectedMessageCount={pinnedMessageCount}
         syncScroll={syncScroll}
         maxSelection={MAX_SELECTED_TRAJECTORIES}
         trailingAction={
@@ -170,17 +270,15 @@ export function ComparisonView({
                 selectedKeys={selectedKeys}
                 onSelectionChange={onSelectionChange}
                 syncScroll={syncScroll}
-                roleFilter={roleFilter}
                 isFullscreen
                 onSyncScrollChange={onSyncScrollChange}
-                onRoleFilterChange={onRoleFilterChange}
               />
             </FullscreenViewDialog>
           ) : null
         }
         onSelectionChange={onSelectionChange}
-        onRoleFilterChange={onRoleFilterChange}
         onSyncScrollChange={onSyncScrollChange}
+        onExportComparison={handleExportComparison}
       />
 
       <div
@@ -205,30 +303,47 @@ export function ComparisonView({
                   isFullscreen ? "h-full min-h-0" : "h-[680px]",
                 )}
               >
-                {visibleTrajectories.map((option, index) => (
-                  <TrajectoryColumn
-                    key={option.key}
-                    index={index}
-                    trajectory={option.trajectory}
-                    trajectoryKey={option.key}
-                    displayLabel={option.label}
-                    selected={selectedKeySet.has(option.key)}
-                    roleFilter={roleFilter}
-                    setScrollRef={setScrollRef}
-                    onSelectedChange={handleSelectedChange}
-                  />
-                ))}
+                {visibleTrajectories.map((option, index) => {
+                  const columnKey = option.key;
+                  const roleOptions = getTrajectoryRoles([option.trajectory]);
+                  return (
+                    <TrajectoryColumn
+                      key={option.key}
+                      index={index}
+                      trajectory={option.trajectory}
+                      trajectoryKey={option.key}
+                      displayLabel={option.label}
+                      selected={selectedKeySet.has(option.key)}
+                      displayMode={columnDisplayModes.get(columnKey) ?? "all"}
+                      selectedRoles={columnRoleFilters.get(columnKey) ?? roleOptions}
+                      showMeta={columnMetaVisibility.get(columnKey) ?? DEFAULT_SHOW_META}
+                      width={columnWidths.get(columnKey) ?? DEFAULT_COLUMN_WIDTH}
+                      pinnedMessageKeys={
+                        pinnedMessagesByColumn.get(columnKey) ?? EMPTY_MESSAGE_KEYS
+                      }
+                      setScrollRef={setScrollRef}
+                      onSelectedChange={handleSelectedChange}
+                      onDisplayModeChange={(mode, nextRoles) =>
+                        handleColumnDisplayModeChange(columnKey, mode, nextRoles)
+                      }
+                      onShowMetaChange={(showMeta) =>
+                        handleColumnMetaVisibilityChange(columnKey, showMeta)
+                      }
+                      onWidthChange={(width) => handleColumnWidthChange(columnKey, width)}
+                      onMessagePinnedChange={(messageKey, pinned) =>
+                        handleMessagePinnedChange(columnKey, messageKey, pinned)
+                      }
+                    />
+                  );
+                })}
               </div>
             </div>
           ) : (
-            <div
-              className={cn(
-                "flex items-center justify-center text-sm text-muted-foreground",
-                isFullscreen ? "h-full min-h-[320px]" : "h-[320px]",
-              )}
-            >
-              请选择至少一条 trajectory 进行对比。
-            </div>
+            <EmptyState
+              title="请选择至少 1 条 trajectory"
+              description="在左侧勾选要横向对比的 trajectory。"
+              className={cn("rounded-none border-0", isFullscreen ? "h-full" : "h-[320px]")}
+            />
           )}
         </div>
       </div>
@@ -270,20 +385,22 @@ function SelectionSidebar({
       >
         {trajectoryOptions.map((option) => {
           const checked = selectedKeySet.has(option.key);
-          const disabled = !checked && selectedCount >= maxSelection;
+          const atSelectionLimit = !checked && selectedCount >= maxSelection;
           return (
             <label
               key={option.key}
+              title={atSelectionLimit ? `最多选择 ${maxSelection} 条 trajectory` : option.label}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background",
-                disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
+                atSelectionLimit && "text-muted-foreground",
               )}
             >
               <Checkbox
                 checked={checked}
-                disabled={disabled}
                 aria-label={`选择 trajectory ${option.label}`}
-                onCheckedChange={(selected) => onSelectedChange(option.key, selected)}
+                onCheckedChange={(selected) =>
+                  onSelectedChange(option.key, selected === true)
+                }
               />
               <span className="truncate" title={option.label}>
                 {option.label}
@@ -294,4 +411,28 @@ function SelectionSidebar({
       </div>
     </aside>
   );
+}
+
+function filterTrajectoryForExport(
+  trajectory: Trajectory,
+  roleFilter: string[] | undefined,
+): Trajectory {
+  if (roleFilter === undefined) {
+    return trajectory;
+  }
+
+  const allowedRoles = new Set(roleFilter.map((role) => normalizeTrajectoryRole(role)));
+  const messages = trajectory.messages.filter((message) =>
+    allowedRoles.has(normalizeTrajectoryRole(message.role)),
+  );
+  return {
+    ...trajectory,
+    message_count: messages.length,
+    messages,
+  };
+}
+
+function getExportFilename(): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `agentlens-comparison-${timestamp}.md`;
 }
