@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Plus, X } from "lucide-react";
+import { Info, Plus, X } from "lucide-react";
 
 import type { LabelField, LabelOption } from "@/api/types";
 import { Button } from "@/components/ui/button";
@@ -143,11 +143,30 @@ export function FieldEditorModal({
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <div className="flex gap-2">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="space-y-1 text-muted-foreground">
+                <p>
+                  Key 是稳定的内部标识，用于保存、导出和筛选；Label 是展示给用户看的字段名称。
+                </p>
+                <p>
+                  例如：Key 填 <code className="rounded bg-background px-1">quality</code>，
+                  Label 填 <code className="rounded bg-background px-1">回答质量</code>。
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <FieldControl label="Key*">
+            <FieldControl
+              label="字段 Key（内部标识）*"
+              description="保存后不可修改。只能用小写字母、数字、下划线，且必须以字母开头。"
+            >
               <Input
                 value={draft.key}
                 disabled={isEditing}
+                placeholder="quality"
                 onChange={(event) => {
                   setDraft((current) => ({ ...current, key: event.target.value }));
                   setErrors((current) => ({ ...current, key: undefined }));
@@ -156,9 +175,13 @@ export function FieldEditorModal({
               {keyError !== undefined ? <ErrorText>{keyError}</ErrorText> : null}
             </FieldControl>
 
-            <FieldControl label="Label*">
+            <FieldControl
+              label="显示名称 Label*"
+              description="展示在表格列、行详情和打标统计中，可以使用中文。"
+            >
               <Input
                 value={draft.label}
+                placeholder="回答质量"
                 onChange={(event) => {
                   setDraft((current) => ({ ...current, label: event.target.value }));
                   setErrors((current) => ({ ...current, label: undefined }));
@@ -168,7 +191,7 @@ export function FieldEditorModal({
             </FieldControl>
           </div>
 
-          <FieldControl label="Type">
+          <FieldControl label="字段类型">
             <Select value={draft.type} onValueChange={handleTypeChange}>
               <SelectTrigger className="max-w-xs">
                 <SelectValue />
@@ -183,8 +206,13 @@ export function FieldEditorModal({
 
           {selectOptionsVisible ? (
             <div className="space-y-3 border-t pt-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium">Options</div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-medium">选项</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Value 是实际保存的选项值；Label 是用户在打标时看到的选项文案。
+                  </div>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -207,18 +235,26 @@ export function FieldEditorModal({
                 {draft.options.map((option, index) => (
                   <div key={option.id} className="rounded-md border p-3">
                     <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
-                      <FieldControl label="value">
+                      <FieldControl
+                        label="选项值 Value"
+                        description="用于保存和导出，建议使用小写英文或短代码。"
+                      >
                         <Input
                           value={option.value}
+                          placeholder="good"
                           onChange={(event) => {
                             updateOption(index, { value: event.target.value });
                             setErrors((current) => ({ ...current, options: undefined }));
                           }}
                         />
                       </FieldControl>
-                      <FieldControl label="label">
+                      <FieldControl
+                        label="显示文案 Label"
+                        description="展示在下拉选项、统计和筛选里。"
+                      >
                         <Input
                           value={option.label}
+                          placeholder="好"
                           onChange={(event) =>
                             updateOption(index, { label: event.target.value })
                           }
@@ -257,10 +293,23 @@ export function FieldEditorModal({
   );
 }
 
-function FieldControl({ label, children }: { label: string; children: ReactNode }) {
+function FieldControl({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: ReactNode;
+}) {
   return (
     <Label className="grid gap-2">
       <span>{label}</span>
+      {description !== undefined ? (
+        <span className="text-xs font-normal leading-5 text-muted-foreground">
+          {description}
+        </span>
+      ) : null}
       {children}
     </Label>
   );
@@ -279,7 +328,7 @@ function ColorPicker({
 }) {
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium">color</div>
+      <div className="text-sm font-medium">颜色</div>
       <div className="flex max-w-[15rem] flex-wrap gap-1.5">
         <button
           type="button"
@@ -371,7 +420,7 @@ function validateDraft(
     errors.key = keyError;
   }
   if (draft.label.trim().length === 0) {
-    errors.label = "Label 必填";
+    errors.label = "显示名称 Label 必填";
   }
   if (draft.type !== "text") {
     if (draft.options.length === 0) {
@@ -381,7 +430,7 @@ function validateDraft(
       for (const option of draft.options) {
         const value = option.value.trim();
         if (seenValues.has(value)) {
-          errors.options = `选项 value 重复：${value}`;
+          errors.options = `选项值 Value 重复：${value}`;
           break;
         }
         seenValues.add(value);
@@ -398,13 +447,13 @@ function validateKey(
 ): string | undefined {
   const normalizedKey = key.trim();
   if (normalizedKey.length === 0) {
-    return "Key 必填";
+    return "字段 Key 必填";
   }
   if (!KEY_PATTERN.test(normalizedKey)) {
-    return "Key 需匹配 ^[a-z][a-z0-9_]*$";
+    return "字段 Key 需匹配 ^[a-z][a-z0-9_]*$";
   }
   if (normalizedKey !== originalKey && existingKeys.includes(normalizedKey)) {
-    return "Key 已存在";
+    return "字段 Key 已存在";
   }
   return undefined;
 }
