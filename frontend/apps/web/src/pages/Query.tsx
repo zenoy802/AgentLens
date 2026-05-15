@@ -69,6 +69,13 @@ type DragState = {
   startHeight: number;
 };
 
+type ResultSnapshot = {
+  connectionId: number;
+  sql: string;
+  queryId: number;
+  executedAt: string;
+};
+
 type ExecutionGuard = {
   connectionId: number;
   sql: string;
@@ -124,6 +131,7 @@ export function Query() {
   const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
+  const [resultSnapshot, setResultSnapshot] = useState<ResultSnapshot | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
   const [detailRowId, setDetailRowId] = useState<string | null>(null);
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
@@ -164,6 +172,12 @@ export function Query() {
   const trajectoryRequestIsCurrent =
     trajectoryRequestKey !== null &&
     trajectoryRequestedKeyRef.current === trajectoryRequestKey;
+  const resultIsStale =
+    execution !== null &&
+    resultSnapshot !== null &&
+    queryId === resultSnapshot.queryId &&
+    execution.executed_at === resultSnapshot.executedAt &&
+    (connectionId !== resultSnapshot.connectionId || sql !== resultSnapshot.sql);
 
   useBeforeUnloadGuard(isDirty);
 
@@ -425,6 +439,12 @@ export function Query() {
       }
 
       setResult(result);
+      setResultSnapshot({
+        connectionId: executionConnectionId,
+        sql: executionSql,
+        queryId: result.query_id,
+        executedAt: result.execution.executed_at,
+      });
       useLabelsStore
         .getState()
         .setActiveQuery(result.query_id, result.execution.executed_at);
@@ -588,7 +608,20 @@ export function Query() {
     }
 
     setSql(nextSql);
-    clearCurrentQueryIdentity();
+    setLastError(null);
+    if (!hasResultToPreserve()) {
+      clearCurrentQueryIdentity();
+    }
+  }
+
+  function hasResultToPreserve(): boolean {
+    const currentState = useQueryStore.getState();
+    return (
+      currentState.execution !== null &&
+      resultSnapshot !== null &&
+      currentState.queryId === resultSnapshot.queryId &&
+      currentState.execution.executed_at === resultSnapshot.executedAt
+    );
   }
 
   function shouldExecuteSavedQuery(): boolean {
@@ -611,6 +644,7 @@ export function Query() {
     setDetailRow(null);
     setDetailRowId(null);
     setDetailRowNumber(null);
+    setResultSnapshot(null);
     useLabelsStore.getState().setActiveQuery(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
       columns: [],
@@ -699,6 +733,7 @@ export function Query() {
   }
 
   function handleDividerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
       pointerId: event.pointerId,
@@ -713,7 +748,10 @@ export function Query() {
       return;
     }
 
-    setManualEditorHeight(clampEditorHeight(dragState.startHeight + event.clientY - dragState.startY));
+    event.preventDefault();
+    setManualEditorHeight(
+      clampEditorHeight(dragState.startHeight + event.clientY - dragState.startY),
+    );
   }
 
   function handleDividerPointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -821,11 +859,14 @@ export function Query() {
                   role="separator"
                   aria-orientation="horizontal"
                   aria-label="调整 SQL 编辑器高度"
-                  className="flex h-4 cursor-row-resize items-center justify-center text-muted-foreground hover:bg-accent"
+                  className="flex h-4 cursor-row-resize touch-none select-none items-center justify-center text-muted-foreground hover:bg-accent"
                   onPointerDown={handleDividerPointerDown}
                   onPointerMove={handleDividerPointerMove}
                   onPointerUp={handleDividerPointerUp}
                   onPointerCancel={handleDividerPointerUp}
+                  onLostPointerCapture={() => {
+                    dragStateRef.current = null;
+                  }}
                   onDoubleClick={() => setManualEditorHeight(null)}
                 >
                   <GripHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -838,6 +879,15 @@ export function Query() {
         <ViewConfigBar queryId={queryId} />
 
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
+          {resultIsStale ? (
+            <Alert className="mb-3 border-amber-200 bg-amber-50 text-amber-900">
+              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+              <AlertTitle>SQL 已修改</AlertTitle>
+              <AlertDescription>
+                下方仍显示上次运行结果。重新运行 SQL 后会刷新结果。
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <ResultPlaceholder
             error={lastError}
             isExecuting={isExecuting}
