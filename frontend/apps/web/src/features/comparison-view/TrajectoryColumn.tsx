@@ -49,16 +49,20 @@ interface TrajectoryColumnProps {
   displayLabel: string;
   selected: boolean;
   displayMode: ColumnDisplayMode;
-  selectedRoles: string[];
+  selectedRoles?: string[];
   showMeta: boolean;
   width: number;
   pinnedMessageKeys: Set<string>;
   setScrollRef: (index: number, node: HTMLDivElement | null) => void;
   onSelectedChange: (trajectoryKey: string, selected: boolean) => void;
-  onDisplayModeChange: (mode: ColumnDisplayMode, nextRoles: string[]) => void;
-  onShowMetaChange: (showMeta: boolean) => void;
-  onWidthChange: (width: number) => void;
-  onMessagePinnedChange: (messageKey: string, pinned: boolean) => void;
+  onDisplayModeChange: (
+    columnKey: string,
+    mode: ColumnDisplayMode,
+    nextRoles: string[],
+  ) => void;
+  onShowMetaChange: (columnKey: string, showMeta: boolean) => void;
+  onWidthChange: (columnKey: string, width: number) => void;
+  onMessagePinnedChange: (columnKey: string, messageKey: string, pinned: boolean) => void;
 }
 
 type ResizeState = {
@@ -90,17 +94,18 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
   const resizeStateRef = useRef<ResizeState | null>(null);
   const roleOptions = useMemo(() => getTrajectoryRoles([trajectory]), [trajectory]);
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
+  const activeSelectedRoles = selectedRoles ?? roleOptions;
   const selectedRoleSet = useMemo(
-    () => new Set(selectedRoles.map((role) => normalizeTrajectoryRole(role))),
-    [selectedRoles],
+    () => new Set(activeSelectedRoles.map((role) => normalizeTrajectoryRole(role))),
+    [activeSelectedRoles],
   );
   const activeRoleFilter = useMemo(
     () =>
       roleOptions.every((role) => selectedRoleSet.has(normalizeTrajectoryRole(role))) &&
-      selectedRoles.length === roleOptions.length
+      activeSelectedRoles.length === roleOptions.length
         ? undefined
-        : selectedRoles,
-    [roleOptions, selectedRoleSet, selectedRoles],
+        : activeSelectedRoles,
+    [activeSelectedRoles, roleOptions, selectedRoleSet],
   );
   const setColumnScrollRef = useCallback(
     (node: HTMLDivElement | null) => setScrollRef(index, node),
@@ -110,9 +115,13 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
   const handleModeChange = useCallback(
     (value: string) => {
       const nextMode = value as ColumnDisplayMode;
-      onDisplayModeChange(nextMode, getRolesForMode(nextMode, roleOptions, selectedRoles));
+      onDisplayModeChange(
+        trajectoryKey,
+        nextMode,
+        getRolesForMode(nextMode, roleOptions, activeSelectedRoles),
+      );
     },
-    [onDisplayModeChange, roleOptions, selectedRoles],
+    [activeSelectedRoles, onDisplayModeChange, roleOptions, trajectoryKey],
   );
 
   const handleRoleToggle = useCallback(
@@ -125,13 +134,14 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
         nextRoleSet.delete(normalized);
       }
       onDisplayModeChange(
+        trajectoryKey,
         "custom",
         roleOptions.filter((option) =>
           nextRoleSet.has(normalizeTrajectoryRole(option)),
         ),
       );
     },
-    [onDisplayModeChange, roleOptions, selectedRoleSet],
+    [onDisplayModeChange, roleOptions, selectedRoleSet, trajectoryKey],
   );
 
   const renderMessageActions = useCallback(
@@ -148,7 +158,7 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
           aria-pressed={pinned}
           aria-label={pinned ? "取消标记 message" : "标记 message"}
           title={pinned ? "取消标记" : "标记"}
-          onClick={() => onMessagePinnedChange(messageKey, !pinned)}
+          onClick={() => onMessagePinnedChange(trajectoryKey, messageKey, !pinned)}
         >
           <Pin
             className={cn("h-3.5 w-3.5", pinned && "fill-current")}
@@ -157,7 +167,7 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
         </button>
       );
     },
-    [onMessagePinnedChange, pinnedMessageKeys],
+    [onMessagePinnedChange, pinnedMessageKeys, trajectoryKey],
   );
 
   const getMessageClassName = useCallback(
@@ -187,9 +197,12 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
       if (state === null || state.pointerId !== event.pointerId) {
         return;
       }
-      onWidthChange(clampColumnWidth(state.startWidth + event.clientX - state.startX));
+      onWidthChange(
+        trajectoryKey,
+        clampColumnWidth(state.startWidth + event.clientX - state.startX),
+      );
     },
-    [onWidthChange],
+    [onWidthChange, trajectoryKey],
   );
 
   const handleResizePointerEnd = useCallback(
@@ -275,7 +288,9 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
               <DropdownMenuCheckboxItem
                 checked={showMeta}
                 onSelect={(event) => event.preventDefault()}
-                onCheckedChange={(checked) => onShowMetaChange(checked === true)}
+                onCheckedChange={(checked) =>
+                  onShowMetaChange(trajectoryKey, checked === true)
+                }
               >
                 显示元信息
               </DropdownMenuCheckboxItem>
@@ -292,7 +307,7 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
                 )}
                 aria-label={`设置列宽 ${preset}px`}
                 title={`${preset}px`}
-                onClick={() => onWidthChange(preset)}
+                onClick={() => onWidthChange(trajectoryKey, preset)}
               >
                 {preset}
               </button>

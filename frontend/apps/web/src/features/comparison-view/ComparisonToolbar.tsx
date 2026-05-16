@@ -33,7 +33,7 @@ export function ComparisonToolbar({
   onExportComparison,
 }: ComparisonToolbarProps) {
   const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
-  const selectedCount = allKeys.filter((key) => selectedKeySet.has(key)).length;
+  const selectedCount = selectedKeys.length;
 
   function selectAll() {
     onSelectionChange(allKeys.slice(0, maxSelection));

@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import { MessageBubble } from "./MessageBubble";
 import type {
   MessageClassNameResolver,
@@ -27,7 +29,10 @@ export function TrajectoryViewer({
   expandLabel,
   collapseLabel,
 }: TrajectoryViewerProps) {
-  const messages = filterMessagesByRole(trajectory.messages, filterRoles);
+  const messages = useMemo(
+    () => filterMessagesByRole(trajectory.messages, filterRoles),
+    [filterRoles, trajectory.messages],
+  );
 
   return (
     <section className={joinClassNames("agentlens-trajectory-viewer", className)}>

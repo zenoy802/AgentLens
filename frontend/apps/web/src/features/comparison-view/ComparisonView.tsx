@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,10 +11,7 @@ import {
   getTrajectoryOptions,
   type TrajectoryOption,
 } from "@/features/trajectory-view/trajectoryOptions";
-import {
-  getTrajectoryRoles,
-  normalizeTrajectoryRole,
-} from "@/features/trajectory-view/trajectoryRoles";
+import { normalizeTrajectoryRole } from "@/features/trajectory-view/trajectoryRoles";
 import { downloadBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +32,7 @@ export interface ComparisonViewProps {
 const MAX_SELECTED_TRAJECTORIES = 10;
 const DEFAULT_SHOW_META = true;
 const EMPTY_MESSAGE_KEYS = new Set<string>();
+const SELECTION_ROW_HEIGHT = 36;
 
 export function ComparisonView({
   trajectories,
@@ -63,22 +62,41 @@ export function ComparisonView({
   const allKeys = useMemo(() => trajectoryOptions.map((option) => option.key), [
     trajectoryOptions,
   ]);
-  const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
-  const visibleTrajectories = useMemo(
-    () => trajectoryOptions.filter((option) => selectedKeySet.has(option.key)),
-    [selectedKeySet, trajectoryOptions],
+  const optionByKey = useMemo(
+    () => new Map(trajectoryOptions.map((option) => [option.key, option])),
+    [trajectoryOptions],
   );
+  const keyOrder = useMemo(
+    () => new Map(allKeys.map((key, index) => [key, index])),
+    [allKeys],
+  );
+  const validSelectedKeys = useMemo(
+    () => filterCurrentTrajectoryKeys(selectedKeys, keyOrder),
+    [keyOrder, selectedKeys],
+  );
+  const selectedKeysRef = useRef(validSelectedKeys);
+  selectedKeysRef.current = validSelectedKeys;
+  const selectedKeySet = useMemo(() => new Set(validSelectedKeys), [validSelectedKeys]);
+  const visibleTrajectories = useMemo(
+    () =>
+      validSelectedKeys.flatMap((key) => {
+        const option = optionByKey.get(key);
+        return option === undefined ? [] : [option];
+      }),
+    [optionByKey, validSelectedKeys],
+  );
+  const visibleTrajectoryCount = visibleTrajectories.length;
   const pinnedMessageCount = useMemo(() => {
     let count = 0;
-    pinnedMessagesByColumn.forEach((messages) => {
+    for (const messages of pinnedMessagesByColumn.values()) {
       count += messages.size;
-    });
+    }
     return count;
   }, [pinnedMessagesByColumn]);
 
   useEffect(() => {
-    scrollRefs.current.length = visibleTrajectories.length;
-  }, [visibleTrajectories.length]);
+    scrollRefs.current.length = visibleTrajectoryCount;
+  }, [visibleTrajectoryCount]);
 
   const handleScroll = useCallback(
     (sourceIdx: number, source: HTMLDivElement) => {
@@ -120,9 +138,9 @@ export function ComparisonView({
 
   const handleSelectedChange = useCallback(
     (trajectoryKey: string, selected: boolean) => {
-      const nextSet = new Set(selectedKeys);
+      const nextSet = new Set(selectedKeysRef.current);
       if (selected) {
-        if (nextSet.size >= MAX_SELECTED_TRAJECTORIES) {
+        if (!nextSet.has(trajectoryKey) && nextSet.size >= MAX_SELECTED_TRAJECTORIES) {
           toast.warning(`最多选择 ${MAX_SELECTED_TRAJECTORIES} 条 trajectory`);
           return;
         }
@@ -131,10 +149,10 @@ export function ComparisonView({
         nextSet.delete(trajectoryKey);
       }
       onSelectionChange(
-        allKeys.filter((key) => nextSet.has(key)).slice(0, MAX_SELECTED_TRAJECTORIES),
+        sortTrajectoryKeys([...nextSet], keyOrder).slice(0, MAX_SELECTED_TRAJECTORIES),
       );
     },
-    [allKeys, onSelectionChange, selectedKeys],
+    [keyOrder, onSelectionChange],
   );
 
   const handleColumnDisplayModeChange = useCallback(
@@ -217,8 +235,9 @@ export function ComparisonView({
       return;
     }
 
-    const cleanupCallbacks = visibleTrajectories
-      .map((_, index) => {
+    const cleanupCallbacks = Array.from(
+      { length: visibleTrajectoryCount },
+      (_, index) => {
         const node = scrollRefs.current[index];
         if (node === null || node === undefined) {
           return null;
@@ -227,13 +246,13 @@ export function ComparisonView({
         const handleNativeScroll = () => handleScroll(index, node);
         node.addEventListener("scroll", handleNativeScroll, { passive: true });
         return () => node.removeEventListener("scroll", handleNativeScroll);
-      })
-      .filter((cleanup): cleanup is () => void => cleanup !== null);
+      },
+    ).filter((cleanup): cleanup is () => void => cleanup !== null);
 
     return () => {
       cleanupCallbacks.forEach((cleanup) => cleanup());
     };
-  }, [handleScroll, scrollRefVersion, syncScroll, visibleTrajectories]);
+  }, [handleScroll, scrollRefVersion, syncScroll, visibleTrajectoryCount]);
 
   return (
     <div
@@ -245,7 +264,7 @@ export function ComparisonView({
     >
       <ComparisonToolbar
         allKeys={allKeys}
-        selectedKeys={selectedKeys}
+        selectedKeys={validSelectedKeys}
         selectedMessageCount={pinnedMessageCount}
         syncScroll={syncScroll}
         maxSelection={MAX_SELECTED_TRAJECTORIES}
@@ -267,7 +286,7 @@ export function ComparisonView({
             >
               <ComparisonView
                 trajectories={trajectories}
-                selectedKeys={selectedKeys}
+                selectedKeys={validSelectedKeys}
                 onSelectionChange={onSelectionChange}
                 syncScroll={syncScroll}
                 isFullscreen
@@ -289,7 +308,8 @@ export function ComparisonView({
       >
         <SelectionSidebar
           trajectoryOptions={trajectoryOptions}
-          selectedKeys={selectedKeys}
+          selectedKeySet={selectedKeySet}
+          selectedCount={validSelectedKeys.length}
           maxSelection={MAX_SELECTED_TRAJECTORIES}
           isFullscreen={isFullscreen}
           onSelectedChange={handleSelectedChange}
@@ -305,7 +325,6 @@ export function ComparisonView({
               >
                 {visibleTrajectories.map((option, index) => {
                   const columnKey = option.key;
-                  const roleOptions = getTrajectoryRoles([option.trajectory]);
                   return (
                     <TrajectoryColumn
                       key={option.key}
@@ -313,9 +332,9 @@ export function ComparisonView({
                       trajectory={option.trajectory}
                       trajectoryKey={option.key}
                       displayLabel={option.label}
-                      selected={selectedKeySet.has(option.key)}
+                      selected
                       displayMode={columnDisplayModes.get(columnKey) ?? "all"}
-                      selectedRoles={columnRoleFilters.get(columnKey) ?? roleOptions}
+                      selectedRoles={columnRoleFilters.get(columnKey)}
                       showMeta={columnMetaVisibility.get(columnKey) ?? DEFAULT_SHOW_META}
                       width={columnWidths.get(columnKey) ?? DEFAULT_COLUMN_WIDTH}
                       pinnedMessageKeys={
@@ -323,16 +342,10 @@ export function ComparisonView({
                       }
                       setScrollRef={setScrollRef}
                       onSelectedChange={handleSelectedChange}
-                      onDisplayModeChange={(mode, nextRoles) =>
-                        handleColumnDisplayModeChange(columnKey, mode, nextRoles)
-                      }
-                      onShowMetaChange={(showMeta) =>
-                        handleColumnMetaVisibilityChange(columnKey, showMeta)
-                      }
-                      onWidthChange={(width) => handleColumnWidthChange(columnKey, width)}
-                      onMessagePinnedChange={(messageKey, pinned) =>
-                        handleMessagePinnedChange(columnKey, messageKey, pinned)
-                      }
+                      onDisplayModeChange={handleColumnDisplayModeChange}
+                      onShowMetaChange={handleColumnMetaVisibilityChange}
+                      onWidthChange={handleColumnWidthChange}
+                      onMessagePinnedChange={handleMessagePinnedChange}
                     />
                   );
                 })}
@@ -353,21 +366,27 @@ export function ComparisonView({
 
 function SelectionSidebar({
   trajectoryOptions,
-  selectedKeys,
+  selectedKeySet,
+  selectedCount,
   maxSelection,
   isFullscreen,
   onSelectedChange,
 }: {
   trajectoryOptions: TrajectoryOption[];
-  selectedKeys: string[];
+  selectedKeySet: Set<string>;
+  selectedCount: number;
   maxSelection: number;
   isFullscreen: boolean;
   onSelectedChange: (trajectoryKey: string, selected: boolean) => void;
 }) {
-  const selectedKeySet = new Set(selectedKeys);
-  const selectedCount = trajectoryOptions.filter((option) =>
-    selectedKeySet.has(option.key),
-  ).length;
+  const scrollParentRef = useRef<HTMLDivElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: trajectoryOptions.length,
+    estimateSize: () => SELECTION_ROW_HEIGHT,
+    getItemKey: (index) => trajectoryOptions[index]?.key ?? index,
+    getScrollElement: () => scrollParentRef.current,
+    overscan: 12,
+  });
 
   return (
     <aside className="flex min-h-0 flex-col border-r bg-muted/20">
@@ -378,36 +397,52 @@ function SelectionSidebar({
         </div>
       </div>
       <div
+        ref={scrollParentRef}
         className={cn(
-          "min-h-0 flex-1 space-y-1 overflow-y-auto p-2",
+          "min-h-0 flex-1 overflow-y-auto p-2",
           !isFullscreen && "max-h-[680px]",
         )}
       >
-        {trajectoryOptions.map((option) => {
-          const checked = selectedKeySet.has(option.key);
-          const atSelectionLimit = !checked && selectedCount >= maxSelection;
-          return (
-            <label
-              key={option.key}
-              title={atSelectionLimit ? `最多选择 ${maxSelection} 条 trajectory` : option.label}
-              className={cn(
-                "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background",
-                atSelectionLimit && "text-muted-foreground",
-              )}
-            >
-              <Checkbox
-                checked={checked}
-                aria-label={`选择 trajectory ${option.label}`}
-                onCheckedChange={(selected) =>
-                  onSelectedChange(option.key, selected === true)
+        <div
+          className="relative w-full"
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+            const option = trajectoryOptions[virtualItem.index];
+            if (option === undefined) {
+              return null;
+            }
+
+            const checked = selectedKeySet.has(option.key);
+            const atSelectionLimit = !checked && selectedCount >= maxSelection;
+            return (
+              <label
+                key={option.key}
+                title={
+                  atSelectionLimit
+                    ? `最多选择 ${maxSelection} 条 trajectory`
+                    : option.label
                 }
-              />
-              <span className="truncate" title={option.label}>
-                {option.label}
-              </span>
-            </label>
-          );
-        })}
+                className={cn(
+                  "absolute left-0 top-0 flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-sm hover:bg-background",
+                  atSelectionLimit && "text-muted-foreground",
+                )}
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+              >
+                <Checkbox
+                  checked={checked}
+                  aria-label={`选择 trajectory ${option.label}`}
+                  onCheckedChange={(selected) =>
+                    onSelectedChange(option.key, selected === true)
+                  }
+                />
+                <span className="truncate" title={option.label}>
+                  {option.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </div>
     </aside>
   );
@@ -435,4 +470,22 @@ function filterTrajectoryForExport(
 function getExportFilename(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   return `agentlens-comparison-${timestamp}.md`;
+}
+
+function filterCurrentTrajectoryKeys(
+  keys: string[],
+  keyOrder: Map<string, number>,
+): string[] {
+  return sortTrajectoryKeys([...new Set(keys)].filter((key) => keyOrder.has(key)), keyOrder);
+}
+
+function sortTrajectoryKeys(keys: string[], keyOrder: Map<string, number>): string[] {
+  return keys.sort((left, right) => {
+    const leftOrder = keyOrder.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = keyOrder.get(right) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.localeCompare(right);
+  });
 }
