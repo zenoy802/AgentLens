@@ -24,7 +24,10 @@ type ConnectionFormDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+type ConnectionDbType = "mysql" | "odps";
+
 const DEFAULT_EXTRA_PARAMS = "{\n  \"charset\": \"utf8mb4\"\n}";
+const DEFAULT_ODPS_EXTRA_PARAMS = "{\n  \"tunnel\": true\n}";
 
 export function ConnectionFormDialog({
   open,
@@ -37,9 +40,9 @@ export function ConnectionFormDialog({
   const isEditMode = connection !== null;
 
   const [name, setName] = useState("");
-  const [dbType, setDbType] = useState("mysql");
+  const [dbType, setDbType] = useState<ConnectionDbType>("mysql");
   const [host, setHost] = useState("");
-  const [port, setPort] = useState(3306);
+  const [port, setPort] = useState<number | null>(3306);
   const [database, setDatabase] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -52,9 +55,9 @@ export function ConnectionFormDialog({
 
     if (connection !== null) {
       setName(connection.name);
-      setDbType(connection.db_type);
+      setDbType(connection.db_type as ConnectionDbType);
       setHost(connection.host ?? "");
-      setPort(connection.port ?? 3306);
+      setPort(connection.db_type === "odps" ? null : connection.port ?? 3306);
       setDatabase(connection.database);
       setUsername(connection.username ?? "");
       setPassword("");
@@ -81,6 +84,12 @@ export function ConnectionFormDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const dbTypeChanged = connection !== null && connection.db_type !== dbType;
+    const secretRequired = (!isEditMode && dbType === "odps") || dbTypeChanged;
+    if (secretRequired && password.length === 0) {
+      toast.error("VALIDATION_ERROR: 切换数据库类型时需要重新输入密钥或密码");
+      return;
+    }
 
     let extraParams: Record<string, string | number | boolean | null> | undefined;
     const trimmedExtra = extraParamsText.trim();
@@ -93,11 +102,12 @@ export function ConnectionFormDialog({
       }
     }
 
+    const resolvedPort = dbType === "odps" ? null : port ?? 3306;
     const basePayload = {
       name: name.trim(),
-      db_type: dbType as "mysql",
+      db_type: dbType,
       host: host.trim() || null,
-      port,
+      port: resolvedPort,
       database: database.trim(),
       username: username.trim() || null,
       extra_params: extraParams ?? null,
@@ -130,6 +140,10 @@ export function ConnectionFormDialog({
   }
 
   const isPending = createConnection.isPending || updateConnection.isPending;
+  const isOdps = dbType === "odps";
+  const connectionLabel = isOdps ? "MaxCompute" : "MySQL";
+  const dbTypeChanged = connection !== null && connection.db_type !== dbType;
+  const secretRequired = (!isEditMode && isOdps) || dbTypeChanged;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -140,7 +154,7 @@ export function ConnectionFormDialog({
             <DialogTitle>{isEditMode ? "编辑连接" : "新建连接"}</DialogTitle>
           </div>
           <DialogDescription>
-            {isEditMode ? "修改数据源连接配置" : "添加一个新的 MySQL 数据源连接"}
+            {isEditMode ? "修改数据源连接配置" : `添加一个新的 ${connectionLabel} 数据源连接`}
           </DialogDescription>
         </DialogHeader>
 
@@ -165,65 +179,92 @@ export function ConnectionFormDialog({
             <select
               className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
               value={dbType}
-              onChange={(e) => setDbType(e.target.value)}
+              onChange={(e) => {
+                const nextType = e.target.value as ConnectionDbType;
+                setDbType(nextType);
+                setPort(nextType === "odps" ? null : 3306);
+                setExtraParamsText(
+                  nextType === "odps" ? DEFAULT_ODPS_EXTRA_PARAMS : DEFAULT_EXTRA_PARAMS,
+                );
+              }}
             >
               <option value="mysql">MySQL</option>
+              <option value="odps">MaxCompute (ODPS)</option>
             </select>
           </label>
 
-          <div className="grid grid-cols-3 gap-3">
-            <label className="col-span-2 block text-sm font-medium">
-              主机
+          <div
+            className={isOdps ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-3"}
+          >
+            <label
+              className={
+                isOdps ? "block text-sm font-medium" : "col-span-2 block text-sm font-medium"
+              }
+            >
+              {isOdps ? "Endpoint" : "主机"}
               <input
                 className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                placeholder="localhost"
+                required={isOdps}
+                placeholder={
+                  isOdps ? "https://service.cn-hangzhou.maxcompute.aliyun.com/api" : "localhost"
+                }
               />
             </label>
-            <label className="block text-sm font-medium">
-              端口
-              <input
-                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
-                type="number"
-                value={port}
-                onChange={(e) => setPort(Number(e.target.value))}
-                min={1}
-                max={65535}
-              />
-            </label>
+            {!isOdps ? (
+              <label className="block text-sm font-medium">
+                端口
+                <input
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                  type="number"
+                  value={port ?? 3306}
+                  onChange={(e) => setPort(Number(e.target.value))}
+                  min={1}
+                  max={65535}
+                />
+              </label>
+            ) : null}
           </div>
 
           <label className="block text-sm font-medium">
-            数据库
+            {isOdps ? "Project" : "数据库"}
             <input
               className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
               value={database}
               onChange={(e) => setDatabase(e.target.value)}
               required
               maxLength={200}
-              placeholder="agent_logs"
+              placeholder={isOdps ? "maxcompute_project" : "agent_logs"}
             />
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm font-medium">
-              用户名
+              {isOdps ? "AccessKey ID" : "用户名"}
               <input
                 className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 maxLength={200}
+                required={isOdps}
               />
             </label>
             <label className="block text-sm font-medium">
-              密码
+              {isOdps ? "AccessKey Secret" : "密码"}
               <input
                 className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={isEditMode ? "留空则不修改密码" : undefined}
+                placeholder={
+                  dbTypeChanged
+                    ? "切换数据库类型时必须重新输入"
+                    : isEditMode
+                      ? "留空则不修改密码"
+                      : undefined
+                }
+                required={secretRequired}
               />
             </label>
           </div>

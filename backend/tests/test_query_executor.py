@@ -26,6 +26,8 @@ from app.services.query_executor import ExecutorService
 FETCHMANY_ROW_LIMIT_PLUS_ONE = 3
 TIMEOUT_SECONDS = 3
 MYSQL_POOL_SIZE = 5
+ODPS_CONNECTION_ID = 2
+ODPS_TIMEOUT_SECONDS = 8
 
 
 class FakeCursor:
@@ -122,6 +124,83 @@ class FakeConnectionError(Exception):
         super().__init__(2003, "Can't connect to MySQL server")
 
 
+class FakeOdpsTimeoutError(Exception):
+    pass
+
+
+class FakeOdpsColumn:
+    def __init__(self, name: str, type_name: str) -> None:
+        self.name = name
+        self.type = type_name
+
+
+class FakeOdpsSchema:
+    def __init__(self, columns: Sequence[FakeOdpsColumn]) -> None:
+        self.columns = columns
+
+
+class FakeOdpsRecord:
+    def __init__(self, values: Sequence[Any]) -> None:
+        self.values = list(values)
+
+
+class FakeOdpsReader:
+    def __init__(self, rows: Sequence[FakeOdpsRecord], schema: FakeOdpsSchema) -> None:
+        self.rows = list(rows)
+        self.schema = schema
+
+    def __iter__(self) -> FakeOdpsReader:
+        return self
+
+    def __next__(self) -> FakeOdpsRecord:
+        if not self.rows:
+            raise StopIteration
+        return self.rows.pop(0)
+
+    def __enter__(self) -> FakeOdpsReader:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+
+class FakeOdpsInstance:
+    def __init__(
+        self,
+        *,
+        reader: FakeOdpsReader | None = None,
+        wait_error: BaseException | None = None,
+    ) -> None:
+        self.reader = reader
+        self.wait_error = wait_error
+        self.wait_timeout: int | None = None
+        self.open_reader_kwargs: dict[str, object] | None = None
+        self.stopped = False
+
+    def wait_for_success(self, *, timeout: int) -> None:
+        self.wait_timeout = timeout
+        if self.wait_error is not None:
+            raise self.wait_error
+
+    def open_reader(self, **kwargs: object) -> FakeOdpsReader:
+        self.open_reader_kwargs = kwargs
+        assert self.reader is not None
+        return self.reader
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class FakeOdpsClient:
+    def __init__(self, instance: FakeOdpsInstance) -> None:
+        self.instance = instance
+        self.run_sql_calls: list[tuple[str, dict[str, object]]] = []
+
+    def run_sql(self, sql: str, **kwargs: object) -> FakeOdpsInstance:
+        self.run_sql_calls.append((sql, kwargs))
+        return self.instance
+
+
 class BrokenDecryptor:
     def decrypt_secret(self, value: bytes | None) -> str | None:
         assert value is None or isinstance(value, bytes)
@@ -139,6 +218,22 @@ def _connection(connection_id: int = 1) -> Connection:
         username="reader",
         password_enc=None,
         extra_params=None,
+        default_timeout=30,
+        default_row_limit=10000,
+    )
+
+
+def _odps_connection(connection_id: int = ODPS_CONNECTION_ID) -> Connection:
+    return Connection(
+        id=connection_id,
+        name="odps",
+        db_type="odps",
+        host="https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+        port=None,
+        database="project",
+        username="access-id",
+        password_enc=None,
+        extra_params='{"quota_name": "quota-a", "tunnel": true, "limit": true}',
         default_timeout=30,
         default_row_limit=10000,
     )
@@ -236,6 +331,93 @@ def test_execute_converts_datetime_and_json_string(monkeypatch: pytest.MonkeyPat
     assert executor_result.rows == [
         {"created_at": "2024-01-02T03:04:05+00:00", "payload": {"ok": True}}
     ]
+
+
+def test_execute_odps_uses_pyodps_and_marks_truncated(monkeypatch: pytest.MonkeyPatch) -> None:
+    schema = FakeOdpsSchema(
+        [
+            FakeOdpsColumn("id", "bigint"),
+            FakeOdpsColumn("payload", "string"),
+            FakeOdpsColumn("score", "double"),
+        ]
+    )
+    reader = FakeOdpsReader(
+        [
+            FakeOdpsRecord([1, '{"ok": true}', 0.5]),
+            FakeOdpsRecord([2, '{"ok": false}', 0.7]),
+            FakeOdpsRecord([3, '{"ok": null}', 0.9]),
+        ],
+        schema,
+    )
+    instance = FakeOdpsInstance(reader=reader)
+    odps_client = FakeOdpsClient(instance)
+    validated_sql: list[str] = []
+
+    def fake_validate_sql(sql: str) -> None:
+        validated_sql.append(sql)
+
+    def fake_build_odps_client(
+        connection: Connection,
+        crypto_service: object,
+    ) -> FakeOdpsClient:
+        assert connection.id == ODPS_CONNECTION_ID
+        assert crypto_service is not None
+        return odps_client
+
+    monkeypatch.setattr("app.services.query_executor.validate_sql", fake_validate_sql)
+    monkeypatch.setattr("app.services.query_executor._build_odps_client", fake_build_odps_client)
+
+    executor_result = ExecutorService().execute(
+        _odps_connection(),
+        "SELECT id, payload, score FROM t",
+        timeout=ODPS_TIMEOUT_SECONDS,
+        row_limit=2,
+    )
+
+    assert validated_sql == ["SELECT id, payload, score FROM t"]
+    assert odps_client.run_sql_calls == [
+        ("SELECT id, payload, score FROM t", {"quota_name": "quota-a"})
+    ]
+    assert instance.wait_timeout == ODPS_TIMEOUT_SECONDS
+    assert instance.open_reader_kwargs == {"tunnel": True, "limit": True}
+    assert executor_result.truncated is True
+    assert [column.inferred_type for column in executor_result.columns] == [
+        "integer",
+        "json",
+        "float",
+    ]
+    assert executor_result.rows == [
+        {"id": 1, "payload": {"ok": True}, "score": 0.5},
+        {"id": 2, "payload": {"ok": False}, "score": 0.7},
+    ]
+
+
+def test_execute_odps_timeout_stops_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    instance = FakeOdpsInstance(wait_error=FakeOdpsTimeoutError("Wait timed out"))
+    odps_client = FakeOdpsClient(instance)
+
+    def fake_build_odps_client(
+        connection: Connection,
+        crypto_service: object,
+    ) -> FakeOdpsClient:
+        assert connection.id == ODPS_CONNECTION_ID
+        assert crypto_service is not None
+        return odps_client
+
+    monkeypatch.setattr("app.services.query_executor._build_odps_client", fake_build_odps_client)
+
+    with pytest.raises(SqlTimeoutError) as exc_info:
+        ExecutorService().execute(
+            _odps_connection(),
+            "SELECT slow FROM t",
+            timeout=ODPS_TIMEOUT_SECONDS,
+            row_limit=2,
+        )
+
+    assert exc_info.value.code == "SQL_TIMEOUT"
+    assert exc_info.value.detail is not None
+    assert exc_info.value.detail["timeout"] == ODPS_TIMEOUT_SECONDS
+    assert instance.stopped is True
 
 
 def test_execute_raises_timeout_for_mysql_3024(monkeypatch: pytest.MonkeyPatch) -> None:

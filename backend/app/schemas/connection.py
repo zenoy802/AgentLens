@@ -8,11 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.common import Pagination
 
 JsonPrimitive = str | int | float | bool | None
+ConnectionDbType = Literal["mysql", "odps"]
 
 
 class ConnectionBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    db_type: Literal["mysql"] = "mysql"
+    db_type: ConnectionDbType = "mysql"
     host: str | None = Field(default=None, max_length=255)
     port: int | None = Field(default=3306, ge=1, le=65535)
     database: str = Field(min_length=1, max_length=200)
@@ -28,7 +29,7 @@ class ConnectionCreate(ConnectionBase):
 
 class ConnectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    db_type: Literal["mysql"] | None = None
+    db_type: ConnectionDbType | None = None
     host: str | None = Field(default=None, max_length=255)
     port: int | None = Field(default=None, ge=1, le=65535)
     database: str | None = Field(default=None, min_length=1, max_length=200)
