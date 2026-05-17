@@ -466,9 +466,9 @@ export interface components {
             /**
              * Db Type
              * @default mysql
-             * @constant
+             * @enum {string}
              */
-            db_type: "mysql";
+            db_type: "mysql" | "odps";
             /** Host */
             host?: string | null;
             /**
@@ -563,7 +563,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Db Type */
-            db_type?: "mysql" | null;
+            db_type?: ("mysql" | "odps") | null;
             /** Host */
             host?: string | null;
             /** Port */

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import httpx
 import pytest
@@ -28,6 +28,7 @@ PAGINATION_TOTAL_PAGES = 3
 PAGINATION_LAST_PAGE_ITEMS = 1
 PARTIAL_UPDATE_ROW_LIMIT = 100
 PARTIAL_UPDATE_TIMEOUT = 30
+ODPS_TEST_TIMEOUT = 9
 
 
 class FakeCursor:
@@ -53,6 +54,73 @@ class FakeMySQLConnection:
 
     def close(self) -> None:
         return None
+
+
+class FakeOdpsInstance:
+    def __init__(self, reader_error: BaseException | None = None) -> None:
+        self.reader_error = reader_error
+        self.wait_timeout: int | None = None
+        self.open_reader_kwargs: dict[str, object] | None = None
+
+    def wait_for_success(self, *, timeout: int) -> None:
+        self.wait_timeout = timeout
+
+    def open_reader(self, **kwargs: object) -> FakeOdpsReader:
+        self.open_reader_kwargs = kwargs
+        if self.reader_error is not None:
+            raise self.reader_error
+        return FakeOdpsReader()
+
+
+class FakeOdpsReader:
+    def __init__(self) -> None:
+        self._rows = [(1,)]
+
+    def __iter__(self) -> FakeOdpsReader:
+        return self
+
+    def __next__(self) -> tuple[int]:
+        if not self._rows:
+            raise StopIteration
+        return self._rows.pop(0)
+
+    def __enter__(self) -> FakeOdpsReader:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+
+class FakeOdpsClient:
+    created: ClassVar[list[dict[str, object]]] = []
+    instances: ClassVar[list[FakeOdpsInstance]] = []
+    next_instance: ClassVar[FakeOdpsInstance | None] = None
+
+    def __init__(
+        self,
+        access_id: str,
+        access_key: str,
+        project: str,
+        *,
+        endpoint: str,
+        **kwargs: object,
+    ) -> None:
+        self.created.append(
+            {
+                "access_id": access_id,
+                "access_key": access_key,
+                "project": project,
+                "endpoint": endpoint,
+                "kwargs": kwargs,
+            }
+        )
+        self.run_sql_calls: list[tuple[str, dict[str, object]]] = []
+
+    def run_sql(self, sql: str, **kwargs: object) -> FakeOdpsInstance:
+        self.run_sql_calls.append((sql, kwargs))
+        instance = self.next_instance or FakeOdpsInstance()
+        self.instances.append(instance)
+        return instance
 
 
 @pytest.mark.asyncio
@@ -151,6 +219,63 @@ async def test_create_connection_persists_encrypted_password() -> None:
         assert json.loads(connection.extra_params or "null") is None
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_create_connection_supports_odps() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "prod-odps",
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "port": None,
+                "database": "agent_lens_project",
+                "username": "access-id",
+                "password": "access-key-secret",
+                "extra_params": {
+                    "quota_name": "interactive_quota",
+                    "tunnel_endpoint": "https://dt.cn-hangzhou.maxcompute.aliyun.com",
+                    "tunnel": True,
+                    "limit": True,
+                },
+            },
+        )
+
+    assert response.status_code == HTTP_CREATED
+    payload = response.json()
+    assert "password" not in payload
+    assert payload["db_type"] == "odps"
+    assert payload["host"] == "https://service.cn-hangzhou.maxcompute.aliyun.com/api"
+    assert payload["port"] is None
+    assert payload["database"] == "agent_lens_project"
+    assert payload["extra_params"] == {
+        "quota_name": "interactive_quota",
+        "tunnel_endpoint": "https://dt.cn-hangzhou.maxcompute.aliyun.com",
+        "tunnel": True,
+        "limit": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_odps_connection_requires_credentials() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={"name": "bad-odps", "db_type": "odps", "database": "project"},
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_REQUIRED_FIELD_MISSING"
+    assert payload["error"]["detail"] == {"fields": ["host", "username", "password"]}
 
 
 @pytest.mark.asyncio
@@ -272,6 +397,56 @@ async def test_create_connection_rejects_invalid_extra_param_value_types(
 
 
 @pytest.mark.asyncio
+async def test_create_odps_connection_rejects_mysql_extra_params() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "bad-odps-param",
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "database": "project",
+                "username": "access-id",
+                "password": "access-secret",
+                "extra_params": {"charset": "utf8mb4"},
+            },
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_FORBIDDEN"
+    assert payload["error"]["detail"] == {"keys": ["charset"]}
+
+
+@pytest.mark.asyncio
+async def test_create_odps_connection_rejects_invalid_extra_param_value_types() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "bad-odps-param-type",
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "database": "project",
+                "username": "access-id",
+                "password": "access-secret",
+                "extra_params": {"quota_name": True, "tunnel": "true"},
+            },
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = response.json()
+    assert payload["error"]["code"] == "CONN_EXTRA_PARAMS_INVALID"
+    assert payload["error"]["detail"] == {"keys": ["quota_name", "tunnel"]}
+
+
+@pytest.mark.asyncio
 async def test_get_connection_rejects_persisted_unsafe_extra_params() -> None:
     initialize_metadata_database()
     session = get_session_factory()()
@@ -378,6 +553,124 @@ async def test_test_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
         assert connection.last_tested_at is not None
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_test_odps_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    initialize_metadata_database()
+    FakeOdpsClient.created = []
+    FakeOdpsClient.instances = []
+    FakeOdpsClient.next_instance = None
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "test-odps",
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "port": None,
+                "database": "project",
+                "username": "access-id",
+                "password": "access-secret",
+                "extra_params": {
+                    "quota_name": "quota-a",
+                    "tunnel_endpoint": "https://dt.cn-hangzhou.maxcompute.aliyun.com",
+                    "tunnel": True,
+                },
+                "default_timeout": ODPS_TEST_TIMEOUT,
+            },
+        )
+        connection_id = create_response.json()["id"]
+
+        monkeypatch.setattr(
+            "app.services.connection_service._load_odps_class", lambda: FakeOdpsClient
+        )
+
+        test_response = await client.post(f"/api/v1/connections/{connection_id}/test")
+        assert test_response.status_code == HTTP_OK
+        payload = test_response.json()
+        assert payload["ok"] is True
+        assert payload["server_version"] == "MaxCompute/ODPS"
+        assert payload["error"] is None
+        assert isinstance(payload["latency_ms"], int)
+
+    assert FakeOdpsClient.created == [
+        {
+            "access_id": "access-id",
+            "access_key": "access-secret",
+            "project": "project",
+            "endpoint": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+            "kwargs": {
+                "quota_name": "quota-a",
+                "tunnel_endpoint": "https://dt.cn-hangzhou.maxcompute.aliyun.com",
+            },
+        }
+    ]
+    assert FakeOdpsClient.instances[0].wait_timeout == ODPS_TEST_TIMEOUT
+    assert FakeOdpsClient.instances[0].open_reader_kwargs == {"tunnel": True}
+
+    session = get_session_factory()()
+    try:
+        connection = session.get(Connection, connection_id)
+        assert connection is not None
+        assert connection.last_test_ok is True
+        assert connection.last_tested_at is not None
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_test_odps_connection_reader_failure_marks_connection_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    FakeOdpsClient.created = []
+    FakeOdpsClient.instances = []
+    FakeOdpsClient.next_instance = FakeOdpsInstance(RuntimeError("reader denied"))
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "test-odps-reader-fail",
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "port": None,
+                "database": "project",
+                "username": "access-id",
+                "password": "access-secret",
+                "extra_params": {"tunnel": True},
+                "default_timeout": ODPS_TEST_TIMEOUT,
+            },
+        )
+        connection_id = create_response.json()["id"]
+
+        monkeypatch.setattr(
+            "app.services.connection_service._load_odps_class", lambda: FakeOdpsClient
+        )
+
+        test_response = await client.post(f"/api/v1/connections/{connection_id}/test")
+
+    assert test_response.status_code == HTTP_OK
+    payload = test_response.json()
+    assert payload["ok"] is False
+    assert payload["server_version"] is None
+    assert payload["latency_ms"] is None
+    assert payload["error"] == "reader denied"
+    assert FakeOdpsClient.instances[0].open_reader_kwargs == {"tunnel": True}
+
+    session = get_session_factory()()
+    try:
+        connection = session.get(Connection, connection_id)
+        assert connection is not None
+        assert connection.last_test_ok is False
+        assert connection.last_tested_at is not None
+    finally:
+        session.close()
+        FakeOdpsClient.next_instance = None
 
 
 @pytest.mark.asyncio
@@ -777,5 +1070,100 @@ async def test_update_password_clearing() -> None:
         assert conn is not None
         assert conn.password_enc is not None
         assert decrypt_secret(conn.password_enc) == "original-secret"
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password_payload", [{}, {"password": None}, {"password": ""}])
+async def test_update_db_type_requires_new_password(
+    password_payload: dict[str, object],
+) -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "db-type-secret-test",
+                "db_type": "mysql",
+                "database": "mysql_db",
+                "password": "mysql-secret",
+            },
+        )
+        assert resp.status_code == HTTP_CREATED
+        cid = resp.json()["id"]
+
+        patch = await client.patch(
+            f"/api/v1/connections/{cid}",
+            json={
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "port": None,
+                "database": "odps_project",
+                "username": "access-id",
+                **password_payload,
+            },
+        )
+
+    assert patch.status_code == HTTP_UNPROCESSABLE_ENTITY
+    payload = patch.json()
+    assert payload["error"]["code"] == "CONN_REQUIRED_FIELD_MISSING"
+    assert payload["error"]["detail"] == {"fields": ["password"]}
+
+    session = get_session_factory()()
+    try:
+        conn = session.get(Connection, cid)
+        assert conn is not None
+        assert conn.db_type == "mysql"
+        assert conn.database == "mysql_db"
+        assert conn.password_enc is not None
+        assert decrypt_secret(conn.password_enc) == "mysql-secret"
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_update_db_type_accepts_new_password() -> None:
+    initialize_metadata_database()
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.post(
+            "/api/v1/connections",
+            json={
+                "name": "db-type-secret-success",
+                "db_type": "mysql",
+                "database": "mysql_db",
+                "password": "mysql-secret",
+            },
+        )
+        assert resp.status_code == HTTP_CREATED
+        cid = resp.json()["id"]
+
+        patch = await client.patch(
+            f"/api/v1/connections/{cid}",
+            json={
+                "db_type": "odps",
+                "host": "https://service.cn-hangzhou.maxcompute.aliyun.com/api",
+                "port": None,
+                "database": "odps_project",
+                "username": "access-id",
+                "password": "odps-secret",
+            },
+        )
+
+    assert patch.status_code == HTTP_OK
+    patched = patch.json()
+    assert patched["db_type"] == "odps"
+    assert patched["database"] == "odps_project"
+
+    session = get_session_factory()()
+    try:
+        conn = session.get(Connection, cid)
+        assert conn is not None
+        assert conn.password_enc is not None
+        assert decrypt_secret(conn.password_enc) == "odps-secret"
     finally:
         session.close()
