@@ -19,6 +19,7 @@ dependencies = [
   "cryptography",
   "httpx",
   "pymysql",
+  "pyodps",
   "python-multipart",
   "loguru",
   "apscheduler",

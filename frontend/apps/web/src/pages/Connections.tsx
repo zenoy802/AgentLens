@@ -97,7 +97,7 @@ export function Connections() {
           <EmptyState
             icon={<Database className="h-6 w-6" aria-hidden="true" />}
             title="暂无连接"
-            description="创建只读 MySQL 数据源连接后，就可以开始分析 Agent trajectory 数据。"
+            description="创建只读 SQL 数据源连接后，就可以开始分析 Agent trajectory 数据。"
             className="m-4"
             action={
               <Button variant="outline" onClick={() => setFormTarget(null)}>
@@ -130,7 +130,9 @@ export function Connections() {
                       {connection.db_type}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {connection.host ?? "localhost"}:{connection.port ?? 3306}
+                      {connection.db_type === "odps"
+                        ? connection.host ?? "-"
+                        : `${connection.host ?? "localhost"}:${connection.port ?? 3306}`}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {connection.database}
