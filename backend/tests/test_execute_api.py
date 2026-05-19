@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any, cast
 
 import httpx
@@ -16,7 +17,12 @@ from app.models.label import LabelSchema
 from app.models.misc import GlobalRenderRule, QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
-from app.services.query_executor import Column, ExecutorResult, ExecutorService
+from app.services.query_executor import (
+    Column,
+    ExecutionProgressEvent,
+    ExecutorResult,
+    ExecutorService,
+)
 from app.services.row_identity_service import compute
 
 HTTP_OK = status.HTTP_200_OK
@@ -25,6 +31,22 @@ HTTP_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
 
 def _is_utc_iso(value: str) -> bool:
     return value.endswith(("Z", "+00:00"))
+
+
+def _parse_sse_events(raw: str) -> list[tuple[str, dict[str, Any]]]:
+    events: list[tuple[str, dict[str, Any]]] = []
+    for block in raw.strip().split("\n\n"):
+        event_name: str | None = None
+        data: dict[str, Any] | None = None
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event_name = line.removeprefix("event: ")
+            elif line.startswith("data: "):
+                data = json.loads(line.removeprefix("data: "))
+        assert event_name is not None
+        assert data is not None
+        events.append((event_name, data))
+    return events
 
 
 def _create_connection(session: Session) -> int:
@@ -63,6 +85,32 @@ def _patch_executor(
         return result
 
     monkeypatch.setattr(ExecutorService, "execute", fake_execute)
+
+
+def _patch_stream_executor(
+    monkeypatch: pytest.MonkeyPatch,
+    result: ExecutorResult,
+) -> None:
+    def fake_execute_stream(
+        self: ExecutorService,
+        connection: Connection,
+        sql: str,
+        *,
+        timeout: int,
+        row_limit: int,
+    ) -> Iterator[ExecutionProgressEvent | ExecutorResult]:
+        assert isinstance(self, ExecutorService)
+        assert connection.id > 0
+        assert timeout > 0
+        assert row_limit > 0
+        validate_sql(sql)
+        yield ExecutionProgressEvent(
+            kind="odps_logview",
+            odps_logview_url="https://logview.example.com/instance",
+        )
+        yield result
+
+    monkeypatch.setattr(ExecutorService, "execute_stream", fake_execute_stream)
 
 
 @pytest.mark.asyncio
@@ -111,6 +159,88 @@ async def test_execute_creates_temporary_query(monkeypatch: pytest.MonkeyPatch) 
         assert query.label_schema is not None
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_execute_stream_emits_odps_logview_before_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+    finally:
+        session.close()
+
+    _patch_stream_executor(
+        monkeypatch,
+        ExecutorResult(
+            columns=[Column(name="a", sql_type="LONGLONG", inferred_type="integer")],
+            rows=[{"a": 1}],
+            duration_ms=5,
+            truncated=False,
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/execute/stream",
+            json={"connection_id": connection_id, "sql": "SELECT 1 AS a"},
+        )
+
+    assert response.status_code == HTTP_OK
+    events = _parse_sse_events(response.text)
+    assert events[0] == (
+        "odps_logview",
+        {"odps_logview_url": "https://logview.example.com/instance"},
+    )
+    assert events[1][0] == "result"
+    assert events[1][1]["rows"][0]["a"] == 1
+    assert "_row_identity" in events[1][1]["rows"][0]
+
+
+@pytest.mark.asyncio
+async def test_execute_saved_query_stream_emits_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        query = NamedQuery(
+            connection_id=connection_id,
+            name="saved",
+            sql_text="SELECT 1 AS a",
+            is_named=True,
+        )
+        query.view_config = ViewConfig(field_renders="{}", table_config="{}")
+        query.label_schema = LabelSchema(fields="[]")
+        session.add(query)
+        session.commit()
+        query_id = query.id
+    finally:
+        session.close()
+
+    _patch_stream_executor(
+        monkeypatch,
+        ExecutorResult(
+            columns=[Column(name="a", sql_type="LONGLONG", inferred_type="integer")],
+            rows=[{"a": 1}],
+            duration_ms=5,
+            truncated=False,
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(f"/api/v1/queries/{query_id}/execute/stream")
+
+    assert response.status_code == HTTP_OK
+    events = _parse_sse_events(response.text)
+    assert [event_name for event_name, _ in events] == ["odps_logview", "result"]
+    assert events[1][1]["query_id"] == query_id
+    assert events[1][1]["is_temporary"] is False
 
 
 @pytest.mark.asyncio

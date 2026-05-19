@@ -109,6 +109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/execute/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Sql Stream */
+        post: operations["execute_sql_stream_api_v1_execute_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/export": {
         parameters: {
             query?: never;
@@ -295,6 +312,23 @@ export interface paths {
         put?: never;
         /** Execute Query */
         post: operations["execute_query_api_v1_queries__query_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/execute/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Query Stream */
+        post: operations["execute_query_stream_api_v1_queries__query_id__execute_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1521,6 +1555,39 @@ export interface operations {
             };
         };
     };
+    execute_sql_stream_api_v1_execute_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_query_api_v1_queries__query_id__export_post: {
         parameters: {
             query?: never;
@@ -2034,6 +2101,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_query_stream_api_v1_queries__query_id__execute_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["QueryExecuteRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

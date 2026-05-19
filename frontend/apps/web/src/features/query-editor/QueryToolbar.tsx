@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Download, Loader2, Play, Save, Tags } from "lucide-react";
+import { Download, ExternalLink, Loader2, Play, Save, Tags } from "lucide-react";
 
 import type { ExecutionInfo } from "@/stores/queryStore";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ConnectionSelect } from "@/features/query-editor/ConnectionSelect";
 
 type QueryToolbarProps = {
@@ -11,6 +11,7 @@ type QueryToolbarProps = {
   queryId: number | null;
   isNamed: boolean;
   execution: ExecutionInfo | null;
+  odpsLogviewUrl?: string | null;
   isExecuting: boolean;
   runDisabled?: boolean;
   labelingDisabled?: boolean;
@@ -28,6 +29,7 @@ export function QueryToolbar({
   queryId,
   isNamed,
   execution,
+  odpsLogviewUrl = null,
   isExecuting,
   runDisabled: runBlocked = false,
   labelingDisabled = false,
@@ -55,6 +57,17 @@ export function QueryToolbar({
           )}
           运行
         </Button>
+        {odpsLogviewUrl !== null ? (
+          <a
+            className={buttonVariants({ variant: "outline", className: "gap-2" })}
+            href={odpsLogviewUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            LogView
+          </a>
+        ) : null}
         <Button variant="outline" className="gap-2" onClick={onSaveAs} disabled={saveDisabled}>
           <Save className="h-4 w-4" aria-hidden="true" />
           另存为

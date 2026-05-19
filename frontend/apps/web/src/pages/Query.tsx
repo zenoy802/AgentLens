@@ -120,6 +120,7 @@ export function Query() {
   const [exportIncludeLabelsDefault, setExportIncludeLabelsDefault] = useState(true);
   const [labelingPanelOpen, setLabelingPanelOpen] = useState(false);
   const [lastError, setLastError] = useState<unknown>(null);
+  const [odpsLogviewUrl, setOdpsLogviewUrl] = useState<string | null>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
   const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
@@ -283,6 +284,7 @@ export function Query() {
         preservedRouteQueryIdRef.current = null;
         skipNextViewConfigApplyForQueryIdRef.current = null;
         useQueryStore.getState().reset();
+        setOdpsLogviewUrl(null);
         useLabelsStore.getState().setActiveQuery(null);
       }
     }
@@ -324,6 +326,7 @@ export function Query() {
     hydratedQueryIdRef.current = null;
     setActiveQuery(null);
     setLastError(null);
+    setOdpsLogviewUrl(null);
     setManualEditorHeight(null);
     setDetailRow(null);
     setDetailRowId(null);
@@ -373,6 +376,7 @@ export function Query() {
     });
     if (!shouldPreserveCurrentResult) {
       setLastError(null);
+      setOdpsLogviewUrl(null);
       setManualEditorHeight(null);
       setDetailRow(null);
       setDetailRowId(null);
@@ -410,14 +414,26 @@ export function Query() {
       preserveViewConfig: true,
     });
     useQueryStore.setState({ isExecuting: true });
+    setOdpsLogviewUrl(null);
+    const handleOdpsLogview = (url: string) => {
+      if (executionStillMatches(executionGuard)) {
+        setOdpsLogviewUrl(url);
+      }
+    };
 
     try {
       const result = executeSavedQuery
-        ? await executeQuery.mutateAsync({ queryId: routeQueryId! })
+        ? await executeQuery.mutateAsync({
+            queryId: routeQueryId!,
+            onOdpsLogview: handleOdpsLogview,
+          })
         : await execute.mutateAsync({
-            connection_id: executionConnectionId,
-            sql: executionSql,
-            save_as_temporary: true,
+            body: {
+              connection_id: executionConnectionId,
+              sql: executionSql,
+              save_as_temporary: true,
+            },
+            onOdpsLogview: handleOdpsLogview,
           });
       if (!executionStillMatches(executionGuard)) {
         useQueryStore.setState({ isExecuting: false });
@@ -605,6 +621,7 @@ export function Query() {
     preserveViewConfig?: boolean;
   }) {
     setLastError(null);
+    setOdpsLogviewUrl(null);
     setActiveResultView("row");
     trajectoryRequestedKeyRef.current = null;
     setTrajectoryLoadedKey(null);
@@ -768,6 +785,7 @@ export function Query() {
           queryId={queryId}
           isNamed={activeQuery?.is_named ?? false}
           execution={execution}
+          odpsLogviewUrl={odpsLogviewUrl}
           isExecuting={isExecuting}
           runDisabled={runBlockedByViewConfigLoad}
           onConnectionChange={handleConnectionChange}

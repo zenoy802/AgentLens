@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -25,7 +26,11 @@ from app.schemas.query import (
 )
 from app.schemas.render import FieldRender
 from app.schemas.view_config import TrajectoryConfig
-from app.services.query_executor import ExecutorResult, ExecutorService
+from app.services.query_executor import (
+    ExecutionProgressEvent,
+    ExecutorResult,
+    ExecutorService,
+)
 from app.services.render_suggestion_service import suggest, suggest_trajectory_config
 from app.services.row_identity_service import compute
 
@@ -147,6 +152,91 @@ class QueryService:
         self.session.commit()
         self.session.refresh(query)
         return ExecutionOutcome(
+            execution_result=execution_result,
+            suggested_field_renders=suggested_field_renders,
+            suggested_trajectory_config=suggested_trajectory_config,
+            row_identities=row_identities,
+            executed_at=executed_at,
+            warnings=warnings,
+        )
+
+    def execute_and_record_stream(
+        self,
+        query: NamedQuery,
+        *,
+        timeout: int,
+        row_limit: int,
+    ) -> Iterator[ExecutionProgressEvent | ExecutionOutcome]:
+        connection = self._get_connection_or_raise(query.connection_id)
+        view_config = self._get_or_create_view_config(query)
+        query_id = query.id
+        connection_id = query.connection_id
+        sql_text = query.sql_text
+
+        try:
+            execution_result: ExecutorResult | None = None
+            for item in self._executor_service.execute_stream(
+                connection,
+                sql_text,
+                timeout=timeout,
+                row_limit=row_limit,
+            ):
+                if isinstance(item, ExecutionProgressEvent):
+                    yield item
+                else:
+                    execution_result = item
+            if execution_result is None:
+                raise AppError(
+                    code="SQL_EXECUTION_ERROR",
+                    message="SQL execution did not produce a result.",
+                )
+
+            warnings: list[WarningRead] = []
+            self._append_row_identity_config_warnings(
+                view_config,
+                execution_result,
+                warnings,
+            )
+            row_identities = [
+                compute(row, view_config.row_identity_column) for row in execution_result.rows
+            ]
+            self._append_duplicate_row_identity_warning(row_identities, warnings)
+            suggested_field_renders = suggest(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
+            suggested_trajectory_config = suggest_trajectory_config(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
+        except Exception as exc:
+            self.session.rollback()
+            self._record_query_history(
+                query_id=query_id,
+                connection_id=connection_id,
+                sql_text=sql_text,
+                status="failed",
+                error_message=_error_message(exc),
+            )
+            self.session.commit()
+            raise
+
+        executed_at = _utcnow()
+        query.last_executed_at = executed_at
+        self._record_query_history(
+            query_id=query.id,
+            connection_id=query.connection_id,
+            sql_text=query.sql_text,
+            row_count=len(execution_result.rows),
+            duration_ms=execution_result.duration_ms,
+            status="success",
+            executed_at=executed_at,
+        )
+        self.session.commit()
+        self.session.refresh(query)
+        yield ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
             suggested_trajectory_config=suggested_trajectory_config,

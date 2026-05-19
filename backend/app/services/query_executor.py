@@ -4,11 +4,11 @@ import base64
 import json
 import threading
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import Engine, create_engine
@@ -59,6 +59,15 @@ class ExecutorResult:
     truncated: bool
 
 
+@dataclass(slots=True)
+class ExecutionProgressEvent:
+    kind: Literal["odps_logview"]
+    odps_logview_url: str
+
+
+ExecutionStreamItem = ExecutionProgressEvent | ExecutorResult
+
+
 class ExecutorService:
     def __init__(self, crypto_service: SecretDecryptor | None = None) -> None:
         self._crypto_service = crypto_service or CryptoService()
@@ -73,16 +82,46 @@ class ExecutorService:
         timeout: int,
         row_limit: int,
     ) -> ExecutorResult:
+        execution_result: ExecutorResult | None = None
+        for item in self.execute_stream(
+            connection,
+            sql,
+            timeout=timeout,
+            row_limit=row_limit,
+        ):
+            if isinstance(item, ExecutorResult):
+                execution_result = item
+        if execution_result is None:
+            raise SqlExecutionError(
+                code="SQL_EXECUTION_ERROR",
+                detail={"orig": "SQL execution did not produce a result."},
+            )
+        return execution_result
+
+    def execute_stream(
+        self,
+        connection: Connection,
+        sql: str,
+        *,
+        timeout: int,
+        row_limit: int,
+    ) -> Iterator[ExecutionStreamItem]:
         validate_sql(sql)
         if connection.db_type == _DB_TYPE_ODPS:
-            return self._execute_odps(connection, sql, timeout=timeout, row_limit=row_limit)
+            yield from self._execute_odps_stream(
+                connection,
+                sql,
+                timeout=timeout,
+                row_limit=row_limit,
+            )
+            return
         if connection.db_type != _DB_TYPE_MYSQL:
             raise SqlExecutionError(
                 code="SQL_UNSUPPORTED_DB_TYPE",
                 detail={"db_type": connection.db_type},
             )
 
-        return self._execute_mysql(connection, sql, timeout=timeout, row_limit=row_limit)
+        yield self._execute_mysql(connection, sql, timeout=timeout, row_limit=row_limit)
 
     def _execute_mysql(
         self,
@@ -133,26 +172,38 @@ class ExecutorService:
             truncated=truncated,
         )
 
-    def _execute_odps(
+    def _execute_odps_stream(
         self,
         connection: Connection,
         sql: str,
         *,
         timeout: int,
         row_limit: int,
-    ) -> ExecutorResult:
+    ) -> Iterator[ExecutionStreamItem]:
         start = time.perf_counter()
         instance: Any | None = None
         try:
             extra_params = _load_odps_extra_params(connection)
             odps_client = _build_odps_client(connection, self._crypto_service)
             instance = odps_client.run_sql(sql, **_build_odps_run_kwargs(extra_params))
+            logview_url = _extract_odps_logview_url(instance)
+            if logview_url is not None:
+                yield ExecutionProgressEvent(
+                    kind="odps_logview",
+                    odps_logview_url=logview_url,
+                )
             try:
                 instance.wait_for_success(timeout=timeout)
             except Exception as exc:
                 if _is_odps_timeout_error(exc):
                     _stop_odps_instance(instance)
-                    raise SqlTimeoutError(detail={"timeout": timeout, "orig": str(exc)}) from exc
+                    raise SqlTimeoutError(
+                        detail=_build_odps_error_detail(
+                            timeout=timeout,
+                            orig=str(exc),
+                            instance=instance,
+                        )
+                    ) from exc
                 raise
 
             with instance.open_reader(**_build_odps_reader_kwargs(extra_params)) as reader:
@@ -181,10 +232,16 @@ class ExecutorService:
             if _is_odps_timeout_error(exc):
                 if instance is not None:
                     _stop_odps_instance(instance)
-                raise SqlTimeoutError(detail={"timeout": timeout, "orig": str(exc)}) from exc
+                raise SqlTimeoutError(
+                    detail=_build_odps_error_detail(
+                        timeout=timeout,
+                        orig=str(exc),
+                        instance=instance,
+                    )
+                ) from exc
             raise SqlExecutionError(
                 code="SQL_EXECUTION_ERROR",
-                detail={"orig": str(exc)},
+                detail=_build_odps_error_detail(orig=str(exc), instance=instance),
             ) from exc
 
         truncated = len(rows_raw) > row_limit
@@ -194,7 +251,7 @@ class ExecutorService:
         self._promote_text_json_columns(columns, rows_raw)
         rows = self._build_rows(columns, rows_raw)
         duration_ms = int((time.perf_counter() - start) * 1000)
-        return ExecutorResult(
+        yield ExecutorResult(
             columns=columns,
             rows=rows,
             duration_ms=duration_ms,
@@ -381,6 +438,35 @@ def _first_present_attr(source: Any, names: Sequence[str]) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _extract_odps_logview_url(instance: Any) -> str | None:
+    get_logview_address = getattr(instance, "get_logview_address", None)
+    if not callable(get_logview_address):
+        return None
+    try:
+        logview_url = get_logview_address()
+    except Exception:
+        return None
+    if isinstance(logview_url, str) and logview_url:
+        return logview_url
+    return None
+
+
+def _build_odps_error_detail(
+    *,
+    orig: str,
+    instance: Any | None,
+    timeout: int | None = None,
+) -> dict[str, object]:
+    detail: dict[str, object] = {"orig": orig}
+    if timeout is not None:
+        detail["timeout"] = timeout
+    if instance is not None:
+        logview_url = _extract_odps_logview_url(instance)
+        if logview_url is not None:
+            detail["odps_logview_url"] = logview_url
+    return detail
 
 
 def _row_values(row_raw: Any) -> tuple[Any, ...]:

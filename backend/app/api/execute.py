@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import Annotated
+import json
+from collections.abc import Iterator
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
 from loguru import logger
 from sqlalchemy.orm import Session
 
@@ -17,7 +21,7 @@ from app.schemas.execution import (
     ExecutionInfo,
     ExecutionResult,
 )
-from app.services.query_executor import ExecutorService
+from app.services.query_executor import ExecutionProgressEvent, ExecutorService
 from app.services.query_service import ExecutionOutcome, QueryService
 
 router = APIRouter(prefix="", tags=["execute"])
@@ -67,6 +71,74 @@ def execute_sql(
             )
         raise
     return build_execution_result_response(query=query, outcome=outcome, is_temporary=True)
+
+
+@router.post("/execute/stream")
+def execute_sql_stream(
+    payload: ExecuteRequest,
+    service: Annotated[QueryService, Depends(get_query_service)],
+) -> StreamingResponse:
+    if not payload.save_as_temporary:
+        raise AppError(
+            code="QUERY_UNSUPPORTED_EXECUTION_MODE",
+            message="Only save_as_temporary=true is supported.",
+            http_status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def stream_events() -> Iterator[str]:
+        query: NamedQuery | None = None
+        try:
+            query = service.create_temporary_query(payload.connection_id, payload.sql)
+            timeout, row_limit = _resolve_execution_limits(
+                query,
+                timeout=payload.timeout,
+                row_limit=payload.row_limit,
+            )
+            yield from stream_query_execution_events(
+                query=query,
+                service=service,
+                timeout=timeout,
+                row_limit=row_limit,
+                is_temporary=True,
+            )
+        except Exception as exc:
+            if query is not None:
+                try:
+                    service.delete(query.id)
+                except Exception as cleanup_exc:
+                    logger.warning(
+                        "Failed to clean up failed temporary query {}: {}",
+                        query.id,
+                        cleanup_exc,
+                    )
+            yield _sse_event("error", _build_stream_error_payload(exc))
+
+    return StreamingResponse(stream_events(), media_type="text/event-stream")
+
+
+def stream_query_execution_events(
+    *,
+    query: NamedQuery,
+    service: QueryService,
+    timeout: int,
+    row_limit: int,
+    is_temporary: bool,
+) -> Iterator[str]:
+    for item in service.execute_and_record_stream(query, timeout=timeout, row_limit=row_limit):
+        if isinstance(item, ExecutionProgressEvent):
+            yield _sse_event(
+                item.kind,
+                {"odps_logview_url": item.odps_logview_url},
+            )
+        else:
+            yield _sse_event(
+                "result",
+                build_execution_result_response(
+                    query=query,
+                    outcome=item,
+                    is_temporary=is_temporary,
+                ),
+            )
 
 
 def build_execution_result_response(
@@ -160,3 +232,27 @@ def _select_row_identity_key(rows: list[dict[str, object]]) -> str:
         if candidate not in used_keys:
             return candidate
         suffix += 1
+
+
+def _sse_event(event_name: str, payload: object) -> str:
+    encoded_payload = json.dumps(jsonable_encoder(payload), ensure_ascii=False)
+    return f"event: {event_name}\ndata: {encoded_payload}\n\n"
+
+
+def _build_stream_error_payload(exc: Exception) -> dict[str, Any]:
+    if isinstance(exc, AppError):
+        return {
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "detail": exc.detail,
+            }
+        }
+    logger.exception("Unhandled streaming execution exception: {}", exc)
+    return {
+        "error": {
+            "code": "INTERNAL_ERROR",
+            "message": "Internal server error.",
+            "detail": None,
+        }
+    }

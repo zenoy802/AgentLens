@@ -21,7 +21,7 @@ from app.db.session import get_session_factory, initialize_metadata_database
 from app.models.connection import Connection
 from app.schemas.connection import ConnectionUpdate
 from app.services.connection_service import ConnectionService
-from app.services.query_executor import ExecutorService
+from app.services.query_executor import ExecutionProgressEvent, ExecutorResult, ExecutorService
 
 FETCHMANY_ROW_LIMIT_PLUS_ONE = 3
 TIMEOUT_SECONDS = 3
@@ -189,6 +189,9 @@ class FakeOdpsInstance:
 
     def stop(self) -> None:
         self.stopped = True
+
+    def get_logview_address(self) -> str:
+        return "https://logview.example.com/instance"
 
 
 class FakeOdpsClient:
@@ -392,6 +395,40 @@ def test_execute_odps_uses_pyodps_and_marks_truncated(monkeypatch: pytest.Monkey
     ]
 
 
+def test_execute_stream_odps_yields_logview_before_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = FakeOdpsSchema([FakeOdpsColumn("id", "bigint")])
+    reader = FakeOdpsReader([FakeOdpsRecord([1])], schema)
+    instance = FakeOdpsInstance(reader=reader)
+    odps_client = FakeOdpsClient(instance)
+
+    def fake_build_odps_client(
+        connection: Connection,
+        crypto_service: object,
+    ) -> FakeOdpsClient:
+        assert connection.id == ODPS_CONNECTION_ID
+        assert crypto_service is not None
+        return odps_client
+
+    monkeypatch.setattr("app.services.query_executor._build_odps_client", fake_build_odps_client)
+
+    stream_items = list(
+        ExecutorService().execute_stream(
+            _odps_connection(),
+            "SELECT id FROM t",
+            timeout=ODPS_TIMEOUT_SECONDS,
+            row_limit=2,
+        )
+    )
+
+    assert isinstance(stream_items[0], ExecutionProgressEvent)
+    assert stream_items[0].kind == "odps_logview"
+    assert stream_items[0].odps_logview_url == "https://logview.example.com/instance"
+    assert isinstance(stream_items[1], ExecutorResult)
+    assert stream_items[1].rows == [{"id": 1}]
+
+
 def test_execute_odps_timeout_stops_instance(monkeypatch: pytest.MonkeyPatch) -> None:
     instance = FakeOdpsInstance(wait_error=FakeOdpsTimeoutError("Wait timed out"))
     odps_client = FakeOdpsClient(instance)
@@ -417,6 +454,7 @@ def test_execute_odps_timeout_stops_instance(monkeypatch: pytest.MonkeyPatch) ->
     assert exc_info.value.code == "SQL_TIMEOUT"
     assert exc_info.value.detail is not None
     assert exc_info.value.detail["timeout"] == ODPS_TIMEOUT_SECONDS
+    assert exc_info.value.detail["odps_logview_url"] == "https://logview.example.com/instance"
     assert instance.stopped is True
 
 

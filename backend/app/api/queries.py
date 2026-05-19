@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.responses import StreamingResponse
 
-from app.api.execute import build_execution_result_response, get_query_service
+from app.api.execute import (
+    _build_stream_error_payload,
+    _sse_event,
+    build_execution_result_response,
+    get_query_service,
+    stream_query_execution_events,
+)
 from app.schemas.execution import ExecutionResult, QueryExecuteRequest
 from app.schemas.query import (
     NamedQueryCreate,
@@ -113,3 +121,38 @@ def execute_query(
         outcome=outcome,
         is_temporary=not query.is_named,
     )
+
+
+@router.post("/{query_id}/execute/stream")
+def execute_query_stream(
+    query_id: int,
+    service: Annotated[QueryService, Depends(get_query_service)],
+    payload: QueryExecuteRequest | None = None,
+) -> StreamingResponse:
+    active_payload = payload or QueryExecuteRequest()
+
+    def stream_events() -> Iterator[str]:
+        try:
+            query = service.get(query_id)
+            connection = query.connection
+            timeout = (
+                active_payload.timeout
+                if active_payload.timeout is not None
+                else connection.default_timeout
+            )
+            row_limit = (
+                active_payload.row_limit
+                if active_payload.row_limit is not None
+                else connection.default_row_limit
+            )
+            yield from stream_query_execution_events(
+                query=query,
+                service=service,
+                timeout=timeout,
+                row_limit=row_limit,
+                is_temporary=not query.is_named,
+            )
+        except Exception as exc:
+            yield _sse_event("error", _build_stream_error_payload(exc))
+
+    return StreamingResponse(stream_events(), media_type="text/event-stream")
