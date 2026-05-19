@@ -16,6 +16,7 @@ from app.models.connection import Connection
 from app.models.named_query import NamedQuery
 
 BATCH_SIZE = 200
+WILDCARD_TEST_ANNOTATION_COUNT = 2
 
 
 def _now() -> datetime:
@@ -155,6 +156,54 @@ async def test_delete_annotations_rejects_unfiltered_delete() -> None:
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["error"]["code"] == "ANNOTATION_DELETE_FILTER_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_author_prefix_filter_escapes_like_wildcards() -> None:
+    query_id = _create_query_id()
+    transport = httpx.ASGITransport(app=cast(Any, app))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for payload in [
+            {
+                "row_identity": "row-1",
+                "author": "agent:codex",
+                "color": "yellow",
+            },
+            {
+                "row_identity": "row-2",
+                "author": "human",
+                "color": "blue",
+            },
+        ]:
+            create_response = await client.post(
+                f"/api/v1/queries/{query_id}/annotations",
+                json=payload,
+            )
+            assert create_response.status_code == status.HTTP_201_CREATED
+
+        list_response = await client.get(
+            f"/api/v1/queries/{query_id}/annotations",
+            params={"author_prefix": "%"},
+        )
+        delete_response = await client.delete(
+            f"/api/v1/queries/{query_id}/annotations",
+            params={"author_prefix": "%"},
+        )
+
+    assert list_response.status_code == status.HTTP_200_OK
+    assert list_response.json() == []
+    assert delete_response.status_code == status.HTTP_200_OK
+    assert delete_response.json() == {"deleted_count": 0}
+
+    session = get_session_factory()()
+    try:
+        remaining = session.scalar(
+            select(func.count()).select_from(Annotation).where(Annotation.query_id == query_id)
+        )
+        assert remaining == WILDCARD_TEST_ANNOTATION_COUNT
+    finally:
+        session.close()
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import status
 from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import NotFoundError, ValidationError
 from app.models.annotation import Annotation
@@ -116,7 +117,9 @@ class AnnotationService:
         if _has_text(filters.author):
             stmt = stmt.where(Annotation.author == filters.author)
         if _has_text(filters.author_prefix):
-            stmt = stmt.where(Annotation.author.startswith(filters.author_prefix))
+            author_prefix = filters.author_prefix
+            assert author_prefix is not None
+            stmt = stmt.where(_author_startswith(author_prefix))
         if filters.color is not None:
             stmt = stmt.where(Annotation.color == filters.color.value)
         if _has_text(filters.annotation_set):
@@ -174,7 +177,9 @@ def _apply_common_filters(
     if _has_text(filters.author):
         stmt = stmt.where(Annotation.author == filters.author)
     if _has_text(filters.author_prefix):
-        stmt = stmt.where(Annotation.author.startswith(filters.author_prefix))
+        author_prefix = filters.author_prefix
+        assert author_prefix is not None
+        stmt = stmt.where(_author_startswith(author_prefix))
     if filters.color is not None:
         stmt = stmt.where(Annotation.color == filters.color.value)
     if filters.row_identity is not None:
@@ -191,6 +196,10 @@ def _apply_common_filters(
 
 def _has_text(value: str | None) -> bool:
     return value is not None and value != ""
+
+
+def _author_startswith(prefix: str) -> ColumnElement[bool]:
+    return Annotation.author.startswith(prefix, autoescape=True)
 
 
 def _utcnow() -> datetime:
