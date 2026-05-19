@@ -40,6 +40,25 @@ def start_scheduler(settings: Settings | None = None) -> Scheduler:
         misfire_grace_time=3600,
     )
     logger.info("Scheduled cleanup job registered")
+    scheduler.add_job(
+        _run_cleanup_expired_annotations_job,
+        "interval",
+        hours=6,
+        id="cleanup_expired_annotations",
+        name="Cleanup expired annotations",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        _run_cleanup_expired_selection_snapshots_job,
+        "interval",
+        hours=6,
+        id="cleanup_expired_selection_snapshots",
+        name="Cleanup expired selection snapshots",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info("Scheduled Agent Bridge cleanup jobs registered")
 
     if _should_start_scheduler(active_settings):
         scheduler.start()
@@ -68,6 +87,30 @@ def _run_cleanup_job() -> None:
     except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
         session.rollback()
         logger.exception("Scheduled cleanup failed: {}", exc)
+    finally:
+        session.close()
+
+
+def _run_cleanup_expired_annotations_job() -> None:
+    session = get_session_factory()()
+    try:
+        deleted_count = CleanupService().delete_expired_annotations(session)
+        logger.info("Expired annotation cleanup completed: deleted={}", deleted_count)
+    except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
+        session.rollback()
+        logger.exception("Expired annotation cleanup failed: {}", exc)
+    finally:
+        session.close()
+
+
+def _run_cleanup_expired_selection_snapshots_job() -> None:
+    session = get_session_factory()()
+    try:
+        deleted_count = CleanupService().delete_expired_selection_snapshots(session)
+        logger.info("Expired selection snapshot cleanup completed: deleted={}", deleted_count)
+    except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
+        session.rollback()
+        logger.exception("Expired selection snapshot cleanup failed: {}", exc)
     finally:
         session.close()
 

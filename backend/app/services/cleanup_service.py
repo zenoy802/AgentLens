@@ -7,10 +7,12 @@ from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.models.annotation import Annotation
 from app.models.label import LabelRecord
 from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
+from app.models.selection_snapshot import SelectionSnapshot
 
 
 class CleanupReport(BaseModel):
@@ -87,6 +89,40 @@ class CleanupService:
             cascade_analyses_deleted=analyses_count,
             dry_run=dry_run,
         )
+
+    def delete_expired_annotations(self, db: Session, dry_run: bool = False) -> int:
+        now = _utcnow()
+        expired_count = self._count(
+            db,
+            select(func.count())
+            .select_from(Annotation)
+            .where(
+                Annotation.expires_at.is_not(None),
+                Annotation.expires_at < now,
+            ),
+        )
+        if not dry_run:
+            db.execute(
+                delete(Annotation).where(
+                    Annotation.expires_at.is_not(None),
+                    Annotation.expires_at < now,
+                )
+            )
+        db.commit()
+        return expired_count
+
+    def delete_expired_selection_snapshots(self, db: Session, dry_run: bool = False) -> int:
+        now = _utcnow()
+        expired_count = self._count(
+            db,
+            select(func.count())
+            .select_from(SelectionSnapshot)
+            .where(SelectionSnapshot.expires_at < now),
+        )
+        if not dry_run:
+            db.execute(delete(SelectionSnapshot).where(SelectionSnapshot.expires_at < now))
+        db.commit()
+        return expired_count
 
     @staticmethod
     def _count(db: Session, stmt: Select[tuple[int]]) -> int:

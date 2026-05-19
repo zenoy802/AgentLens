@@ -43,10 +43,17 @@ class ExecutionInfo(BaseModel):
         return ensure_utc(value)
 
 
+class ExecutionFingerprints(BaseModel):
+    sql: str
+    schema_: str = Field(alias="schema")
+    result: str
+
+
 class ExecutionResult(BaseModel):
     query_id: int
     is_temporary: bool
     execution: ExecutionInfo
+    fingerprints: ExecutionFingerprints
     columns: list[ColumnRead]
     rows: list[dict[str, Any]]
     suggested_field_renders: dict[str, FieldRender]

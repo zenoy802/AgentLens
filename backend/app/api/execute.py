@@ -14,8 +14,14 @@ from app.schemas.common import WarningRead
 from app.schemas.execution import (
     ColumnRead,
     ExecuteRequest,
+    ExecutionFingerprints,
     ExecutionInfo,
     ExecutionResult,
+)
+from app.services.fingerprint_service import (
+    compute_result_fingerprint,
+    compute_schema_fingerprint,
+    compute_sql_fingerprint,
 )
 from app.services.query_executor import ExecutorService
 from app.services.query_service import ExecutionOutcome, QueryService
@@ -117,6 +123,18 @@ def build_execution_result_response(
         )
         for column in execution_result.columns
     ]
+    schema_fingerprint_columns = [
+        {
+            "key": column.name,
+            "type": column.inferred_type,
+            "render": (
+                render.model_dump(mode="json", exclude_none=True)
+                if (render := outcome.suggested_field_renders.get(column.name)) is not None
+                else None
+            ),
+        }
+        for column in execution_result.columns
+    ]
     return ExecutionResult(
         query_id=query.id,
         is_temporary=is_temporary,
@@ -125,6 +143,11 @@ def build_execution_result_response(
             duration_ms=execution_result.duration_ms,
             row_count=len(execution_result.rows),
             truncated=execution_result.truncated,
+        ),
+        fingerprints=ExecutionFingerprints(
+            sql=compute_sql_fingerprint(query.sql_text),
+            schema=compute_schema_fingerprint(schema_fingerprint_columns),
+            result=compute_result_fingerprint(outcome.row_identities),
         ),
         columns=columns,
         rows=rows,
