@@ -16,6 +16,7 @@ from app.models.label import LabelSchema
 from app.models.misc import GlobalRenderRule, QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
+from app.services.fingerprint_service import compute_sql_fingerprint
 from app.services.query_executor import Column, ExecutorResult, ExecutorService
 from app.services.row_identity_service import compute
 
@@ -96,6 +97,9 @@ async def test_execute_creates_temporary_query(monkeypatch: pytest.MonkeyPatch) 
     assert payload["is_temporary"] is True
     assert payload["query_id"] > 0
     assert _is_utc_iso(payload["execution"]["executed_at"])
+    assert payload["fingerprints"]["sql"] == compute_sql_fingerprint("SELECT 1 AS a")
+    assert payload["fingerprints"]["schema"].startswith("sha256:")
+    assert payload["fingerprints"]["result"].startswith("sha256:")
     assert payload["rows"][0]["a"] == 1
     assert "_row_identity" in payload["rows"][0]
 

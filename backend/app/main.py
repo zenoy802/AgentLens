@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.api import api_router
+from app.api.ws import router as ws_router
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, register_exception_handlers
 from app.core.logging import setup_logging
@@ -96,7 +97,7 @@ def create_app() -> FastAPI:
             "  data dir: {}\n"
             "  metadata db: {}\n"
             "  host: {} port: {}\n"
-            "  cleanup scheduler: enabled (daily 03:00)",
+            "  cleanup scheduler: enabled (daily 03:00, bridge cleanup every 6h)",
             settings.data_dir,
             settings.metadata_db_path,
             settings.host,
@@ -132,6 +133,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(ws_router)
     app.include_router(api_router, prefix=API_PREFIX)
     register_exception_handlers(app)
     mount_static_frontend(app)
