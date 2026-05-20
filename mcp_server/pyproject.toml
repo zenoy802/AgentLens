@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentlens-mcp"
+version = "0.1.0"
+description = "AgentLens MCP server for agent trajectory analysis."
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=1.0.0",
+  "httpx>=0.27",
+  "agentlens-client",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "ruff",
+  "mypy",
+]
+
+[project.scripts]
+agentlens-mcp = "agentlens_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentlens_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "C4",
+  "DTZ",
+  "E",
+  "F",
+  "I",
+  "N",
+  "PIE",
+  "PL",
+  "PTH",
+  "RUF",
+  "SIM",
+  "UP",
+  "W",
+]
+ignore = [
+  "ANN401",
+  "PLR0913",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+  "agentlens_client.*",
+  "mcp.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=agentlens_mcp --cov-report=term-missing"
