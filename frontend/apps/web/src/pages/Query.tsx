@@ -15,6 +15,9 @@ import { useQueryById } from "@/api/hooks/useQueries";
 import { useTrajectories } from "@/api/hooks/useTrajectories";
 import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
 import type { Row, Trajectory, Warning } from "@/api/types";
+import { CopyAgentPromptButton } from "@/components/agent/CopyAgentPromptButton";
+import { AnnotationBanner } from "@/components/annotation/AnnotationBanner";
+import { useAnnotationIndex } from "@/components/annotation/useAnnotationIndex";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -45,6 +48,7 @@ import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
 import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
 import { getTrajectoryOptions } from "@/features/trajectory-view/trajectoryOptions";
+import { useAnnotationStream } from "@/hooks/useAnnotationStream";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { cn } from "@/lib/utils";
 import { useLabelsStore } from "@/stores/labelsStore";
@@ -100,6 +104,7 @@ export function Query() {
   const columns = useQueryStore((state) => state.columns);
   const rows = useQueryStore((state) => state.rows);
   const execution = useQueryStore((state) => state.execution);
+  const fingerprints = useQueryStore((state) => state.fingerprints);
   const trajectoryConfig = useQueryStore((state) => state.trajectoryConfig);
   const isExecuting = useQueryStore((state) => state.isExecuting);
   const isDirty = useQueryStore((state) => state.isDirty);
@@ -148,6 +153,8 @@ export function Query() {
   const executeQuery = useExecuteQuery();
   const saveViewConfig = useSaveViewConfig();
   const aggregateTrajectories = useTrajectories(queryId ?? 0);
+  const annotationStream = useAnnotationStream(queryId);
+  const annotationIndex = useAnnotationIndex(queryId, rows, fingerprints, columns);
   const runBlockedByViewConfigLoad = routeQueryId !== null && viewConfigLoading;
   const trajectoryConfigComplete = isTrajectoryConfigComplete(trajectoryConfig);
   const trajectoryTabDisabled = !trajectoryConfigComplete || rows.length === 0 || queryId === null;
@@ -618,6 +625,7 @@ export function Query() {
       execution: null,
       suggestedRenders: {},
       warnings: [],
+      fingerprints: null,
       filters: {},
       selectedRowIds: new Set<string>(),
     };
@@ -775,6 +783,9 @@ export function Query() {
           onSaveAs={handleSaveAs}
           onExport={() => handleOpenExport(true)}
           onLabeling={() => setLabelingPanelOpen(true)}
+          agentPromptAction={
+            <CopyAgentPromptButton queryId={queryId} disabled={isExecuting} />
+          }
           resultTabs={
             <ResultViewTabs
               activeView={activeResultView}
@@ -836,6 +847,16 @@ export function Query() {
         </div>
 
         <ViewConfigBar queryId={queryId} />
+
+        <AnnotationBanner
+          queryId={queryId}
+          annotationIndex={annotationIndex}
+          streamStatus={annotationStream.status}
+          fingerprints={fingerprints}
+          view={activeResultView}
+          onRetryStream={annotationStream.reconnect}
+          onSwitchToRowView={() => setActiveResultView("row")}
+        />
 
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
           <ResultPlaceholder

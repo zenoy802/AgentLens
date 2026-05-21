@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
@@ -20,7 +21,14 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
-import type { Column, FieldRender, LabelField, Row } from "@/api/types";
+import type { Annotation, Column, FieldRender, LabelField, Row } from "@/api/types";
+import { AddAnnotationDialog } from "@/components/annotation/AddAnnotationDialog";
+import { AnnotationPopover } from "@/components/annotation/AnnotationPopover";
+import { ANNOTATION_COLORS } from "@/components/annotation/colors";
+import {
+  useAnnotationIndex,
+  type AnnotationIndex,
+} from "@/components/annotation/useAnnotationIndex";
 import { FullscreenViewDialog } from "@/components/common/FullscreenViewDialog";
 import { useLabels } from "@/api/hooks/useLabels";
 import { useLabelSchema } from "@/api/hooks/useLabelSchema";
@@ -69,6 +77,11 @@ interface RowTableProps {
   isFullscreen?: boolean;
 }
 
+type AnnotationDialogTarget = {
+  rowIdentity: string;
+  columnKey: string | null;
+};
+
 const SELECTION_COLUMN_WIDTH = 44;
 const ROW_NUMBER_COLUMN_WIDTH = 56;
 const DEFAULT_DATA_COLUMN_WIDTH = 200;
@@ -99,12 +112,14 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   const lastSelectedRowIdRef = useRef<string | null>(null);
   const queryId = useQueryStore((state) => state.queryId);
   const execution = useQueryStore((state) => state.execution);
+  const fingerprints = useQueryStore((state) => state.fingerprints);
   const fieldRenders = useQueryStore((state) => state.fieldRenders);
   const tableConfig = useQueryStore((state) => state.tableConfig);
   const filters = useQueryStore((state) => state.filters);
   const setColumnWidth = useQueryStore((state) => state.setColumnWidth);
   const selectedRowIds = useQueryStore((state) => state.selectedRowIds);
   const setRowsSelected = useQueryStore((state) => state.setRowsSelected);
+  const [annotationTarget, setAnnotationTarget] = useState<AnnotationDialogTarget | null>(null);
   const labelSchema = useLabelSchema(queryId);
   const labelFields = labelSchema.data?.fields ?? EMPTY_LABEL_FIELDS;
   const labelsByRow = useLabelsStore((state) => state.labelsByRow);
@@ -119,6 +134,15 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
   const rowIdentityByRow = useMemo(
     () => createRowIdentityMap(sortedRows, columns),
     [columns, sortedRows],
+  );
+  const annotationIndex = useAnnotationIndex(queryId, rows, fingerprints, columns);
+  const staleAnnotationIds = useMemo(
+    () => new Set(annotationIndex.getStaleAnnotations().map((annotation) => annotation.id)),
+    [annotationIndex],
+  );
+  const orphanAnnotationIds = useMemo(
+    () => new Set(annotationIndex.getOrphanAnnotations().map((annotation) => annotation.id)),
+    [annotationIndex],
   );
   const rowIdentities = useMemo(
     () =>
@@ -245,9 +269,25 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
         cell: (ctx) => {
           const value = ctx.getValue();
           const render = fieldRenders[column.name] ?? getDefaultRender(value);
+          const rowId = getRowIdentity(
+            ctx.row.original,
+            columns,
+            ctx.row.index,
+            rowIdentityByRow,
+          );
+          const cellVisualState = annotationIndex.getCellVisualState(rowId, column.name);
 
           return (
-            <CopyableCell value={value}>
+            <CopyableCell
+              value={value}
+              queryId={queryId}
+              rowIdentity={rowId}
+              columnKey={column.name}
+              annotations={cellVisualState.annotations}
+              staleAnnotationIds={staleAnnotationIds}
+              orphanAnnotationIds={orphanAnnotationIds}
+              onAddAnnotation={setAnnotationTarget}
+            >
               <CellDispatcher
                 value={value}
                 render={render}
@@ -302,17 +342,20 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     [
       columns,
       fieldRenders,
+      annotationIndex,
       labelStatsByField,
       labelFields,
       labelResultKey,
       labelsQuery.isError,
       labelsQuery.isLoading,
+      orphanAnnotationIds,
       queryId,
       rowIdentityByRow,
       rowIdentities.length,
       rowHeightConfig.previewLines,
       selectedRowIds,
       setRowsSelected,
+      staleAnnotationIds,
       tableConfig.column_widths,
       tableConfig.rich_preview,
       visibleColumns,
@@ -482,9 +525,29 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
             tableConfig={tableConfig}
             rowHeight={rowHeightConfig.height}
             rowIdentityByRow={rowIdentityByRow}
+            queryId={queryId}
+            selectedRowIds={selectedRowIds}
+            annotationIndex={annotationIndex}
+            staleAnnotationIds={staleAnnotationIds}
+            orphanAnnotationIds={orphanAnnotationIds}
+            onAddAnnotation={setAnnotationTarget}
           />
         </table>
       </div>
+      {queryId !== null && annotationTarget !== null ? (
+        <AddAnnotationDialog
+          open={annotationTarget !== null}
+          queryId={queryId}
+          rowIdentity={annotationTarget.rowIdentity}
+          columnKey={annotationTarget.columnKey}
+          fingerprints={fingerprints}
+          onOpenChange={(open) => {
+            if (!open) {
+              setAnnotationTarget(null);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -870,6 +933,12 @@ type VirtualizedTableBodyProps = {
   tableConfig: TableConfig;
   rowHeight: number;
   rowIdentityByRow: WeakMap<Row, string>;
+  queryId: number | null;
+  selectedRowIds: Set<string>;
+  annotationIndex: AnnotationIndex;
+  staleAnnotationIds: ReadonlySet<number>;
+  orphanAnnotationIds: ReadonlySet<number>;
+  onAddAnnotation: (target: AnnotationDialogTarget) => void;
 };
 
 function VirtualizedTableBody({
@@ -882,6 +951,12 @@ function VirtualizedTableBody({
   tableConfig,
   rowHeight,
   rowIdentityByRow,
+  queryId,
+  selectedRowIds,
+  annotationIndex,
+  staleAnnotationIds,
+  orphanAnnotationIds,
+  onAddAnnotation,
 }: VirtualizedTableBodyProps) {
   const rowVirtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: rows.length,
@@ -900,69 +975,138 @@ function VirtualizedTableBody({
     >
       {rowVirtualizer.getVirtualItems().map((virtualRow) => {
         const row = rows[virtualRow.index];
+        const rowId = getRowIdentity(row.original, columns, row.index, rowIdentityByRow);
+        const rowVisualState = annotationIndex.getRowVisualState(rowId);
+        const rowSelected = selectedRowIds.has(rowId);
         return (
-          <tr
-            key={row.id}
-            className={cn(
-              "group absolute flex w-full border-b bg-background text-sm transition-colors hover:bg-accent/40",
-              onRowClick !== undefined && "cursor-pointer",
-            )}
-            style={{
-              height: rowHeight,
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            onClick={(event) => {
-              if (shouldIgnoreRowClick(event)) {
-                return;
-              }
-              onRowClick?.(
-                row.original,
-                row.index + 1,
-                getRowIdentity(row.original, columns, row.index, rowIdentityByRow),
-              );
-            }}
-          >
-            {row.getVisibleCells().map((cell) => {
-              const isSelection = cell.column.id === SELECTION_COLUMN_ID;
-              const isRowNumber = cell.column.id === ROW_NUMBER_COLUMN_ID;
-              const columnName = getDataColumnName(cell.column.id);
-              const pinStyle =
-                columnName === null
-                  ? undefined
-                  : getPinnedColumnStyle({
-                      columnName,
-                      table,
-                      visibleColumns,
-                      tableConfig,
-                      zIndex: 10,
-                    });
-              return (
-                <td
-                  key={cell.id}
-                  className={cn(
-                    "flex min-w-0 border-r px-3",
-                    isSelection &&
-                      "sticky left-0 z-[6] items-center justify-center bg-background px-2 group-hover:bg-accent/40",
-                    isRowNumber &&
-                      "sticky z-[5] items-center justify-center bg-background px-2 text-xs text-muted-foreground group-hover:bg-accent/40",
-                    !isSelection && !isRowNumber && "items-start py-2",
-                    pinStyle !== undefined && "bg-background shadow-sm group-hover:bg-accent/40",
-                  )}
-                  style={{
-                    ...getColumnStyle(cell.column.getSize()),
-                    height: rowHeight,
-                    ...(isRowNumber ? { left: SELECTION_COLUMN_WIDTH } : undefined),
-                    ...pinStyle,
-                  }}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              );
-            })}
-          </tr>
+          <ContextMenu key={row.id}>
+            <ContextMenuTrigger asChild>
+              <tr
+                className={cn(
+                  "group absolute flex w-full border-b bg-background text-sm transition-colors hover:bg-accent/40",
+                  rowSelected && "bg-primary/5 hover:bg-primary/10",
+                  onRowClick !== undefined && "cursor-pointer",
+                )}
+                style={{
+                  height: rowHeight,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+                onClick={(event) => {
+                  if (shouldIgnoreRowClick(event)) {
+                    return;
+                  }
+                  onRowClick?.(row.original, row.index + 1, rowId);
+                }}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const isSelection = cell.column.id === SELECTION_COLUMN_ID;
+                  const isRowNumber = cell.column.id === ROW_NUMBER_COLUMN_ID;
+                  const columnName = getDataColumnName(cell.column.id);
+                  const pinStyle =
+                    columnName === null
+                      ? undefined
+                      : getPinnedColumnStyle({
+                          columnName,
+                          table,
+                          visibleColumns,
+                          tableConfig,
+                          zIndex: 10,
+                        });
+                  const cellVisualState =
+                    columnName === null
+                      ? null
+                      : annotationIndex.getCellVisualState(rowId, columnName);
+                  const cellColor = cellVisualState?.color ?? null;
+
+                  return (
+                    <td
+                      key={cell.id}
+                      className={cn(
+                        "flex min-w-0 border-r px-3",
+                        isSelection &&
+                          "sticky left-0 z-[6] items-center justify-center bg-background px-2 group-hover:bg-accent/40",
+                        isSelection && rowSelected && "bg-primary/5 group-hover:bg-primary/10",
+                        isRowNumber &&
+                          "sticky z-[5] items-center justify-center bg-background px-2 text-xs text-muted-foreground group-hover:bg-accent/40",
+                        isRowNumber && rowSelected && "bg-primary/5 group-hover:bg-primary/10",
+                        !isSelection && !isRowNumber && "items-start py-2",
+                        pinStyle !== undefined && cellColor === null && "bg-background shadow-sm group-hover:bg-accent/40",
+                        pinStyle !== undefined && cellColor !== null && "shadow-sm",
+                        cellColor !== null && ANNOTATION_COLORS[cellColor].bg,
+                      )}
+                      style={{
+                        ...getColumnStyle(cell.column.getSize()),
+                        height: rowHeight,
+                        ...(isRowNumber ? { left: SELECTION_COLUMN_WIDTH } : undefined),
+                        ...pinStyle,
+                      }}
+                    >
+                      {isSelection && rowVisualState.count > 0 && queryId !== null ? (
+                        <RowAnnotationBar
+                          queryId={queryId}
+                          annotations={rowVisualState.annotations}
+                          segments={rowVisualState.segments}
+                          staleAnnotationIds={staleAnnotationIds}
+                          orphanAnnotationIds={orphanAnnotationIds}
+                        />
+                      ) : null}
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  );
+                })}
+              </tr>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="min-w-44" onClick={(event) => event.stopPropagation()}>
+              <ContextMenuItem
+                disabled={queryId === null}
+                onSelect={() => onAddAnnotation({ rowIdentity: rowId, columnKey: null })}
+              >
+                Add row annotation
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         );
       })}
     </tbody>
+  );
+}
+
+function RowAnnotationBar({
+  queryId,
+  annotations,
+  segments,
+  staleAnnotationIds,
+  orphanAnnotationIds,
+}: {
+  queryId: number;
+  annotations: ReturnType<AnnotationIndex["getRowAnnotations"]>;
+  segments: Array<keyof typeof ANNOTATION_COLORS>;
+  staleAnnotationIds: ReadonlySet<number>;
+  orphanAnnotationIds: ReadonlySet<number>;
+}) {
+  return (
+    <AnnotationPopover
+      queryId={queryId}
+      annotations={annotations}
+      staleAnnotationIds={staleAnnotationIds}
+      orphanAnnotationIds={orphanAnnotationIds}
+    >
+      <button
+        type="button"
+        data-row-click-stop
+        className="absolute left-0 top-0 flex h-full w-2 flex-col overflow-hidden"
+        aria-label={`${annotations.length} row annotations`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {segments.map((color, index) => (
+          <span
+            key={`${color}:${index}`}
+            className={cn("w-full flex-1", ANNOTATION_COLORS[color].bar)}
+            aria-hidden="true"
+          />
+        ))}
+      </button>
+    </AnnotationPopover>
   );
 }
 
@@ -1166,7 +1310,27 @@ function ColumnSortIndicator({ columnName }: { columnName: string }) {
   return null;
 }
 
-function CopyableCell({ value, children }: { value: unknown; children: ReactNode }) {
+function CopyableCell({
+  value,
+  queryId,
+  rowIdentity,
+  columnKey,
+  annotations,
+  staleAnnotationIds,
+  orphanAnnotationIds,
+  onAddAnnotation,
+  children,
+}: {
+  value: unknown;
+  queryId: number | null;
+  rowIdentity: string;
+  columnKey: string;
+  annotations: Annotation[];
+  staleAnnotationIds: ReadonlySet<number>;
+  orphanAnnotationIds: ReadonlySet<number>;
+  onAddAnnotation: (target: AnnotationDialogTarget) => void;
+  children: ReactNode;
+}) {
   const text = toClipboardText(value);
   const suppressRowClickRef = useRef(false);
 
@@ -1195,6 +1359,33 @@ function CopyableCell({ value, children }: { value: unknown; children: ReactNode
           }}
         >
           <div className="h-full min-w-0 flex-1">{children}</div>
+          {queryId !== null && annotations.length > 0 ? (
+            <AnnotationPopover
+              queryId={queryId}
+              annotations={annotations}
+              staleAnnotationIds={staleAnnotationIds}
+              orphanAnnotationIds={orphanAnnotationIds}
+            >
+              <button
+                type="button"
+                data-row-click-stop
+                className="absolute right-8 top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border bg-background px-1 text-[10px] font-semibold text-foreground shadow-sm"
+                aria-label={`${annotations.length} cell annotations`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    ANNOTATION_COLORS[annotations[0].color].dot,
+                  )}
+                  aria-hidden="true"
+                />
+                {annotations.length > 1 ? (
+                  <span className="ml-1">{annotations.length > 3 ? "3+" : annotations.length}</span>
+                ) : null}
+              </button>
+            </AnnotationPopover>
+          ) : null}
           <button
             type="button"
             className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground group-hover/cell:flex"
@@ -1217,6 +1408,18 @@ function CopyableCell({ value, children }: { value: unknown; children: ReactNode
           }}
         >
           复制
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={queryId === null}
+          onSelect={() => onAddAnnotation({ rowIdentity, columnKey: null })}
+        >
+          Add row annotation
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={queryId === null}
+          onSelect={() => onAddAnnotation({ rowIdentity, columnKey })}
+        >
+          Add cell annotation
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

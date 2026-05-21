@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LlmProvidersPanel } from "@/features/llm/LlmProvidersPanel";
 import { RenderRulesPanel } from "@/features/render-rules/RenderRulesPanel";
+import { AgentIntegrationTab } from "@/pages/Settings/AgentIntegrationTab";
 
 async function fetchAdminInfo(): Promise<AdminInfoResponse> {
   const { data, error, response } = await apiClient.GET("/admin/info");
@@ -36,6 +37,7 @@ export function Settings() {
         <TabsList>
           <TabsTrigger value="render-rules">字段渲染规则</TabsTrigger>
           <TabsTrigger value="llm">LLM 配置</TabsTrigger>
+          <TabsTrigger value="agent-integration">Agent Integration</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
         <TabsContent value="render-rules">
@@ -43,6 +45,9 @@ export function Settings() {
         </TabsContent>
         <TabsContent value="llm">
           <LlmProvidersPanel />
+        </TabsContent>
+        <TabsContent value="agent-integration">
+          <AgentIntegrationTab />
         </TabsContent>
         <TabsContent value="about">
           <AboutPanel />
