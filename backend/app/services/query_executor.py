@@ -71,7 +71,7 @@ class ExecutorService:
                     max_row_buffer=row_limit + 1,
                 )
                 conn.exec_driver_sql(f"SET SESSION MAX_EXECUTION_TIME={timeout * 1000}")
-                result = conn.exec_driver_sql(sql)
+                result = conn.exec_driver_sql(sql.replace("%", "%%"))
                 try:
                     cursor = result.cursor
                     description = cursor.description if cursor is not None else ()
