@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { createSelectionSnapshot } from "@/api/selectionSnapshots";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -13,22 +12,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatApiError } from "@/lib/formatApiError";
+import {
+  isProductLanguage,
+  loadProductLanguage,
+  saveProductLanguage,
+  type ProductLanguage,
+} from "@/lib/productLanguage";
 import { useQueryStore } from "@/stores/queryStore";
 
-type AnalysisHint =
-  | "failure modes"
-  | "consistency issues"
-  | "performance outliers"
-  | "labeling suggestions"
-  | "custom";
-
-const ANALYSIS_HINTS: AnalysisHint[] = [
-  "failure modes",
-  "consistency issues",
-  "performance outliers",
-  "labeling suggestions",
-  "custom",
+const PROMPT_LANGUAGE_OPTIONS: Array<{ value: ProductLanguage; label: string }> = [
+  { value: "zh-CN", label: "中文" },
+  { value: "en-US", label: "English" },
 ];
+
+const COPY_LABELS: Record<
+  ProductLanguage,
+  {
+    button: string;
+    copied: string;
+    languagePlaceholder: string;
+  }
+> = {
+  "zh-CN": {
+    button: "复制 Agent Prompt",
+    copied: "Agent Prompt 已复制",
+    languagePlaceholder: "Prompt 语言",
+  },
+  "en-US": {
+    button: "Copy Agent Prompt",
+    copied: "Agent prompt copied",
+    languagePlaceholder: "Prompt language",
+  },
+};
 
 interface CopyAgentPromptButtonProps {
   queryId: number | null;
@@ -40,17 +55,21 @@ export function CopyAgentPromptButton({
   disabled = false,
 }: CopyAgentPromptButtonProps) {
   const selectedRowIds = useQueryStore((state) => state.selectedRowIds);
-  const [analysisHint, setAnalysisHint] = useState<AnalysisHint>("failure modes");
-  const [customHint, setCustomHint] = useState("");
+  const [language, setLanguage] = useState<ProductLanguage>(() => loadProductLanguage());
   const [copying, setCopying] = useState(false);
   const selectedRowIdentities = useMemo(
     () => Array.from(selectedRowIds),
     [selectedRowIds],
   );
-  const resolvedHint =
-    analysisHint === "custom"
-      ? customHint.trim() || "custom analysis"
-      : analysisHint;
+
+  function handleLanguageChange(value: string) {
+    if (!isProductLanguage(value)) {
+      return;
+    }
+
+    setLanguage(value);
+    saveProductLanguage(value);
+  }
 
   async function handleCopy() {
     if (queryId === null || copying) {
@@ -72,14 +91,14 @@ export function CopyAgentPromptButton({
         queryId,
         selectionId,
         selectedCount: selectedRowIdentities.length,
-        analysisHint: resolvedHint,
+        language,
       });
 
       if (navigator.clipboard === undefined) {
         throw new Error("Clipboard API is not available");
       }
       await navigator.clipboard.writeText(prompt);
-      toast.success("Agent prompt copied");
+      toast.success(COPY_LABELS[language].copied);
     } catch (error) {
       toast.error(formatApiError(error));
     } finally {
@@ -90,29 +109,20 @@ export function CopyAgentPromptButton({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select
-        value={analysisHint}
-        onValueChange={(value) => setAnalysisHint(value as AnalysisHint)}
+        value={language}
+        onValueChange={handleLanguageChange}
       >
-        <SelectTrigger className="h-9 w-48">
-          <SelectValue placeholder="Analysis hint" />
+        <SelectTrigger className="h-9 w-32">
+          <SelectValue placeholder={COPY_LABELS[language].languagePlaceholder} />
         </SelectTrigger>
         <SelectContent>
-          {ANALYSIS_HINTS.map((hint) => (
-            <SelectItem key={hint} value={hint}>
-              {hint === "custom" ? "custom..." : hint}
+          {PROMPT_LANGUAGE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-      {analysisHint === "custom" ? (
-        <Input
-          value={customHint}
-          maxLength={120}
-          className="h-9 w-56"
-          placeholder="Short analysis focus"
-          onChange={(event) => setCustomHint(event.target.value)}
-        />
-      ) : null}
       <Button
         variant="outline"
         className="gap-2"
@@ -124,7 +134,7 @@ export function CopyAgentPromptButton({
         ) : (
           <Clipboard className="h-4 w-4" aria-hidden="true" />
         )}
-        Copy Agent Prompt
+        {COPY_LABELS[language].button}
       </Button>
     </div>
   );
@@ -134,17 +144,13 @@ export function buildAgentPrompt({
   queryId,
   selectionId,
   selectedCount,
-  analysisHint,
+  language,
 }: {
   queryId: number;
   selectionId: string | null;
   selectedCount: number;
-  analysisHint: string;
+  language: ProductLanguage;
 }): string {
-  const selectionPart =
-    selectionId === null
-      ? ""
-      : `I selected ${selectedCount} rows in the UI. selection_id="${selectionId}".\n`;
   const exportMcp =
     selectionId === null
       ? `export_context(query_id=${queryId}, scope="all")`
@@ -153,41 +159,66 @@ export function buildAgentPrompt({
     selectionId === null
       ? `agentlens context export --query ${queryId}`
       : `agentlens context export --query ${queryId} --selection ${selectionId}`;
-  const selectionWorkflow =
+  const selectionDataEn =
     selectionId === null
       ? ""
-      : `1. If a selection_id is provided, start with:
-   - MCP: get_selection("${selectionId}")
-   - CLI: agentlens data selection --selection ${selectionId}
-
+      : `- selection_id: ${selectionId}
+- selected_rows: ${selectedCount}
 `;
-  const firstNumber = selectionId === null ? 1 : 2;
+  const selectionAccessEn =
+    selectionId === null
+      ? ""
+      : `- MCP selected rows: get_selection("${selectionId}")
+- CLI selected rows: agentlens data selection --selection ${selectionId}
+`;
+  const selectionDataZh =
+    selectionId === null
+      ? ""
+      : `- selection_id：${selectionId}
+- 已选择行数：${selectedCount}
+`;
+  const selectionAccessZh =
+    selectionId === null
+      ? ""
+      : `- MCP 选中行：get_selection("${selectionId}")
+- CLI 选中行：agentlens data selection --selection ${selectionId}
+`;
 
-  return `I'm analyzing AgentLens query_id=${queryId}.
-${selectionPart}
-Please use AgentLens MCP tools or the \`agentlens\` CLI to inspect the data.
+  if (language === "zh-CN") {
+    return `AgentLens 数据上下文：
+- query_id：${queryId}
+${selectionDataZh}
+请使用 AgentLens MCP 工具或 \`agentlens\` CLI 先自行查看这个查询的数据和字段。不要预设分析目标、分析模式或打标方式。
 
-Recommended workflow:
-${selectionWorkflow}${firstNumber}. For small or interactive analysis, use live access:
-   - MCP: get_rows(query_id=${queryId}, limit=100, offset=0)
-   - CLI: agentlens data rows --query ${queryId} --limit 100
+建议的数据入口：
+- MCP 查询信息：get_query(query_id=${queryId})
+- MCP 样例行：get_rows(query_id=${queryId}, limit=100, offset=0)
+- CLI 查询信息：agentlens query show ${queryId}
+- CLI 字段信息：agentlens schema columns --query ${queryId}
+- CLI 样例行：agentlens data rows --query ${queryId} --limit 100
+${selectionAccessZh}
+数据量较大时：
+- MCP：${exportMcp}
+- CLI：${exportCli}
 
-${firstNumber + 1}. For larger analysis, export a local context:
-   - MCP: ${exportMcp}
-   - CLI: ${exportCli}
+查看数据结构和可用字段后，请先问我想分析、排查或标注什么问题，再继续。`;
+  }
 
-${firstNumber + 2}. Analyze for: ${analysisHint}
+  return `AgentLens data context:
+- query_id: ${queryId}
+${selectionDataEn}
+Use AgentLens MCP tools or the \`agentlens\` CLI to inspect this query's data and fields first. Do not assume an analysis goal, analysis mode, or annotation workflow.
 
-${firstNumber + 3}. Write findings back to AgentLens:
-   - Use highlight_rows() for row-level findings.
-   - Use add_annotation() for cell-level pinpointing.
+Suggested data access:
+- MCP query info: get_query(query_id=${queryId})
+- MCP sample rows: get_rows(query_id=${queryId}, limit=100, offset=0)
+- CLI query info: agentlens query show ${queryId}
+- CLI columns: agentlens schema columns --query ${queryId}
+- CLI sample rows: agentlens data rows --query ${queryId} --limit 100
+${selectionAccessEn}
+For larger data:
+- MCP: ${exportMcp}
+- CLI: ${exportCli}
 
-Color conventions:
-- red: hard failures / errors
-- yellow: suspicious / warnings
-- green: verified-correct / success cases
-- blue: informational notes
-- gray: neutral notes
-
-Please include concise explanations in annotation text so they are useful in the AgentLens UI.`;
+After you understand the data shape and available fields, ask me what I want to analyze, debug, or annotate before continuing.`;
 }

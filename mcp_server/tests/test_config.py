@@ -20,6 +20,6 @@ def test_parse_args_rejects_invalid_author() -> None:
 def test_parse_args_defaults() -> None:
     args = parse_args(["--author", "agent:claude-code"])
 
-    assert args.backend_url == "http://127.0.0.1:8765"
+    assert args.backend_url == "http://127.0.0.1:8000"
     assert args.timeout == DEFAULT_TIMEOUT
     assert args.author == "agent:claude-code"

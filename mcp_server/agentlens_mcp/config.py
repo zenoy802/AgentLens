@@ -6,7 +6,8 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-DEFAULT_BACKEND_URL = "http://127.0.0.1:8765"
+from agentlens_client import DEFAULT_BACKEND_URL
+
 DEFAULT_TIMEOUT = 30
 AUTHOR_PATTERN = re.compile(r"^[a-zA-Z0-9_:.-]+$")
 

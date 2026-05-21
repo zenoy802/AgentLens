@@ -20,7 +20,7 @@ pip install -e mcp_server
 The server requires a fixed author:
 
 ```bash
-agentlens-mcp --backend-url http://127.0.0.1:8765 --author agent:claude-code
+agentlens-mcp --backend-url http://127.0.0.1:8000 --author agent:claude-code
 ```
 
 ## Claude Code
@@ -33,7 +33,7 @@ Project `.mcp.json`:
     "agentlens": {
       "command": "agentlens-mcp",
       "args": [
-        "--backend-url", "http://127.0.0.1:8765",
+        "--backend-url", "http://127.0.0.1:8000",
         "--author", "agent:claude-code"
       ]
     }
@@ -49,7 +49,7 @@ Project `.mcp.json`:
     "agentlens": {
       "command": "agentlens-mcp",
       "args": [
-        "--backend-url", "http://127.0.0.1:8765",
+        "--backend-url", "http://127.0.0.1:8000",
         "--author", "agent:claude-desktop"
       ]
     }
@@ -65,7 +65,7 @@ Project `.mcp.json`:
     "agentlens": {
       "command": "agentlens-mcp",
       "args": [
-        "--backend-url", "http://127.0.0.1:8765",
+        "--backend-url", "http://127.0.0.1:8000",
         "--author", "agent:cursor"
       ]
     }
