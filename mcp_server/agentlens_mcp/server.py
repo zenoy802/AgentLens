@@ -18,6 +18,8 @@ Tool: Any | None
 
 if TYPE_CHECKING:
     from mcp.server import Server
+else:
+    Server = Any
 
 try:  # pragma: no cover - exercised when the mcp package is installed.
     from mcp.server import Server as _McpServer
@@ -72,7 +74,7 @@ def create_server(
         return [TextContent(type="text", text=_format_tool_result(result))]
 
     server._agentlens_toolset = toolset
-    return server
+    return cast(Server, server)
 
 
 async def run_server(args: Args) -> None:
