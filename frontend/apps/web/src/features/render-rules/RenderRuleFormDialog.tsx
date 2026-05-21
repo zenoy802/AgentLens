@@ -45,7 +45,15 @@ type RenderRuleFormDialogProps = {
 
 const MATCH_TYPES: MatchType[] = ["exact", "prefix", "suffix", "regex"];
 const RULE_TARGETS: RenderRuleTarget[] = ["field_render", "trajectory_config"];
-const RENDER_TYPES: RenderType[] = ["text", "markdown", "json", "code", "timestamp", "tag"];
+const RENDER_TYPES: RenderType[] = [
+  "text",
+  "markdown",
+  "json",
+  "enum",
+  "code",
+  "timestamp",
+  "tag",
+];
 const CODE_LANGUAGES: CodeLanguage[] = ["sql", "python", "javascript", "json", "plain"];
 const TRAJECTORY_FIELDS: TrajectoryRuleField[] = [
   "group_by",
@@ -64,6 +72,7 @@ const DEFAULT_VALUES: RenderRuleFormValues = {
   codeLanguage: "plain",
   jsonCollapsed: true,
   timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+  enumColors: {},
   trajectoryField: "content_column",
   trajectoryOrderDirection: "asc",
   priority: 0,
@@ -397,6 +406,7 @@ function valuesFromRule(rule: RenderRuleRead): RenderRuleFormValues {
       codeLanguage: "plain",
       jsonCollapsed: true,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+      enumColors: {},
       trajectoryField: renderConfig.field,
       trajectoryOrderDirection: renderConfig.order_direction ?? "asc",
       priority: rule.priority,
@@ -418,6 +428,7 @@ function valuesFromRule(rule: RenderRuleRead): RenderRuleFormValues {
       renderConfig.type === "timestamp"
         ? renderConfig.format ?? DEFAULT_TIMESTAMP_FORMAT
         : DEFAULT_TIMESTAMP_FORMAT,
+    enumColors: renderConfig.type === "enum" ? renderConfig.colors ?? {} : {},
     trajectoryField: "content_column",
     trajectoryOrderDirection: "asc",
     priority: rule.priority,
@@ -447,6 +458,8 @@ function buildRenderConfig(values: RenderRuleFormValues): RenderRuleConfig {
         type: "timestamp",
         format: values.timestampFormat.trim() || DEFAULT_TIMESTAMP_FORMAT,
       };
+    case "enum":
+      return { type: "enum", colors: { ...values.enumColors } };
     case "tag":
       return { type: "tag" };
     case "text":

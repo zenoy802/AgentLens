@@ -17,6 +17,7 @@ export type RenderRuleFormValues = {
   codeLanguage: CodeLanguage;
   jsonCollapsed: boolean;
   timestampFormat: string;
+  enumColors: Record<string, string>;
   trajectoryField: TrajectoryRuleField;
   trajectoryOrderDirection: "asc" | "desc";
   priority: number;

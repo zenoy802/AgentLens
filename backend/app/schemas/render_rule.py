@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_valid
 from app.schemas.datetime import ensure_utc
 from app.schemas.render import (
     CodeRender,
+    EnumRender,
     JsonRender,
     MarkdownRender,
     TagRender,
@@ -44,6 +45,7 @@ RenderRuleConfig: TypeAlias = Annotated[
     | CodeRender
     | TimestampRender
     | TagRender
+    | EnumRender
     | TrajectoryConfigRule,
     Field(discriminator="type"),
 ]

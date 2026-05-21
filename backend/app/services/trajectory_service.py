@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any, TypeAlias
 
 from app.core.errors import ValidationError
@@ -11,6 +12,7 @@ from app.schemas.view_config import TrajectoryConfig
 _ROW_IDENTITY_KEY = "_row_identity"
 _NULL_GROUP_KEY = "__null__"
 _GroupBucketKey: TypeAlias = tuple[str, str, str]
+_IndexedRow: TypeAlias = tuple[int, dict[str, Any]]
 
 
 def aggregate(
@@ -18,12 +20,19 @@ def aggregate(
     config: TrajectoryConfig,
     *,
     row_identity_key: str = _ROW_IDENTITY_KEY,
+    row_identities: Sequence[str] | None = None,
 ) -> tuple[list[Trajectory], list[WarningRead]]:
     if not rows:
         return [], []
 
-    _validate_required_columns(rows, config)
-    grouped_rows = _group_rows(rows, config.group_by)
+    if row_identities is not None and len(row_identities) != len(rows):
+        raise ValidationError(
+            code="TRAJECTORY_ROW_IDENTITY_COUNT_MISMATCH",
+            message="row_identities 数量必须与结果行数量一致",
+            detail={"row_count": len(rows), "row_identity_count": len(row_identities)},
+        )
+
+    grouped_rows = _group_rows(rows, config)
     warnings: list[WarningRead] = []
     trajectories: list[Trajectory] = []
 
@@ -35,6 +44,7 @@ def aggregate(
             group_key,
             config,
             row_identity_key,
+            row_identities,
         )
         if missing_role_count > 0:
             warnings.append(
@@ -50,7 +60,7 @@ def aggregate(
             )
 
         trajectories.append(
-            Trajectory(
+            Trajectory.model_construct(
                 group_key=group_key,
                 message_count=len(messages),
                 messages=messages,
@@ -60,10 +70,11 @@ def aggregate(
     return trajectories, warnings
 
 
-def _validate_required_columns(
+def _group_rows(
     rows: list[dict[str, Any]],
     config: TrajectoryConfig,
-) -> None:
+) -> dict[_GroupBucketKey, list[_IndexedRow]]:
+    grouped_rows: dict[_GroupBucketKey, list[_IndexedRow]] = {}
     required_columns = (config.role_column, config.content_column)
     for index, row in enumerate(rows):
         for column in required_columns:
@@ -74,23 +85,16 @@ def _validate_required_columns(
                     detail={"column": column, "row_index": index},
                 )
 
-
-def _group_rows(
-    rows: list[dict[str, Any]],
-    group_by: str,
-) -> dict[_GroupBucketKey, list[dict[str, Any]]]:
-    grouped_rows: dict[_GroupBucketKey, list[dict[str, Any]]] = {}
-    for index, row in enumerate(rows):
-        if group_by not in row:
+        if config.group_by not in row:
             raise ValidationError(
                 code="TRAJECTORY_GROUP_BY_MISSING",
-                message=f"列 '{group_by}' 不存在, 无法聚合 trajectory",
-                detail={"group_by": group_by, "row_index": index},
+                message=f"列 '{config.group_by}' 不存在, 无法聚合 trajectory",
+                detail={"group_by": config.group_by, "row_index": index},
             )
 
-        group_value = row[group_by]
+        group_value = row[config.group_by]
         group_bucket_key = _group_bucket_key(group_value)
-        grouped_rows.setdefault(group_bucket_key, []).append(row)
+        grouped_rows.setdefault(group_bucket_key, []).append((index, row))
     return grouped_rows
 
 
@@ -106,16 +110,16 @@ def _display_group_key(group_bucket_key: _GroupBucketKey) -> str:
 
 
 def _sort_group_rows(
-    rows: list[dict[str, Any]],
+    rows: list[_IndexedRow],
     group_key: str,
     config: TrajectoryConfig,
     warnings: list[WarningRead],
-) -> list[dict[str, Any]]:
+) -> list[_IndexedRow]:
     order_by = config.order_by
     if order_by is None:
         return rows
 
-    missing_order_count = sum(1 for row in rows if order_by not in row)
+    missing_order_count = sum(1 for _, row in rows if order_by not in row)
     if missing_order_count > 0:
         warnings.append(
             WarningRead(
@@ -133,7 +137,10 @@ def _sort_group_rows(
     try:
         return sorted(
             rows,
-            key=lambda row: (row[order_by] is None, row[order_by]),
+            key=lambda indexed_row: (
+                indexed_row[1][order_by] is None,
+                indexed_row[1][order_by],
+            ),
             reverse=config.order_direction == "desc",
         )
     except TypeError:
@@ -152,24 +159,29 @@ def _sort_group_rows(
 
 
 def _build_messages(
-    rows: list[dict[str, Any]],
+    rows: list[_IndexedRow],
     group_key: str,
     config: TrajectoryConfig,
     row_identity_key: str,
+    row_identities: Sequence[str] | None,
 ) -> tuple[list[TrajectoryMessage], int]:
     messages: list[TrajectoryMessage] = []
     missing_role_count = 0
-    for index, row in enumerate(rows):
-        if row_identity_key not in row:
-            raise ValidationError(
-                code="TRAJECTORY_ROW_IDENTITY_MISSING",
-                message=f"结果行缺少 {row_identity_key}, 无法构造 trajectory message",
-                detail={
-                    "group_key": group_key,
-                    "row_index": index,
-                    "row_identity_key": row_identity_key,
-                },
-            )
+    for original_index, row in rows:
+        if row_identities is None:
+            if row_identity_key not in row:
+                raise ValidationError(
+                    code="TRAJECTORY_ROW_IDENTITY_MISSING",
+                    message=f"结果行缺少 {row_identity_key}, 无法构造 trajectory message",
+                    detail={
+                        "group_key": group_key,
+                        "row_index": original_index,
+                        "row_identity_key": row_identity_key,
+                    },
+                )
+            row_identity: Any = row[row_identity_key]
+        else:
+            row_identity = row_identities[original_index]
 
         role, role_missing = _normalize_role(row[config.role_column])
         if role_missing:
@@ -177,8 +189,8 @@ def _build_messages(
 
         raw = {key: value for key, value in row.items() if key != row_identity_key}
         messages.append(
-            TrajectoryMessage(
-                row_identity=str(row[row_identity_key]),
+            TrajectoryMessage.model_construct(
+                row_identity=str(row_identity),
                 role=role,
                 content=row[config.content_column],
                 tool_calls=_extract_tool_calls(row, config.tool_calls_column),

@@ -75,6 +75,36 @@ def test_multiple_groups_keep_first_seen_group_order() -> None:
     assert [trajectory.message_count for trajectory in trajectories] == [2, 1]
 
 
+def test_uses_external_row_identities_without_copying_identity_into_raw() -> None:
+    rows = [
+        {"session_id": "s2", "role": "user", "content": "one", "created_at": 2},
+        {"session_id": "s1", "role": "user", "content": "two", "created_at": 1},
+        {"session_id": "s2", "role": "assistant", "content": "three", "created_at": 1},
+    ]
+
+    trajectories, warnings = aggregate(
+        rows,
+        _config(order_by="created_at"),
+        row_identities=["row-0", "row-1", "row-2"],
+    )
+
+    assert warnings == []
+    assert [message.row_identity for message in trajectories[0].messages] == [
+        "row-2",
+        "row-0",
+    ]
+    assert "_row_identity" not in trajectories[0].messages[0].raw
+
+
+def test_external_row_identity_count_must_match_rows() -> None:
+    rows = [{"session_id": "s1", "role": "user", "content": "one"}]
+
+    with pytest.raises(ValidationError) as exc_info:
+        aggregate(rows, _config(), row_identities=[])
+
+    assert exc_info.value.code == "TRAJECTORY_ROW_IDENTITY_COUNT_MISMATCH"
+
+
 def test_null_group_key_does_not_merge_with_literal_null_sentinel() -> None:
     rows: list[dict[str, Any]] = [
         {"_row_identity": "null", "session_id": None, "role": "user", "content": "null group"},
