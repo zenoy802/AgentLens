@@ -72,6 +72,10 @@ def _roundtrip_payload(row_identity_column: str = "id") -> dict[str, object]:
                 "type": "timestamp",
                 "format": "YYYY-MM-DD HH:mm:ss",
             },
+            "status": {
+                "type": "enum",
+                "colors": {"ok": "#10b981", "failed": "#ef4444"},
+            },
         },
         "table_config": {
             "column_widths": {"content": 600},

@@ -120,6 +120,14 @@ def _build_error_response(
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+        if exc.http_status >= 500:
+            logger.exception(
+                "AppError: code={} message={} detail={}", exc.code, exc.message, exc.detail
+            )
+        else:
+            logger.warning(
+                "AppError: code={} message={} detail={}", exc.code, exc.message, exc.detail
+            )
         return _build_error_response(
             code=exc.code,
             message=exc.message,

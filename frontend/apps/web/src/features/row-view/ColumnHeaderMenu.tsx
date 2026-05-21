@@ -68,6 +68,12 @@ export function ColumnHeaderMenu({ columnName }: ColumnHeaderMenuProps) {
         >
           JSON
         </RenderMenuItem>
+        <RenderMenuItem
+          active={render.type === "enum"}
+          onSelect={() => updateRender({ type: "enum", colors: {} })}
+        >
+          Enum
+        </RenderMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>Code</DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-40">
