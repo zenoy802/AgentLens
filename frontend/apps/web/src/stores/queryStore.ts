@@ -5,6 +5,7 @@ import type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -16,6 +17,7 @@ export type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -64,6 +66,7 @@ export interface QueryState {
   columns: Column[];
   rows: Row[];
   execution: ExecutionInfo | null;
+  fingerprints: QueryFingerprints | null;
   suggestedRenders: Record<string, FieldRender>;
   fieldRenders: Record<string, FieldRender>;
   manualFieldRenderColumns: string[];
@@ -120,6 +123,7 @@ const initialResultState = {
   columns: [] as Column[],
   rows: [] as Row[],
   execution: null,
+  fingerprints: null as QueryFingerprints | null,
   suggestedRenders: {} as Record<string, FieldRender>,
   fieldRenders: {} as Record<string, FieldRender>,
   manualFieldRenderColumns: [] as string[],
@@ -151,6 +155,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         columns: result.columns,
         rows: result.rows,
         execution: result.execution,
+        fingerprints: result.fingerprints,
         suggestedRenders: result.suggested_field_renders,
         fieldRenders: filterFieldRenders(state.fieldRenders, result.columns),
         manualFieldRenderColumns: filterColumnNames(
@@ -482,6 +487,7 @@ function isSameResult(state: QueryState, result: ExecutionResult): boolean {
     state.queryId === result.query_id &&
     state.columns === result.columns &&
     state.rows === result.rows &&
+    state.fingerprints === result.fingerprints &&
     state.suggestedRenders === result.suggested_field_renders &&
     state.warnings === result.warnings &&
     execution !== null &&
