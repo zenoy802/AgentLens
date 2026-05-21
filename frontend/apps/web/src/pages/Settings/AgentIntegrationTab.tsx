@@ -11,12 +11,13 @@ agentlens context export --query 42
 agentlens annotate --query 42 --row <row_identity> --color yellow --text "Suspicious pattern"`;
 
 const MCP_INSTALL = "pipx install agentlens-mcp";
+const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
 const CLAUDE_CODE_CONFIG = `{
   "mcpServers": {
     "agentlens": {
       "command": "agentlens-mcp",
       "args": [
-        "--backend-url", "http://127.0.0.1:8765",
+        "--backend-url", "${DEFAULT_BACKEND_URL}",
         "--author", "agent:claude-code"
       ]
     }
@@ -26,7 +27,7 @@ const CLAUDE_DESKTOP_CONFIG = `{
   "mcpServers": {
     "agentlens": {
       "command": "agentlens-mcp",
-      "args": ["--backend-url", "http://127.0.0.1:8765", "--author", "agent:claude-desktop"]
+      "args": ["--backend-url", "${DEFAULT_BACKEND_URL}", "--author", "agent:claude-desktop"]
     }
   }
 }`;
@@ -34,11 +35,11 @@ const CURSOR_CONFIG = `{
   "mcpServers": {
     "agentlens": {
       "command": "agentlens-mcp",
-      "args": ["--backend-url", "http://127.0.0.1:8765", "--author", "agent:cursor"]
+      "args": ["--backend-url", "${DEFAULT_BACKEND_URL}", "--author", "agent:cursor"]
     }
   }
 }`;
-const GENERIC_MCP_CONFIG = `agentlens-mcp --backend-url http://127.0.0.1:8765 --author agent:<client-name>`;
+const GENERIC_MCP_CONFIG = `agentlens-mcp --backend-url ${DEFAULT_BACKEND_URL} --author agent:<client-name>`;
 
 export function AgentIntegrationTab() {
   return (
