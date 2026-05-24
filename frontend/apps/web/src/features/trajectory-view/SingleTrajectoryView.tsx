@@ -17,6 +17,7 @@ interface SingleTrajectoryViewProps {
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
+const DEFAULT_MESSAGE_PREVIEW_LIMIT = 200;
 
 export function SingleTrajectoryView({
   trajectory,
@@ -28,16 +29,32 @@ export function SingleTrajectoryView({
   const roles = useMemo(() => getTrajectoryRoles([trajectory]), [trajectory]);
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
   const [localSelectedRoles, setLocalSelectedRoles] = useState<string[]>(roles);
+  const [showAllMessages, setShowAllMessages] = useState(false);
   const usesControlledRoles =
     controlledSelectedRoles !== undefined && onSelectedRolesChange !== undefined;
   const selectedRoles = usesControlledRoles ? controlledSelectedRoles : localSelectedRoles;
   const activeRoles = selectedRoles.length === roles.length ? undefined : selectedRoles;
+  const hasMessagePreviewLimit = trajectory.messages.length > DEFAULT_MESSAGE_PREVIEW_LIMIT;
+  const visibleTrajectory = useMemo(() => {
+    if (!hasMessagePreviewLimit || showAllMessages) {
+      return trajectory;
+    }
+
+    return {
+      ...trajectory,
+      messages: trajectory.messages.slice(0, DEFAULT_MESSAGE_PREVIEW_LIMIT),
+    };
+  }, [hasMessagePreviewLimit, showAllMessages, trajectory]);
 
   useEffect(() => {
     if (!usesControlledRoles) {
       setLocalSelectedRoles(roles);
     }
   }, [roles, usesControlledRoles]);
+
+  useEffect(() => {
+    setShowAllMessages(false);
+  }, [trajectory.group_key]);
 
   function updateSelectedRoles(nextRoles: string[]) {
     if (usesControlledRoles) {
@@ -86,6 +103,17 @@ export function SingleTrajectoryView({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {hasMessagePreviewLimit ? (
+            <Button
+              type="button"
+              variant={showAllMessages ? "secondary" : "outline"}
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              onClick={() => setShowAllMessages((current) => !current)}
+            >
+              {showAllMessages ? "仅显示前 200 条" : "显示全部"}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -122,7 +150,7 @@ export function SingleTrajectoryView({
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <TrajectoryViewer
-          trajectory={trajectory}
+          trajectory={visibleTrajectory}
           filterRoles={activeRoles}
           showMetaLine
           metaFields={metaFields}

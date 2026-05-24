@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
 from loguru import logger
 
 from app.core.config import Settings, get_settings
+from app.core.logging import safe_exception_context
 from app.db.session import get_session_factory
 from app.services.cleanup_service import CleanupService
 
@@ -76,7 +77,10 @@ def shutdown_scheduler(scheduler: Scheduler | None) -> None:
         scheduler.shutdown(wait=False)
         logger.info("Background scheduler stopped")
     except Exception as exc:  # pragma: no cover - defensive shutdown path
-        logger.warning("Background scheduler shutdown skipped: {}", exc)
+        logger.warning(
+            "Background scheduler shutdown skipped: context={}",
+            safe_exception_context(exc),
+        )
 
 
 def _run_cleanup_job() -> None:
@@ -86,7 +90,7 @@ def _run_cleanup_job() -> None:
         logger.info("Scheduled cleanup completed: {}", report.model_dump())
     except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
         session.rollback()
-        logger.exception("Scheduled cleanup failed: {}", exc)
+        logger.error("Scheduled cleanup failed: context={}", safe_exception_context(exc))
     finally:
         session.close()
 
@@ -98,7 +102,7 @@ def _run_cleanup_expired_annotations_job() -> None:
         logger.info("Expired annotation cleanup completed: deleted={}", deleted_count)
     except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
         session.rollback()
-        logger.exception("Expired annotation cleanup failed: {}", exc)
+        logger.error("Expired annotation cleanup failed: context={}", safe_exception_context(exc))
     finally:
         session.close()
 
@@ -110,7 +114,10 @@ def _run_cleanup_expired_selection_snapshots_job() -> None:
         logger.info("Expired selection snapshot cleanup completed: deleted={}", deleted_count)
     except Exception as exc:  # pragma: no cover - scheduler path is covered by service tests
         session.rollback()
-        logger.exception("Expired selection snapshot cleanup failed: {}", exc)
+        logger.error(
+            "Expired selection snapshot cleanup failed: context={}",
+            safe_exception_context(exc),
+        )
     finally:
         session.close()
 

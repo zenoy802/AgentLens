@@ -4,12 +4,14 @@ import json
 from typing import Any
 
 from fastapi import status
+from loguru import logger
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.models.label import LabelRecord
+from app.models.named_query import NamedQuery
 from app.schemas.label import (
     LabelBatchError,
     LabelBatchResult,
@@ -29,6 +31,7 @@ MAX_FIELD_KEY_LENGTH = 200
 class LabelService:
     def get_schema(self, db: Session, query_id: int) -> LabelSchemaPayload:
         schema = label_schema_service.get(db, query_id)
+        logger.info("Label schema loaded: query_id={} fields={}", query_id, len(schema.fields))
         return LabelSchemaPayload(fields=schema.fields)
 
     def get_labels_by_rows(
@@ -37,7 +40,9 @@ class LabelService:
         query_id: int,
         row_identities: list[str],
     ) -> dict[str, dict[str, Any]]:
+        self._ensure_query_exists(db, query_id)
         if not row_identities:
+            logger.info("Labels loaded: query_id={} rows=0", query_id)
             return {}
 
         stmt = select(LabelRecord).where(
@@ -48,6 +53,12 @@ class LabelService:
         for rec in db.scalars(stmt):
             parsed_value: Any = json.loads(rec.value)
             result.setdefault(rec.row_identity, {})[rec.field_key] = parsed_value
+        logger.info(
+            "Labels loaded: query_id={} requested_rows={} matched_rows={}",
+            query_id,
+            len(row_identities),
+            len(result),
+        )
         return result
 
     def upsert(
@@ -92,6 +103,13 @@ class LabelService:
                 )
                 affected += 1
             except AppError as exc:
+                logger.warning(
+                    "Batch label upsert skipped: query_id={} field_key={} row_identity={} code={}",
+                    query_id,
+                    field_key,
+                    row_identity,
+                    exc.code,
+                )
                 errors.append(
                     LabelBatchError(
                         row_identity=row_identity,
@@ -100,7 +118,13 @@ class LabelService:
                         detail=exc.detail,
                     )
                 )
-
+        logger.info(
+            "Batch labels upserted: query_id={} field_key={} affected={} skipped={}",
+            query_id,
+            field_key,
+            affected,
+            len(errors),
+        )
         return LabelBatchResult(
             affected=affected,
             skipped=len(errors),
@@ -108,6 +132,7 @@ class LabelService:
         )
 
     def delete_by_id(self, db: Session, query_id: int, record_id: int) -> None:
+        self._ensure_query_exists(db, query_id)
         record = db.get(LabelRecord, record_id)
         if record is None or record.query_id != query_id:
             raise NotFoundError(
@@ -118,6 +143,12 @@ class LabelService:
 
         db.delete(record)
         db.commit()
+        logger.info(
+            "Label record deleted: query_id={} record_id={} field_key={}",
+            query_id,
+            record_id,
+            record.field_key,
+        )
 
     def to_read_model(self, record: LabelRecord) -> LabelRecordRead:
         parsed_value: Any = json.loads(record.value)
@@ -141,7 +172,7 @@ class LabelService:
         schema: LabelSchemaPayload,
     ) -> LabelRecord | None:
         self._validate_identity(row_identity=row_identity, field_key=field_key)
-        field = self._find_field(schema, field_key)
+        field = self._find_field(schema, field_key, query_id=query_id)
         self._validate_value(field, value)
 
         if value is None:
@@ -153,6 +184,12 @@ class LabelService:
                 )
             )
             db.commit()
+            logger.info(
+                "Label value cleared: query_id={} field_key={} row_identity={}",
+                query_id,
+                field_key,
+                row_identity,
+            )
             return None
 
         stored = json.dumps(value, ensure_ascii=False)
@@ -205,14 +242,36 @@ class LabelService:
 
         db.refresh(record)
         db.commit()
+        logger.info(
+            "Label value upserted: query_id={} field_key={} row_identity={} record_id={}",
+            query_id,
+            field_key,
+            row_identity,
+            record.id,
+        )
         return record
 
     @staticmethod
-    def _find_field(schema: LabelSchemaPayload, field_key: str) -> LabelField:
+    def _ensure_query_exists(db: Session, query_id: int) -> None:
+        if db.get(NamedQuery, query_id) is None:
+            logger.warning("Label API accessed for deleted query: query_id={}", query_id)
+            raise NotFoundError(
+                "query not found",
+                code="QUERY_NOT_FOUND",
+                detail={"query_id": query_id},
+            )
+
+    @staticmethod
+    def _find_field(
+        schema: LabelSchemaPayload,
+        field_key: str,
+        *,
+        query_id: int,
+    ) -> LabelField:
         for field in schema.fields:
             if field.key == field_key:
                 return field
-
+        logger.warning("Label field not found: query_id={} field_key={}", query_id, field_key)
         raise ValidationError(
             "label field not found",
             code="LABEL_FIELD_NOT_FOUND",

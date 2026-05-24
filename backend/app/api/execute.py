@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated
+import hashlib
+from collections.abc import Callable
+from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, Depends, status
 from loguru import logger
@@ -30,6 +32,7 @@ router = APIRouter(prefix="", tags=["execute"])
 
 _PRIMARY_ROW_IDENTITY_KEY = "_row_identity"
 _FALLBACK_ROW_IDENTITY_KEY = "_agent_lens_row_identity"
+T = TypeVar("T")
 
 
 def get_query_service(
@@ -72,6 +75,7 @@ def execute_sql(
                 cleanup_exc,
             )
         raise
+    logger.info("Execute API completed: query_id={} temporary={}", query.id, True)
     return build_execution_result_response(query=query, outcome=outcome, is_temporary=True)
 
 
@@ -145,9 +149,21 @@ def build_execution_result_response(
             truncated=execution_result.truncated,
         ),
         fingerprints=ExecutionFingerprints(
-            sql=compute_sql_fingerprint(query.sql_text),
-            schema=compute_schema_fingerprint(schema_fingerprint_columns),
-            result=compute_result_fingerprint(outcome.row_identities),
+            sql=_safe_fingerprint(
+                kind="sql",
+                compute_fn=compute_sql_fingerprint,
+                payload=query.sql_text,
+            ),
+            schema=_safe_fingerprint(
+                kind="schema",
+                compute_fn=compute_schema_fingerprint,
+                payload=schema_fingerprint_columns,
+            ),
+            result=_safe_fingerprint(
+                kind="result",
+                compute_fn=compute_result_fingerprint,
+                payload=outcome.row_identities,
+            ),
         ),
         columns=columns,
         rows=rows,
@@ -183,3 +199,22 @@ def _select_row_identity_key(rows: list[dict[str, object]]) -> str:
         if candidate not in used_keys:
             return candidate
         suffix += 1
+
+
+def _safe_fingerprint(
+    *,
+    kind: str,
+    compute_fn: Callable[[T], str],
+    payload: T,
+) -> str:
+    try:
+        return compute_fn(payload)
+    except Exception as exc:
+        logger.warning("Fingerprint calculation failed: kind={} error={}", kind, exc)
+        return _fallback_fingerprint(kind, payload)
+
+
+def _fallback_fingerprint(kind: str, payload: object) -> str:
+    fingerprint_payload = f"{kind}:{payload!r}"
+    digest = hashlib.sha256(fingerprint_payload.encode("utf-8", errors="replace")).hexdigest()
+    return f"sha256:{digest}"

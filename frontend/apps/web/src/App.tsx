@@ -1,8 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Database, HomeIcon, Languages, ListChecks, Moon, SettingsIcon } from "lucide-react";
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
+import { queryClient } from "@/api/queryClient";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { NetworkBanner } from "@/components/common/NetworkBanner";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -19,8 +22,6 @@ import { Query } from "@/pages/Query";
 import { Queries } from "@/pages/Queries";
 import { Settings } from "@/pages/Settings";
 import { useProductLanguageStore } from "@/stores/productLanguageStore";
-
-const queryClient = new QueryClient();
 
 const APP_COPY: Record<
   ProductLanguage,
@@ -164,6 +165,7 @@ function AppShell() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+        <NetworkBanner />
         <Header />
         <main className="flex-1 px-4 py-6 md:px-8">
           <Routes>
@@ -183,10 +185,12 @@ function AppShell() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppShell />
-        <Toaster richColors />
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AppShell />
+          <Toaster richColors />
+        </BrowserRouter>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

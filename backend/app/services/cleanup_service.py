@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
@@ -82,13 +83,15 @@ class CleanupService:
             db.execute(delete(QueryHistory).where(QueryHistory.executed_at < history_cutoff))
 
         db.commit()
-        return CleanupReport(
+        report = CleanupReport(
             expired_queries_deleted=expired_queries_count,
             history_records_deleted=history_records_count,
             cascade_label_records_deleted=label_records_count,
             cascade_analyses_deleted=analyses_count,
             dry_run=dry_run,
         )
+        logger.info("Cleanup completed: {}", report.model_dump())
+        return report
 
     def delete_expired_annotations(self, db: Session, dry_run: bool = False) -> int:
         now = _utcnow()
@@ -109,6 +112,7 @@ class CleanupService:
                 )
             )
         db.commit()
+        logger.info("Expired annotations cleanup completed: deleted={}", expired_count)
         return expired_count
 
     def delete_expired_selection_snapshots(self, db: Session, dry_run: bool = False) -> int:
@@ -122,6 +126,7 @@ class CleanupService:
         if not dry_run:
             db.execute(delete(SelectionSnapshot).where(SelectionSnapshot.expires_at < now))
         db.commit()
+        logger.info("Expired selection snapshots cleanup completed: deleted={}", expired_count)
         return expired_count
 
     @staticmethod

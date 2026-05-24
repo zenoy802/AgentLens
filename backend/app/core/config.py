@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     query_history_retention_days: int = 30
     llm_request_timeout: int = 120
     reload: bool = False
+    debug: bool = False
 
     @property
     def db_url(self) -> str:

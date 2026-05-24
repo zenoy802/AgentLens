@@ -5,6 +5,7 @@ import { apiClient } from "@/api/client";
 import type { ExecuteRequest, ExecutionResult, QueryExecuteRequest } from "@/api/types";
 import { queryHistoryKeys } from "@/api/hooks/useQueryHistory";
 import { queryKeys } from "@/api/hooks/useQueries";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 import { formatApiError } from "@/lib/formatApiError";
 
 export type { ExecuteRequest, ExecutionResult, QueryExecuteRequest };
@@ -18,6 +19,7 @@ export function useExecute() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (body: ExecuteRequest): Promise<ExecutionResult> => {
       const { data, error, response } = await apiClient.POST("/execute", { body });
 
@@ -44,6 +46,7 @@ export function useExecuteQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async ({
       queryId,
       payload = {},

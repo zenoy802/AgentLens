@@ -8,6 +8,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.api.ws import annotation_broadcaster
+from app.core.logging import safe_exception_context
 from app.db.session import get_db_session
 from app.schemas.annotation import (
     AnnotationBatchCreate,
@@ -35,6 +36,7 @@ async def create_annotation(
     payload: AnnotationCreate,
     db: Annotated[Session, Depends(get_db_session)],
 ) -> AnnotationOut:
+    _log_agent_bridge_annotation_call(query_id, payload.author)
     annotation = await AnnotationService(db).create(query_id, payload)
     output = AnnotationOut.model_validate(annotation)
     await _safe_broadcast(
@@ -59,6 +61,8 @@ async def create_annotations_batch(
     payload: AnnotationBatchCreate,
     db: Annotated[Session, Depends(get_db_session)],
 ) -> list[AnnotationOut]:
+    for item in payload.annotations:
+        _log_agent_bridge_annotation_call(query_id, item.author)
     annotations = await AnnotationService(db).create_batch(query_id, payload.annotations)
     outputs = [AnnotationOut.model_validate(annotation) for annotation in annotations]
     await _safe_broadcast(
@@ -162,8 +166,21 @@ async def _safe_broadcast(query_id: int, message: dict[str, Any]) -> None:
     try:
         await annotation_broadcaster.broadcast(query_id, message)
     except Exception as exc:  # pragma: no cover - broadcaster is defensive per client
-        logger.warning("Annotation broadcast failed for query {}: {}", query_id, exc)
+        logger.warning(
+            "Annotation broadcast failed: query_id={} context={}",
+            query_id,
+            safe_exception_context(exc),
+        )
 
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _log_agent_bridge_annotation_call(query_id: int, author: str) -> None:
+    if author.startswith("agent:"):
+        logger.info(
+            "Agent Bridge annotation API call: query_id={} author={}",
+            query_id,
+            author,
+        )

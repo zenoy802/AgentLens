@@ -44,7 +44,7 @@ export function AnnotationBanner({
     return Array.from(selectedRowIds)[0] ?? null;
   }, [selectedRowIds]);
 
-  if (queryId === null || annotationIndex.totalCount === 0) {
+  if (queryId === null) {
     return null;
   }
 
@@ -72,11 +72,17 @@ export function AnnotationBanner({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">
-              This query has {annotationIndex.totalCount} annotations.
+              {annotationIndex.totalCount === 0
+                ? "No annotations yet."
+                : `This query has ${annotationIndex.totalCount} annotations.`}
             </span>
             <StreamStatusBadge status={streamStatus} onRetry={onRetryStream} />
           </div>
-          {view === "trajectory" ? (
+          {annotationIndex.totalCount === 0 ? (
+            <div className="text-muted-foreground">
+              Agent and human annotations will appear here.
+            </div>
+          ) : view === "trajectory" ? (
             <div className="text-muted-foreground">
               Switch to Row view to see them.
             </div>

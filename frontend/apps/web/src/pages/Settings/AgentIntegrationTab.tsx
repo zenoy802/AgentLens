@@ -107,7 +107,8 @@ function CodeBlock({ title, code }: { title: string; code: string }) {
       await navigator.clipboard.writeText(code);
       toast.success("Copied");
     } catch {
-      toast.error("Copy failed");
+      window.prompt("Copy manually", code);
+      toast.error("Copy failed; manual copy is available");
     }
   }
 

@@ -22,6 +22,7 @@ class LabelSchemaService:
     def get(self, db: Session, query_id: int) -> LabelSchemaRead:
         query = self._get_query_or_raise(db, query_id)
         label_schema = self._get_or_create_label_schema(db, query)
+        logger.info("Label schema read: query_id={}", query_id)
         return self._to_read_model(label_schema, cascade_deleted_records=0)
 
     def put(
@@ -42,6 +43,11 @@ class LabelSchemaService:
 
         cascade_deleted_records = 0
         if removed_keys:
+            logger.info(
+                "Label schema fields removed: query_id={} field_keys={}",
+                query_id,
+                sorted(removed_keys),
+            )
             cascade_deleted_records = self._count_removed_records(db, query_id, removed_keys)
             db.execute(
                 delete(LabelRecord).where(
@@ -53,6 +59,12 @@ class LabelSchemaService:
         label_schema.fields = label_fields_adapter.dump_json(new_fields).decode()
         db.commit()
         db.refresh(label_schema)
+        logger.info(
+            "Label schema saved: query_id={} fields={} cascade_deleted_records={}",
+            query_id,
+            len(new_fields),
+            cascade_deleted_records,
+        )
         return self._to_read_model(
             label_schema,
             cascade_deleted_records=cascade_deleted_records,
@@ -64,7 +76,7 @@ class LabelSchemaService:
         if query is None:
             raise NotFoundError(
                 "query not found",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query
@@ -80,6 +92,7 @@ class LabelSchemaService:
         db.add(label_schema)
         db.commit()
         db.refresh(label_schema)
+        logger.info("Label schema created: query_id={}", query.id)
         return label_schema
 
     @staticmethod

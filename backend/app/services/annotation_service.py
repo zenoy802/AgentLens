@@ -4,11 +4,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import status
+from loguru import logger
 from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import NotFoundError, ValidationError
+from app.core.logging import safe_exception_context
 from app.models.annotation import Annotation
 from app.models.named_query import NamedQuery
 from app.schemas.annotation import AnnotationColor, AnnotationCreate
@@ -55,9 +57,27 @@ class AnnotationService:
         self.session.add(annotation)
         try:
             self.session.commit()
-        except Exception:
+        except Exception as exc:
             self.session.rollback()
+            logger.warning(
+                "Annotation create failed: query_id={} context={}",
+                query_id,
+                safe_exception_context(exc),
+            )
             raise
+        logger.info(
+            "Annotation created: query_id={} annotation_id={} author={} color={}",
+            query_id,
+            annotation.id,
+            annotation.author,
+            annotation.color,
+        )
+        if _fingerprints_are_empty(annotation):
+            logger.info(
+                "Annotation created without fingerprints: query_id={} annotation_id={}",
+                query_id,
+                annotation.id,
+            )
         return annotation
 
     async def create_batch(
@@ -73,9 +93,19 @@ class AnnotationService:
         self.session.add_all(annotations)
         try:
             self.session.commit()
-        except Exception:
+        except Exception as exc:
             self.session.rollback()
+            logger.warning(
+                "Annotation batch create failed: query_id={} context={}",
+                query_id,
+                safe_exception_context(exc),
+            )
             raise
+        logger.info(
+            "Annotations batch created: query_id={} count={}",
+            query_id,
+            len(annotations),
+        )
         return annotations
 
     async def list(self, query_id: int, filters: AnnotationFilters) -> list[Annotation]:
@@ -86,7 +116,9 @@ class AnnotationService:
             now = _utcnow()
             stmt = stmt.where(or_(Annotation.expires_at.is_(None), Annotation.expires_at >= now))
         stmt = stmt.order_by(Annotation.created_at.asc(), Annotation.id.asc())
-        return list(self.session.scalars(stmt))
+        annotations = list(self.session.scalars(stmt))
+        logger.info("Annotations listed: query_id={} count={}", query_id, len(annotations))
+        return annotations
 
     async def delete(self, query_id: int, annotation_id: int) -> None:
         annotation = self.session.get(Annotation, annotation_id)
@@ -98,6 +130,7 @@ class AnnotationService:
             )
         self.session.delete(annotation)
         self.session.commit()
+        logger.info("Annotation deleted: query_id={} annotation_id={}", query_id, annotation_id)
 
     async def delete_by_filter(
         self,
@@ -108,7 +141,7 @@ class AnnotationService:
         if not filters.has_any_filter():
             raise ValidationError(
                 "at least one annotation delete filter is required",
-                code="ANNOTATION_DELETE_FILTER_REQUIRED",
+                code="ANNOTATION_CLEAR_REQUIRES_FILTER",
                 http_status=status.HTTP_400_BAD_REQUEST,
                 detail={"allowed_filters": ["author", "author_prefix", "color", "annotation_set"]},
             )
@@ -119,6 +152,11 @@ class AnnotationService:
         if _has_text(filters.author_prefix):
             author_prefix = filters.author_prefix
             assert author_prefix is not None
+            logger.info(
+                "Clearing annotations by author_prefix: query_id={} author_prefix={}",
+                query_id,
+                author_prefix,
+            )
             stmt = stmt.where(_author_startswith(author_prefix))
         if filters.color is not None:
             stmt = stmt.where(Annotation.color == filters.color.value)
@@ -127,7 +165,9 @@ class AnnotationService:
 
         result = self.session.execute(stmt)
         self.session.commit()
-        return int(result.rowcount or 0)
+        deleted = int(result.rowcount or 0)
+        logger.info("Annotations deleted by filter: query_id={} count={}", query_id, deleted)
+        return deleted
 
     def compute_expires_at(self, query: NamedQuery, now: datetime) -> datetime:
         default_expiration = ensure_utc(now) + timedelta(days=_ANNOTATION_TTL_DAYS)
@@ -164,7 +204,7 @@ class AnnotationService:
         if query is None:
             raise NotFoundError(
                 "Named query not found.",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query
@@ -200,6 +240,14 @@ def _has_text(value: str | None) -> bool:
 
 def _author_startswith(prefix: str) -> ColumnElement[bool]:
     return Annotation.author.startswith(prefix, autoescape=True)
+
+
+def _fingerprints_are_empty(annotation: Annotation) -> bool:
+    return (
+        annotation.sql_fingerprint is None
+        and annotation.schema_fingerprint is None
+        and annotation.result_fingerprint is None
+    )
 
 
 def _utcnow() -> datetime:

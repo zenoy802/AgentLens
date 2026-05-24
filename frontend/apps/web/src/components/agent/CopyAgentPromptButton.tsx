@@ -4,6 +4,13 @@ import { toast } from "sonner";
 
 import { createSelectionSnapshot } from "@/api/selectionSnapshots";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatApiError } from "@/lib/formatApiError";
 import type { ProductLanguage } from "@/lib/productLanguage";
 import { useProductLanguageStore } from "@/stores/productLanguageStore";
@@ -38,6 +45,7 @@ export function CopyAgentPromptButton({
   const selectedRowIds = useQueryStore((state) => state.selectedRowIds);
   const language = useProductLanguageStore((state) => state.language);
   const [copying, setCopying] = useState(false);
+  const [manualPrompt, setManualPrompt] = useState<string | null>(null);
   const selectedRowIdentities = useMemo(
     () => Array.from(selectedRowIds),
     [selectedRowIds],
@@ -66,12 +74,14 @@ export function CopyAgentPromptButton({
         language,
       });
 
-      if (navigator.clipboard === undefined) {
-        throw new Error("Clipboard API is not available");
-      }
-      await navigator.clipboard.writeText(prompt);
+      await copyPromptToClipboard(prompt);
       toast.success(COPY_LABELS[language].copied);
     } catch (error) {
+      if (error instanceof ClipboardWriteError) {
+        setManualPrompt(error.prompt);
+        toast.error("剪贴板写入失败，请手动复制");
+        return;
+      }
       toast.error(formatApiError(error));
     } finally {
       setCopying(false);
@@ -79,22 +89,55 @@ export function CopyAgentPromptButton({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        variant="outline"
-        className="gap-2"
-        disabled={disabled || queryId === null || copying}
-        onClick={() => void handleCopy()}
-      >
-        {copying ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        ) : (
-          <Clipboard className="h-4 w-4" aria-hidden="true" />
-        )}
-        {COPY_LABELS[language].button}
-      </Button>
-    </div>
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          className="gap-2"
+          disabled={disabled || queryId === null || copying}
+          onClick={() => void handleCopy()}
+        >
+          {copying ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Clipboard className="h-4 w-4" aria-hidden="true" />
+          )}
+          {COPY_LABELS[language].button}
+        </Button>
+      </div>
+      <Dialog open={manualPrompt !== null} onOpenChange={(open) => !open && setManualPrompt(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>手动复制 Agent Prompt</DialogTitle>
+            <DialogDescription>剪贴板不可用，请从下方文本框复制。</DialogDescription>
+          </DialogHeader>
+          <textarea
+            readOnly
+            className="min-h-80 w-full resize-y rounded-md border bg-muted/20 p-3 font-mono text-xs"
+            value={manualPrompt ?? ""}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
+}
+
+class ClipboardWriteError extends Error {
+  constructor(readonly prompt: string) {
+    super("Clipboard write failed.");
+  }
+}
+
+async function copyPromptToClipboard(prompt: string) {
+  try {
+    if (navigator.clipboard === undefined) {
+      throw new Error("Clipboard API is not available");
+    }
+    await navigator.clipboard.writeText(prompt);
+  } catch (error) {
+    throw new ClipboardWriteError(prompt);
+  }
 }
 
 export function buildAgentPrompt({

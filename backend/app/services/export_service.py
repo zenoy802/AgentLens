@@ -90,6 +90,14 @@ class ExportService:
         ]
 
         file_bytes = _serialize(rows, headers=headers, format=format)
+        logger.info(
+            "Query exported: query_id={} format={} rows={} columns={} include_labels={}",
+            query_id,
+            format,
+            len(rows),
+            len(headers),
+            include_labels,
+        )
         return file_bytes, _build_filename(query.name, format)
 
     @staticmethod
@@ -98,7 +106,7 @@ class ExportService:
         if query is None:
             raise NotFoundError(
                 "Named query not found.",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query

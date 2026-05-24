@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from alembic.config import Config
+from loguru import logger
 from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -63,6 +64,7 @@ def get_alembic_config(settings: Settings | None = None) -> Config:
 def initialize_metadata_database() -> None:
     get_settings().ensure_directories()
     command.upgrade(get_alembic_config(), "head")
+    logger.info("Metadata database initialized")
 
 
 def metadata_database_is_ready() -> bool:
@@ -76,5 +78,6 @@ def metadata_database_is_ready() -> bool:
 def dispose_engine() -> None:
     if get_engine.cache_info().currsize > 0:
         get_engine().dispose()
+        logger.info("Metadata database engine disposed")
     get_session_factory.cache_clear()
     get_engine.cache_clear()

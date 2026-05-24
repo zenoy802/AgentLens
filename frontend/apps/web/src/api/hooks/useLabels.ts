@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiClient } from "@/api/client";
+import { labelSchemaKey } from "@/api/hooks/useLabelSchema";
 import type {
   LabelBatchResult,
   LabelRecordRead,
   LabelsByRowResponse,
 } from "@/api/types";
-import { formatApiError } from "@/lib/formatApiError";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
+import { formatApiError, getApiError } from "@/lib/formatApiError";
 import { useLabelsStore } from "@/stores/labelsStore";
 
 const MAX_LABEL_ROWS_PER_REQUEST = 1000;
@@ -132,6 +134,7 @@ export function useUpsertLabel(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (args: UpsertLabelMutationArgs): Promise<LabelRecordRead | null> => {
       if (!activeLabelContextMatches(queryId, args.resultKey)) {
         return null;
@@ -186,6 +189,11 @@ export function useUpsertLabel(queryId: number) {
     onError: (error, _args, snapshot) => {
       if (snapshot !== undefined) {
         restoreLabelSnapshot(snapshot);
+      }
+      if (isLabelFieldNotFound(error)) {
+        toast.error("LABEL_FIELD_NOT_FOUND: 打标字段已变更，已重新拉取 schema");
+        void queryClient.invalidateQueries({ queryKey: labelSchemaKey(queryId) });
+        return;
       }
       toast.error(formatApiError(error));
     },
@@ -272,6 +280,7 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (args: BatchUpsertLabelArgs): Promise<LabelBatchResult> => {
       if (!activeLabelContextMatches(queryId, resultKey)) {
         return {
@@ -336,6 +345,10 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
           );
         }
         toast.warning(`${errors.length} 行失败`);
+        if (errors.some((error) => error.code === "LABEL_FIELD_NOT_FOUND")) {
+          toast.error("LABEL_FIELD_NOT_FOUND: 打标字段已变更，已重新拉取 schema");
+          void queryClient.invalidateQueries({ queryKey: labelSchemaKey(queryId) });
+        }
       }
     },
     onSettled: async (_data, _error, args, snapshots) => {
@@ -435,4 +448,8 @@ function restoreActiveQueryLabelSnapshots(snapshots: LabelSnapshot[]) {
 function activeLabelContextMatches(queryId: number, resultKey: string | null): boolean {
   const state = useLabelsStore.getState();
   return state.activeQueryId === queryId && state.activeResultKey === resultKey;
+}
+
+function isLabelFieldNotFound(error: unknown): boolean {
+  return getApiError(error)?.error.code === "LABEL_FIELD_NOT_FOUND";
 }

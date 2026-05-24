@@ -248,25 +248,63 @@ def _match_pattern(
     pattern = rule.match_pattern
     match_type = rule.match_type
     if match_type == "exact":
-        return name == pattern
-    if match_type == "prefix":
-        return name.startswith(pattern)
-    if match_type == "suffix":
-        return name.endswith(pattern)
-    if match_type == "regex":
-        try:
-            return re.fullmatch(pattern, name) is not None
-        except re.error as exc:
-            logger.warning("Skipping invalid global render rule {} regex: {}", rule.id, exc)
-            if warned_invalid_rule_ids is not None:
-                _warn_invalid_rule(
-                    rule,
-                    f"invalid regex: {exc}",
-                    warnings,
-                    warned_invalid_rule_ids,
-                )
-            return False
-    return False
+        matched = name == pattern
+    elif match_type == "prefix":
+        matched = name.startswith(pattern)
+    elif match_type == "suffix":
+        matched = name.endswith(pattern)
+    elif match_type == "regex":
+        matched = _match_regex_pattern(
+            name,
+            rule,
+            warnings=warnings,
+            warned_invalid_rule_ids=warned_invalid_rule_ids,
+        )
+    else:
+        matched = False
+    return matched
+
+
+def _match_regex_pattern(
+    name: str,
+    rule: GlobalRenderRule,
+    *,
+    warnings: list[WarningRead] | None,
+    warned_invalid_rule_ids: set[int] | None,
+) -> bool:
+    pattern = rule.match_pattern
+    if _looks_dangerous_regex(pattern):
+        logger.warning(
+            "Dangerous regex pattern skipped: rule_id={} pattern={!r}",
+            rule.id,
+            pattern,
+        )
+        if warned_invalid_rule_ids is not None:
+            _warn_invalid_rule(
+                rule,
+                "dangerous regex pattern skipped",
+                warnings,
+                warned_invalid_rule_ids,
+            )
+        return False
+    try:
+        return re.fullmatch(pattern, name) is not None
+    except re.error as exc:
+        logger.warning("Skipping invalid global render rule {} regex: {}", rule.id, exc)
+        if warned_invalid_rule_ids is not None:
+            _warn_invalid_rule(
+                rule,
+                f"invalid regex: {exc}",
+                warnings,
+                warned_invalid_rule_ids,
+            )
+        return False
+
+
+def _looks_dangerous_regex(pattern: str) -> bool:
+    nested_quantifier = re.search(r"\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]", pattern)
+    repeated_any = re.search(r"\.\*(?:[^|)]{0,20})\.\*", pattern)
+    return nested_quantifier is not None or repeated_any is not None
 
 
 def _warn_invalid_rule(

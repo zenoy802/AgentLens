@@ -13,6 +13,7 @@ import type {
   NamedQueryRead,
   NamedQueryUpdate,
 } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 
 export type {
   NamedQueryListResponse,
@@ -133,6 +134,7 @@ export function useDeleteQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (id: number) => {
       const { error, response } = await apiClient.DELETE("/queries/{query_id}", {
         params: { path: { query_id: id } },
@@ -155,6 +157,7 @@ export function useUpdateQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (variables: { id: number; payload: NamedQueryUpdate }) => {
       const { data, error, response } = await apiClient.PATCH("/queries/{query_id}", {
         params: { path: { query_id: variables.id } },
@@ -183,6 +186,7 @@ export function usePromoteQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (variables: { id: number; payload: NamedQueryPromote }) => {
       const { data, error, response } = await apiClient.POST("/queries/{query_id}/promote", {
         params: { path: { query_id: variables.id } },
