@@ -1,10 +1,12 @@
+import asyncio
+import inspect
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse
@@ -12,10 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.api import api_router
+from app.api.ws import annotation_broadcaster
 from app.api.ws import router as ws_router
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, register_exception_handlers
-from app.core.logging import setup_logging
+from app.core.executor_registry import dispose_executor_engines
+from app.core.http_clients import close_http_clients
+from app.core.logging import safe_exception_context, setup_logging
 from app.core.scheduler import shutdown_scheduler, start_scheduler
 from app.db.session import dispose_engine, initialize_metadata_database
 
@@ -110,9 +115,24 @@ def create_app() -> FastAPI:
         app.state.started_at = time.monotonic()
         startup_ms = int((time.perf_counter() - startup_started) * 1000)
         logger.info("Startup complete in {} ms.", startup_ms)
-        yield
-        shutdown_scheduler(getattr(app.state, "scheduler", None))
-        dispose_engine()
+        try:
+            yield
+        finally:
+            logger.info("Graceful shutdown started")
+            shutdown_scheduler(getattr(app.state, "scheduler", None))
+            dispose_executor_engines()
+            await annotation_broadcaster.close_all()
+            try:
+                await close_http_clients()
+            except Exception as exc:
+                logger.warning(
+                    "Global HTTP client shutdown failed: context={}",
+                    safe_exception_context(exc),
+                )
+            dispose_engine()
+            logger.info("Graceful shutdown complete")
+            logger.info("AgentLens shutdown complete")
+            await _flush_logs()
 
     app = FastAPI(
         title="AgentLens API",
@@ -133,6 +153,34 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def log_http_requests(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except asyncio.CancelledError:
+            logger.info(
+                "Request cancelled: method={} path={}",
+                request.method,
+                request.url.path,
+            )
+            raise
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        log = logger.warning if response.status_code >= status.HTTP_400_BAD_REQUEST else logger.info
+        log(
+            "API request completed: method={} path={} status_code={} duration_ms={}",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
+
     app.include_router(ws_router)
     app.include_router(api_router, prefix=API_PREFIX)
     register_exception_handlers(app)
@@ -141,3 +189,12 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+async def _flush_logs() -> None:
+    try:
+        result = logger.complete()
+        if inspect.isawaitable(result):
+            await result
+    except Exception as exc:  # pragma: no cover - best-effort shutdown flush
+        logger.warning("Log flush failed: context={}", safe_exception_context(exc))

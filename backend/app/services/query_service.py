@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from loguru import logger
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ConflictError, NotFoundError
+from app.core.logging import safe_exception_context
 from app.models.connection import Connection
 from app.models.label import LabelRecord, LabelSchema
 from app.models.llm import LLMAnalysis
@@ -62,6 +66,11 @@ class QueryService:
         self.session.add(query)
         self.session.commit()
         self.session.refresh(query)
+        logger.info(
+            "Temporary query created: query_id={} connection_id={}",
+            query.id,
+            connection_id,
+        )
         return query
 
     def create_named_query(self, payload: NamedQueryCreate) -> NamedQuery:
@@ -79,6 +88,12 @@ class QueryService:
         self.session.add(query)
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info(
+            "Named query created: query_id={} connection_id={} name={}",
+            query.id,
+            payload.connection_id,
+            payload.name,
+        )
         return query
 
     def execute_and_record(
@@ -107,9 +122,7 @@ class QueryService:
                 execution_result,
                 warnings,
             )
-            row_identities = [
-                compute(row, view_config.row_identity_column) for row in execution_result.rows
-            ]
+            row_identities = self._compute_row_identities(view_config, execution_result.rows)
             self._append_duplicate_row_identity_warning(row_identities, warnings)
             suggested_field_renders = suggest(
                 execution_result.columns,
@@ -131,6 +144,12 @@ class QueryService:
                 error_message=_error_message(exc),
             )
             self.session.commit()
+            logger.warning(
+                "Query execution failed: query_id={} connection_id={} context={}",
+                query_id,
+                connection_id,
+                safe_exception_context(exc),
+            )
             raise
 
         executed_at = _utcnow()
@@ -146,6 +165,21 @@ class QueryService:
         )
         self.session.commit()
         self.session.refresh(query)
+        if len(execution_result.rows) == 0:
+            logger.warning("Query returned zero rows: query_id={}", query.id)
+        if execution_result.truncated:
+            logger.warning(
+                "Query row_limit truncated: query_id={} row_count={}",
+                query.id,
+                len(execution_result.rows),
+            )
+        logger.info(
+            "Query execution recorded: query_id={} connection_id={} rows={} duration_ms={}",
+            query.id,
+            query.connection_id,
+            len(execution_result.rows),
+            execution_result.duration_ms,
+        )
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
@@ -178,9 +212,7 @@ class QueryService:
                 execution_result,
                 warnings,
             )
-            row_identities = [
-                compute(row, view_config.row_identity_column) for row in execution_result.rows
-            ]
+            row_identities = self._compute_row_identities(view_config, execution_result.rows)
             self._append_duplicate_row_identity_warning(row_identities, warnings)
             suggested_field_renders = suggest(
                 execution_result.columns,
@@ -192,10 +224,23 @@ class QueryService:
                 self.session,
                 warnings=warnings,
             )
-        except Exception:
+        except Exception as exc:
             self.session.rollback()
+            logger.warning(
+                "Readonly query execution failed: query_id={} connection_id={} context={}",
+                query.id,
+                query.connection_id,
+                safe_exception_context(exc),
+            )
             raise
 
+        logger.info(
+            "Readonly query executed: query_id={} connection_id={} rows={} duration_ms={}",
+            query.id,
+            query.connection_id,
+            len(execution_result.rows),
+            execution_result.duration_ms,
+        )
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
@@ -209,7 +254,7 @@ class QueryService:
         query = self.session.get(NamedQuery, query_id)
         if query is None:
             raise NotFoundError(
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 message="Named query not found.",
                 detail={"query_id": query_id},
             )
@@ -287,6 +332,14 @@ class QueryService:
             stmt = stmt.order_by(NamedQuery.created_at.desc(), NamedQuery.id.desc())
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         rows = self.session.execute(stmt).all()
+        logger.info(
+            "Queries listed: page={} page_size={} total={} connection_id={} is_named={}",
+            page,
+            page_size,
+            total_records,
+            connection_id,
+            is_named,
+        )
         return NamedQueryListResponse(
             items=[
                 self.build_read(
@@ -369,12 +422,14 @@ class QueryService:
 
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info("Query updated: query_id={}", query_id)
         return query
 
     def delete(self, query_id: int) -> None:
         query = self.get(query_id)
         self.session.delete(query)
         self.session.commit()
+        logger.info("Query deleted: query_id={}", query_id)
 
     def promote(self, query_id: int, payload: NamedQueryPromote) -> NamedQuery:
         query = self.get(query_id)
@@ -401,6 +456,7 @@ class QueryService:
         query.expires_at = self._resolve_promoted_expiration(payload)
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info("Query promoted: query_id={} name={}", query_id, payload.name)
         return query
 
     def _get_connection_or_raise(self, connection_id: int) -> Connection:
@@ -422,6 +478,26 @@ class QueryService:
         self.session.add(view_config)
         self.session.flush()
         return view_config
+
+    @staticmethod
+    def _compute_row_identities(
+        view_config: ViewConfig,
+        rows: list[dict[str, Any]],
+    ) -> list[str]:
+        identities: list[str] = []
+        for index, row in enumerate(rows):
+            try:
+                identities.append(compute(row, view_config.row_identity_column))
+            except Exception as exc:
+                logger.warning(
+                    "Row identity generation failed; using repr hash: "
+                    "query_id={} row_index={} error={}",
+                    view_config.query_id,
+                    index,
+                    exc,
+                )
+                identities.append(hashlib.sha1(repr(row).encode("utf-8")).hexdigest())
+        return identities
 
     def _record_query_history(
         self,
@@ -460,6 +536,11 @@ class QueryService:
 
         column_names = {column.name for column in execution_result.columns}
         if identity_column not in column_names:
+            logger.warning(
+                "Configured row identity column missing: query_id={} column={}",
+                view_config.query_id,
+                identity_column,
+            )
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_COLUMN_MISSING",
@@ -473,6 +554,11 @@ class QueryService:
             return
 
         if any(row.get(identity_column) is None for row in execution_result.rows):
+            logger.warning(
+                "Configured row identity column contains null: query_id={} column={}",
+                view_config.query_id,
+                identity_column,
+            )
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_COLUMN_NULL",
@@ -496,6 +582,7 @@ class QueryService:
                 duplicates.add(row_identity)
             seen.add(row_identity)
         if duplicates:
+            logger.warning("Duplicate row identities detected: count={}", len(duplicates))
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_DUPLICATE",

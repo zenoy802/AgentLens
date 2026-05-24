@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import secrets
+import shutil
+import tempfile
+from collections.abc import Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,7 +33,6 @@ def export_context(
     created_at = datetime.now(UTC)
     context_id = f"ctx_{created_at:%Y%m%d_%H%M%S}_{secrets.token_hex(4)}"
     destination = _resolve_output_dir(output_dir, query_id, created_at)
-    destination.mkdir(parents=True, exist_ok=True)
 
     selection = None
     selected_identities: set[str] | None = None
@@ -84,13 +87,6 @@ def export_context(
     if selection is not None:
         files["selection"] = "selection.json"
 
-    _write_json(destination / files["columns"], columns)
-    _write_jsonl(destination / files["rows"], rows)
-    _write_jsonl(destination / files["labels"], labels)
-    _write_jsonl(destination / files["annotations"], annotations)
-    if selection is not None:
-        _write_json(destination / files["selection"], selection)
-
     manifest = {
         "context_id": context_id,
         "query_id": query_id,
@@ -103,10 +99,27 @@ def export_context(
             rows_envelope.get("fingerprints", {}) if isinstance(rows_envelope, dict) else {}
         ),
     }
-    _write_json(destination / "manifest.json", manifest)
-    _write_text(destination / "AGENTLENS_CONTEXT.md", _agentlens_context_md(target, selection))
+    extra_files = {
+        "manifest": "manifest.json",
+        "context": "AGENTLENS_CONTEXT.md",
+    }
     if target == "claude-code":
-        _write_text(destination / "CLAUDE.md", _claude_md(selection is not None))
+        extra_files["claude"] = "CLAUDE.md"
+
+    _write_export_files(
+        destination=destination,
+        files=files,
+        extra_files=extra_files,
+        columns=columns,
+        rows=rows,
+        labels=labels,
+        annotations=annotations,
+        selection=selection,
+        manifest=manifest,
+        context_text=_agentlens_context_md(target, selection),
+        claude_text=_claude_md(selection is not None) if target == "claude-code" else None,
+        backend_url=client.base_url,
+    )
 
     return {
         "context_id": context_id,
@@ -117,9 +130,7 @@ def export_context(
         "manifest_path": str(destination / "manifest.json"),
         "files": {
             **files,
-            "manifest": "manifest.json",
-            "context": "AGENTLENS_CONTEXT.md",
-            **({"claude": "CLAUDE.md"} if target == "claude-code" else {}),
+            **extra_files,
         },
     }
 
@@ -300,6 +311,117 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
+
+def _write_export_files(
+    *,
+    destination: Path,
+    files: dict[str, str],
+    extra_files: dict[str, str],
+    columns: dict[str, Any],
+    rows: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    annotations: list[dict[str, Any]],
+    selection: Any,
+    manifest: dict[str, Any],
+    context_text: str,
+    claude_text: str | None,
+    backend_url: str,
+) -> None:
+    all_file_names = [*files.values(), *extra_files.values()]
+    working_dir = _create_working_dir(destination, backend_url=backend_url)
+    try:
+        _write_json(working_dir / files["columns"], columns)
+        _write_jsonl(working_dir / files["rows"], rows)
+        _write_jsonl(working_dir / files["labels"], labels)
+        _write_jsonl(working_dir / files["annotations"], annotations)
+        if selection is not None:
+            _write_json(working_dir / files["selection"], selection)
+        _write_json(working_dir / extra_files["manifest"], manifest)
+        _write_text(working_dir / extra_files["context"], context_text)
+        if claude_text is not None:
+            _write_text(working_dir / extra_files["claude"], claude_text)
+        _commit_working_dir(working_dir, destination, all_file_names, backend_url=backend_url)
+    except BackendBusinessError:
+        _cleanup_working_dir(working_dir)
+        raise
+    except OSError as exc:
+        _cleanup_working_dir(working_dir)
+        raise BackendBusinessError(
+            "Context export output directory is not writable.",
+            code="CONTEXT_EXPORT_OUTPUT_DIR_NOT_WRITABLE",
+            detail={"output_dir": str(destination), "error": str(exc)},
+            status_code=400,
+            backend_url=backend_url,
+        ) from exc
+    except Exception:
+        _cleanup_working_dir(working_dir)
+        raise
+
+
+def _create_working_dir(destination: Path, *, backend_url: str) -> Path:
+    try:
+        if destination.exists() and not destination.is_dir():
+            raise BackendBusinessError(
+                "Context export output path is not a directory.",
+                code="CONTEXT_EXPORT_OUTPUT_DIR_NOT_WRITABLE",
+                detail={"output_dir": str(destination)},
+                status_code=400,
+                backend_url=backend_url,
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        return Path(
+            tempfile.mkdtemp(
+                prefix=f".{destination.name}.tmp-",
+                dir=destination.parent,
+            )
+        )
+    except OSError as exc:
+        raise BackendBusinessError(
+            "Context export output directory is not writable.",
+            code="CONTEXT_EXPORT_OUTPUT_DIR_NOT_WRITABLE",
+            detail={"output_dir": str(destination), "error": str(exc)},
+            status_code=400,
+            backend_url=backend_url,
+        ) from exc
+
+
+def _commit_working_dir(
+    working_dir: Path,
+    destination: Path,
+    file_names: Sequence[str],
+    *,
+    backend_url: str,
+) -> None:
+    if destination.exists():
+        existing_files = [name for name in file_names if (destination / name).exists()]
+        if existing_files:
+            raise BackendBusinessError(
+                "Context export output directory already contains AgentLens export files.",
+                code="CONTEXT_EXPORT_OUTPUT_DIR_NOT_EMPTY",
+                detail={"output_dir": str(destination), "files": existing_files},
+                status_code=400,
+                backend_url=backend_url,
+            )
+        moved_files: list[Path] = []
+        try:
+            for source in working_dir.iterdir():
+                target = destination / source.name
+                source.replace(target)
+                moved_files.append(target)
+            working_dir.rmdir()
+        except OSError:
+            for moved_file in moved_files:
+                with suppress(OSError):
+                    moved_file.unlink()
+            raise
+        return
+
+    working_dir.replace(destination)
+
+
+def _cleanup_working_dir(working_dir: Path) -> None:
+    shutil.rmtree(working_dir, ignore_errors=True)
 
 
 def _agentlens_context_md(target: OutputTarget, selection: Any) -> str:

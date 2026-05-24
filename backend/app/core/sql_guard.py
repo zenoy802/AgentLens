@@ -4,10 +4,12 @@ from collections.abc import Sequence
 from typing import cast
 
 import sqlparse
+from loguru import logger
 from sqlparse import tokens
 from sqlparse.sql import Statement
 
 from app.core.errors import SqlForbiddenError
+from app.core.logging import sanitize_exception_message
 
 _ALLOWED_STATEMENT_TYPES = frozenset({"SELECT"})
 _OUTER_STATEMENT_KEYWORDS = frozenset(
@@ -46,9 +48,18 @@ _MYSQL_EXECUTABLE_COMMENT_PREFIXES = ("/*!", "/*+")
 
 
 def validate_sql(sql: str) -> None:
-    parsed_statements = list(sqlparse.parse(sql))
+    try:
+        parsed_statements = list(sqlparse.parse(sql))
+    except Exception as exc:
+        logger.warning("SQL safety validation failed: code=SQL_PARSE_ERROR")
+        raise SqlForbiddenError(
+            code="SQL_PARSE_ERROR",
+            message="SQL could not be parsed.",
+            detail={"orig": sanitize_exception_message(exc)},
+        ) from exc
     executable_comment = _find_mysql_executable_comment(parsed_statements)
     if executable_comment is not None:
+        logger.warning("SQL safety validation failed: code=SQL_DANGEROUS_FUNCTION")
         raise SqlForbiddenError(
             code="SQL_DANGEROUS_FUNCTION",
             message="MySQL executable comments and optimizer hints are not allowed.",
@@ -58,6 +69,7 @@ def validate_sql(sql: str) -> None:
     statements = [statement for statement in parsed_statements if _has_effective_tokens(statement)]
     dangerous_keyword = _find_dangerous_keyword(statements)
     if dangerous_keyword is not None:
+        logger.warning("SQL safety validation failed: code=SQL_DANGEROUS_FUNCTION")
         raise SqlForbiddenError(
             code="SQL_DANGEROUS_FUNCTION",
             message="Dangerous SQL function or export operation is not allowed.",
@@ -65,8 +77,9 @@ def validate_sql(sql: str) -> None:
         )
 
     if len(statements) != 1:
+        logger.warning("SQL safety validation failed: code=SQL_NOT_ALLOWED")
         raise SqlForbiddenError(
-            code="SQL_FORBIDDEN_STATEMENT",
+            code="SQL_NOT_ALLOWED",
             detail={"statement_type": "EMPTY" if not statements else "MULTI_STATEMENT"},
         )
 
@@ -78,8 +91,9 @@ def validate_sql(sql: str) -> None:
     if first_keyword == "WITH" and _outer_keyword_after_with(statement) == "SELECT":
         return
 
+    logger.warning("SQL safety validation failed: code=SQL_NOT_ALLOWED")
     raise SqlForbiddenError(
-        code="SQL_FORBIDDEN_STATEMENT",
+        code="SQL_NOT_ALLOWED",
         detail={"statement_type": statement_type},
     )
 

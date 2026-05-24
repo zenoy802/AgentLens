@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from loguru import logger
 from pydantic import BaseModel
 
+from app.core.logging import safe_exception_context
 from app.db.session import metadata_database_is_ready
 
 router = APIRouter(tags=["system"])
@@ -36,7 +37,7 @@ def health_check(request: Request) -> HealthResponse:
             metadata_db_status = "error"
             service_status = "degraded"
     except Exception as exc:
-        logger.exception("Metadata DB health check failed: {}", exc)
+        logger.error("Metadata DB health check failed: context={}", safe_exception_context(exc))
         metadata_db_status = "error"
         service_status = "degraded"
 

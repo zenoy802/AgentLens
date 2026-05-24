@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
-from app.core.errors import ValidationError
 from app.schemas.view_config import TrajectoryConfig
 from app.services.trajectory_service import aggregate
 
@@ -167,33 +164,31 @@ def test_tool_calls_json_string_is_parsed() -> None:
     ]
 
 
-def test_missing_group_by_column_raises_validation_error() -> None:
+def test_missing_group_by_column_falls_back() -> None:
     rows = [{"_row_identity": "a", "role": "user", "content": "missing group"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_GROUP_BY_MISSING"
+    assert trajectories[0].group_key == "__missing_group_by__"
+    assert warnings[0].code == "MISSING_GROUP_BY_COLUMN"
 
 
-def test_missing_role_column_raises_validation_error() -> None:
+def test_missing_role_column_falls_back_to_unknown() -> None:
     rows = [{"_row_identity": "a", "session_id": "s1", "content": "missing role"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_REQUIRED_COLUMN_MISSING"
-    assert exc_info.value.detail == {"column": "role", "row_index": 0}
+    assert trajectories[0].messages[0].role == "unknown"
+    assert warnings[0].code == "MISSING_ROLE_COLUMN"
 
 
-def test_missing_content_column_raises_validation_error() -> None:
+def test_missing_content_column_falls_back_to_null() -> None:
     rows = [{"_row_identity": "a", "session_id": "s1", "role": "user"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_REQUIRED_COLUMN_MISSING"
-    assert exc_info.value.detail == {"column": "content", "row_index": 0}
+    assert trajectories[0].messages[0].content is None
+    assert warnings[0].code == "MISSING_CONTENT_COLUMN"
 
 
 def test_mixed_order_by_types_warns_and_keeps_input_order() -> None:

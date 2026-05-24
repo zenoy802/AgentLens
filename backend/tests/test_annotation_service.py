@@ -12,7 +12,7 @@ from app.db.session import get_session_factory, initialize_metadata_database
 from app.models.annotation import Annotation
 from app.models.connection import Connection
 from app.models.named_query import NamedQuery
-from app.schemas.annotation import AnnotationColor, AnnotationCreate
+from app.schemas.annotation import AnnotationColor, AnnotationCreate, AnnotationSeverity
 from app.services.annotation_service import (
     AnnotationDeleteFilters,
     AnnotationFilters,
@@ -49,6 +49,32 @@ def _create_query(session: Session, expires_at: datetime | None = None) -> int:
     return query.id
 
 
+def _annotation_create(
+    *,
+    row_identity: str,
+    author: str,
+    color: AnnotationColor,
+    column_key: str | None = None,
+    title: str | None = None,
+    text: str | None = None,
+    severity: AnnotationSeverity | None = None,
+    annotation_set: str | None = None,
+) -> AnnotationCreate:
+    return AnnotationCreate(
+        row_identity=row_identity,
+        column_key=column_key,
+        author=author,
+        color=color,
+        title=title,
+        text=text,
+        severity=severity,
+        annotation_set=annotation_set,
+        sql_fingerprint=None,
+        schema_fingerprint=None,
+        result_fingerprint=None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_create_annotation_uses_query_expiration_cap() -> None:
     initialize_metadata_database()
@@ -58,7 +84,7 @@ async def test_create_annotation_uses_query_expiration_cap() -> None:
         query_id = _create_query(session, expires_at=query_expires_at)
         annotation = await AnnotationService(session).create(
             query_id,
-            AnnotationCreate(
+            _annotation_create(
                 row_identity="row-1",
                 author="agent:codex",
                 color=AnnotationColor.YELLOW,
@@ -84,13 +110,13 @@ async def test_create_batch_lists_and_deletes_by_author_prefix() -> None:
         annotations = await service.create_batch(
             query_id,
             [
-                AnnotationCreate(
+                _annotation_create(
                     row_identity="row-1",
                     author="agent:claude-code",
                     color=AnnotationColor.RED,
                     annotation_set="set-1",
                 ),
-                AnnotationCreate(
+                _annotation_create(
                     row_identity="row-2",
                     author="human",
                     color=AnnotationColor.BLUE,
@@ -133,6 +159,6 @@ async def test_delete_by_filter_rejects_missing_or_empty_filters() -> None:
             )
 
         assert exc_info.value.http_status == status.HTTP_400_BAD_REQUEST
-        assert exc_info.value.code == "ANNOTATION_DELETE_FILTER_REQUIRED"
+        assert exc_info.value.code == "ANNOTATION_CLEAR_REQUIRES_FILTER"
     finally:
         session.close()

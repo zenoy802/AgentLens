@@ -155,7 +155,7 @@ async def test_delete_annotations_rejects_unfiltered_delete() -> None:
         response = await client.delete(f"/api/v1/queries/{query_id}/annotations")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["error"]["code"] == "ANNOTATION_DELETE_FILTER_REQUIRED"
+    assert response.json()["error"]["code"] == "ANNOTATION_CLEAR_REQUIRES_FILTER"
 
 
 @pytest.mark.asyncio

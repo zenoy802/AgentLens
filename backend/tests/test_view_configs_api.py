@@ -171,7 +171,7 @@ async def test_get_query_not_found() -> None:
         response = await client.get("/api/v1/queries/99999/view-config")
 
     assert response.status_code == HTTP_NOT_FOUND
-    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert response.json()["error"]["code"] == "QUERY_NOT_FOUND"
 
 
 @pytest.mark.asyncio

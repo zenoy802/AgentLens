@@ -4,9 +4,12 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
+from fastapi import status
+from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
+from app.core.logging import safe_exception_context
 from app.models.named_query import NamedQuery
 from app.models.selection_snapshot import SelectionSnapshot
 from app.schemas.datetime import ensure_utc
@@ -41,19 +44,40 @@ class SelectionSnapshotService:
         self.session.add(snapshot)
         try:
             self.session.commit()
-        except Exception:
+        except Exception as exc:
             self.session.rollback()
+            logger.warning(
+                "Selection snapshot create failed: query_id={} context={}",
+                query_id,
+                safe_exception_context(exc),
+            )
             raise
+        logger.info(
+            "Selection snapshot created: query_id={} selection_id={} rows={}",
+            query_id,
+            snapshot.id,
+            len(payload.row_identities),
+        )
         return snapshot
 
     async def get(self, selection_id: str) -> SelectionSnapshot:
         snapshot = self.session.get(SelectionSnapshot, selection_id)
-        if snapshot is None or ensure_utc(snapshot.expires_at) < _utcnow():
+        if snapshot is None:
+            logger.warning("Selection snapshot not found: selection_id={}", selection_id)
             raise NotFoundError(
                 "selection snapshot not found",
-                code="SELECTION_SNAPSHOT_NOT_FOUND",
+                code="SELECTION_NOT_FOUND",
                 detail={"selection_id": selection_id},
             )
+        if ensure_utc(snapshot.expires_at) < _utcnow():
+            logger.warning("Selection snapshot expired: selection_id={}", selection_id)
+            raise NotFoundError(
+                "selection snapshot expired",
+                code="SELECTION_EXPIRED",
+                http_status=status.HTTP_410_GONE,
+                detail={"selection_id": selection_id, "expires_at": snapshot.expires_at},
+            )
+        logger.info("Selection snapshot loaded: selection_id={}", selection_id)
         return snapshot
 
     async def delete(self, selection_id: str) -> None:
@@ -61,11 +85,12 @@ class SelectionSnapshotService:
         if snapshot is None:
             raise NotFoundError(
                 "selection snapshot not found",
-                code="SELECTION_SNAPSHOT_NOT_FOUND",
+                code="SELECTION_NOT_FOUND",
                 detail={"selection_id": selection_id},
             )
         self.session.delete(snapshot)
         self.session.commit()
+        logger.info("Selection snapshot deleted: selection_id={}", selection_id)
 
     def to_read_model(self, snapshot: SelectionSnapshot) -> SelectionSnapshotOut:
         row_identities = _decode_row_identities(snapshot.row_identities_json)
@@ -91,7 +116,7 @@ class SelectionSnapshotService:
         if query is None:
             raise NotFoundError(
                 "Named query not found.",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query

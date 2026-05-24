@@ -11,6 +11,7 @@ import type {
   AnnotationCreate,
   AnnotationFilters,
 } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 
 export const annotationKeys = {
   all: ["annotations"] as const,
@@ -39,6 +40,7 @@ export function useCreateAnnotation(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: (payload: AnnotationCreate) => createAnnotation(queryId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: annotationKeys.query(queryId) });
@@ -50,6 +52,7 @@ export function useDeleteAnnotation(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: (annotationId: number) => deleteAnnotation(queryId, annotationId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: annotationKeys.query(queryId) });
@@ -61,6 +64,7 @@ export function useClearAnnotations(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: (filters: AnnotationClearFilters) => clearAnnotations(queryId, filters),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: annotationKeys.query(queryId) });

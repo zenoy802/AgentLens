@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import pymysql  # type: ignore[import-untyped]
 from cryptography.fernet import InvalidToken
+from loguru import logger
 from pymysql import MySQLError
 from sqlalchemy import URL, Select, func, select
 from sqlalchemy.exc import IntegrityError
@@ -92,6 +93,12 @@ class ConnectionService:
             .limit(page_size)
         )
         items = self.session.scalars(stmt).all()
+        logger.info(
+            "Connections listed: page={} page_size={} total={}",
+            page,
+            page_size,
+            total_records,
+        )
         return ConnectionListResponse(
             items=[self._to_read_model(connection) for connection in items],
             pagination=Pagination(
@@ -118,10 +125,12 @@ class ConnectionService:
         self.session.add(connection)
         self._commit_or_raise_conflict()
         self.session.refresh(connection)
+        logger.info("Connection created: connection_id={} name={}", connection.id, connection.name)
         return self._to_read_model(connection)
 
     def get_connection(self, connection_id: int) -> ConnectionRead:
         connection = self._get_connection_or_raise(connection_id)
+        logger.info("Connection loaded: connection_id={}", connection_id)
         return self._to_read_model(connection)
 
     def update_connection(self, connection_id: int, payload: ConnectionUpdate) -> ConnectionRead:
@@ -151,6 +160,7 @@ class ConnectionService:
         self._commit_or_raise_conflict()
         self.session.refresh(connection)
         self._invalidate_executor_engine(connection_id)
+        logger.info("Connection updated: connection_id={}", connection_id)
         return self._to_read_model(connection)
 
     def delete_connection(self, connection_id: int) -> None:
@@ -158,6 +168,7 @@ class ConnectionService:
         self.session.delete(connection)
         self.session.commit()
         self._invalidate_executor_engine(connection_id)
+        logger.info("Connection deleted: connection_id={}", connection_id)
 
     def test_connection(self, connection_id: int) -> ConnectionTestResponse:
         connection = self._get_connection_or_raise(connection_id)
@@ -166,6 +177,18 @@ class ConnectionService:
         connection.last_test_ok = result.ok
         self.session.commit()
         self.session.refresh(connection)
+        if result.ok:
+            logger.info(
+                "Connection test succeeded: connection_id={} latency_ms={}",
+                connection_id,
+                result.latency_ms,
+            )
+        else:
+            logger.warning(
+                "Connection test failed: connection_id={} error={}",
+                connection_id,
+                result.error,
+            )
         return ConnectionTestResponse(
             ok=result.ok,
             latency_ms=result.latency_ms,
@@ -232,6 +255,9 @@ class ConnectionService:
                 tested_at=tested_at,
             )
         except MySQLError as exc:
+            logger.warning(
+                "MySQL connection test failed: connection_id={} error={}", connection.id, exc
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,
@@ -240,6 +266,11 @@ class ConnectionService:
                 error=str(exc),
             )
         except OSError as exc:
+            logger.warning(
+                "Connection test invalid parameters: connection_id={} error={}",
+                connection.id,
+                exc,
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,
@@ -248,6 +279,11 @@ class ConnectionService:
                 error=f"Invalid MySQL connection parameters: {exc}",
             )
         except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Connection test invalid parameters: connection_id={} error={}",
+                connection.id,
+                exc,
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,

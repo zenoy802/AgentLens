@@ -458,6 +458,18 @@ def test_context_export_fails_when_query_result_is_truncated(tmp_path: Path) -> 
     assert not (tmp_path / "manifest.json").exists()
 
 
+def test_context_export_rejects_unwritable_output_path(tmp_path: Path) -> None:
+    client = FakeClient("http://testserver")
+    output_path = tmp_path / "context-file"
+    output_path.write_text("not a directory", encoding="utf-8")
+
+    with pytest.raises(BackendBusinessError) as exc_info:
+        export_context(client=client, query_id=1, output_dir=output_path)
+
+    assert exc_info.value.code == "CONTEXT_EXPORT_OUTPUT_DIR_NOT_WRITABLE"
+    assert output_path.read_text(encoding="utf-8") == "not a directory"
+
+
 def test_sync_client_uses_fallback_identity_for_label_queries(monkeypatch: Any) -> None:
     captured_payloads: list[dict[str, Any] | None] = []
 

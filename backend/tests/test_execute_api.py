@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 from starlette import status
 
+from app.api.execute import _safe_fingerprint
 from app.core.sql_guard import validate_sql
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
@@ -22,6 +23,7 @@ from app.services.row_identity_service import compute
 
 HTTP_OK = status.HTTP_200_OK
 HTTP_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
+MAX_ANNOTATION_FINGERPRINT_LENGTH = 80
 
 
 def _is_utc_iso(value: str) -> bool:
@@ -42,6 +44,20 @@ def _create_connection(session: Session) -> int:
     session.add(connection)
     session.commit()
     return connection.id
+
+
+def test_fingerprint_fallback_fits_annotation_validation_limit() -> None:
+    def broken_compute(_: dict[str, str]) -> str:
+        raise RuntimeError("fingerprint boom")
+
+    fingerprint = _safe_fingerprint(
+        kind="schema",
+        compute_fn=broken_compute,
+        payload={"column": "value"},
+    )
+
+    assert fingerprint.startswith("sha256:")
+    assert len(fingerprint) <= MAX_ANNOTATION_FINGERPRINT_LENGTH
 
 
 def _patch_executor(
@@ -491,7 +507,7 @@ async def test_execute_forbidden_sql(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert response.status_code == HTTP_BAD_REQUEST
-    assert response.json()["error"]["code"] == "SQL_FORBIDDEN_STATEMENT"
+    assert response.json()["error"]["code"] == "SQL_NOT_ALLOWED"
 
     session = get_session_factory()()
     try:

@@ -50,6 +50,7 @@ import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajector
 import { getTrajectoryOptions } from "@/features/trajectory-view/trajectoryOptions";
 import { useAnnotationStream } from "@/hooks/useAnnotationStream";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
+import { getApiError } from "@/lib/formatApiError";
 import { cn } from "@/lib/utils";
 import { useLabelsStore } from "@/stores/labelsStore";
 import {
@@ -736,13 +737,18 @@ export function Query() {
   }
 
   if (routeQueryId !== null && queryDetail.isError) {
+    const apiError = getApiError(queryDetail.error);
+    const isQueryNotFound = apiError?.error.code === "QUERY_NOT_FOUND";
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <Link to="/queries" className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           返回查询列表
         </Link>
-        <ErrorState error={queryDetail.error} />
+        <ErrorState
+          error={queryDetail.error}
+          title={isQueryNotFound ? "查询不存在" : "查询加载失败"}
+        />
       </div>
     );
   }

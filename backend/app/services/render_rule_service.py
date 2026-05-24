@@ -33,6 +33,7 @@ class RenderRuleService:
                 asc(GlobalRenderRule.id),
             )
         ).all()
+        logger.info("Render rules listed: count={}", len(rules))
         return [self._to_read_model(rule) for rule in rules]
 
     def create_rule(self, payload: RenderRuleCreate) -> RenderRuleRead:
@@ -47,9 +48,11 @@ class RenderRuleService:
         self.session.add(rule)
         self.session.commit()
         self.session.refresh(rule)
+        logger.info("Render rule created: rule_id={} match_type={}", rule.id, rule.match_type)
         return self._to_read_model(rule)
 
     def get_rule(self, rule_id: int) -> RenderRuleRead:
+        logger.info("Render rule read: rule_id={}", rule_id)
         return self._to_read_model(self._get_rule_or_raise(rule_id))
 
     def update_rule(self, rule_id: int, payload: RenderRuleUpdate) -> RenderRuleRead:
@@ -80,12 +83,14 @@ class RenderRuleService:
         self._validate_regex(rule.match_type, rule.match_pattern)
         self.session.commit()
         self.session.refresh(rule)
+        logger.info("Render rule updated: rule_id={}", rule_id)
         return self._to_read_model(rule)
 
     def delete_rule(self, rule_id: int) -> None:
         rule = self._get_rule_or_raise(rule_id)
         self.session.delete(rule)
         self.session.commit()
+        logger.info("Render rule deleted: rule_id={}", rule_id)
 
     def _get_rule_or_raise(self, rule_id: int) -> GlobalRenderRule:
         rule = self.session.get(GlobalRenderRule, rule_id)
