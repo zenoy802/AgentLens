@@ -4,44 +4,25 @@ import { toast } from "sonner";
 
 import { createSelectionSnapshot } from "@/api/selectionSnapshots";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { formatApiError } from "@/lib/formatApiError";
-import {
-  isProductLanguage,
-  loadProductLanguage,
-  saveProductLanguage,
-  type ProductLanguage,
-} from "@/lib/productLanguage";
+import type { ProductLanguage } from "@/lib/productLanguage";
+import { useProductLanguageStore } from "@/stores/productLanguageStore";
 import { useQueryStore } from "@/stores/queryStore";
-
-const PROMPT_LANGUAGE_OPTIONS: Array<{ value: ProductLanguage; label: string }> = [
-  { value: "zh-CN", label: "中文" },
-  { value: "en-US", label: "English" },
-];
 
 const COPY_LABELS: Record<
   ProductLanguage,
   {
     button: string;
     copied: string;
-    languagePlaceholder: string;
   }
 > = {
   "zh-CN": {
     button: "复制 Agent Prompt",
     copied: "Agent Prompt 已复制",
-    languagePlaceholder: "Prompt 语言",
   },
   "en-US": {
     button: "Copy Agent Prompt",
     copied: "Agent prompt copied",
-    languagePlaceholder: "Prompt language",
   },
 };
 
@@ -55,21 +36,12 @@ export function CopyAgentPromptButton({
   disabled = false,
 }: CopyAgentPromptButtonProps) {
   const selectedRowIds = useQueryStore((state) => state.selectedRowIds);
-  const [language, setLanguage] = useState<ProductLanguage>(() => loadProductLanguage());
+  const language = useProductLanguageStore((state) => state.language);
   const [copying, setCopying] = useState(false);
   const selectedRowIdentities = useMemo(
     () => Array.from(selectedRowIds),
     [selectedRowIds],
   );
-
-  function handleLanguageChange(value: string) {
-    if (!isProductLanguage(value)) {
-      return;
-    }
-
-    setLanguage(value);
-    saveProductLanguage(value);
-  }
 
   async function handleCopy() {
     if (queryId === null || copying) {
@@ -108,21 +80,6 @@ export function CopyAgentPromptButton({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select
-        value={language}
-        onValueChange={handleLanguageChange}
-      >
-        <SelectTrigger className="h-9 w-32">
-          <SelectValue placeholder={COPY_LABELS[language].languagePlaceholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {PROMPT_LANGUAGE_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
       <Button
         variant="outline"
         className="gap-2"
@@ -189,6 +146,7 @@ export function buildAgentPrompt({
 - query_id：${queryId}
 ${selectionDataZh}
 请使用 AgentLens MCP 工具或 \`agentlens\` CLI 先自行查看这个查询的数据和字段。不要预设分析目标、分析模式或打标方式。
+回答语言要求：请始终使用中文回复我，包括澄清问题、分析结论和标注说明。
 
 建议的数据入口：
 - MCP 查询信息：get_query(query_id=${queryId})
@@ -208,6 +166,7 @@ ${selectionAccessZh}
 - query_id: ${queryId}
 ${selectionDataEn}
 Use AgentLens MCP tools or the \`agentlens\` CLI to inspect this query's data and fields first. Do not assume an analysis goal, analysis mode, or annotation workflow.
+Response language requirement: Always reply to me in English, including follow-up questions, findings, and annotation text.
 
 Suggested data access:
 - MCP query info: get_query(query_id=${queryId})
