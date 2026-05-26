@@ -13,32 +13,42 @@ RUN pnpm install --frozen-lockfile
 COPY frontend ./
 RUN pnpm --filter web build
 
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim AS python-builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY backend/pyproject.toml backend/README.md backend/alembic.ini ./backend/
-COPY backend/app ./backend/app
-COPY backend/alembic ./backend/alembic
-
-WORKDIR /app/backend
-RUN pip install --no-cache-dir -e .
-
-WORKDIR /app
+COPY pyproject.toml README.md ./
 COPY backend ./backend
+COPY cli ./cli
+COPY packages ./packages
 COPY --from=frontend-builder /app/frontend/apps/web/dist ./backend/app/static
 
-ENV AGENT_LENS_HOST=0.0.0.0
-ENV AGENT_LENS_PORT=8000
-ENV AGENT_LENS_DATA_DIR=/data
+RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels .
+
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 ENV AGENTLENS_HOST=0.0.0.0
 ENV AGENTLENS_PORT=8000
 ENV AGENTLENS_DATA_DIR=/data
 
+WORKDIR /app
+
+COPY --from=python-builder /wheels /wheels
+RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels agentlens==1.0.0 \
+    && rm -rf /wheels \
+    && useradd -m -u 1000 agentlens \
+    && mkdir -p /data \
+    && chown -R agentlens:agentlens /data
+
+USER agentlens
+
 VOLUME ["/data"]
 EXPOSE 8000
 
-WORKDIR /app/backend
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=5s --timeout=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health').read()"
+
+CMD ["agentlens", "run", "--host", "0.0.0.0", "--port", "8000"]

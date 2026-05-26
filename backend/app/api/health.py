@@ -1,11 +1,11 @@
 import time
-from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import APIRouter, Request
 from loguru import logger
 from pydantic import BaseModel
 
 from app.core.logging import safe_exception_context
+from app.core.version import get_app_version
 from app.db.session import metadata_database_is_ready
 
 router = APIRouter(tags=["system"])
@@ -16,13 +16,6 @@ class HealthResponse(BaseModel):
     version: str
     metadata_db: str
     uptime_seconds: int
-
-
-def get_app_version() -> str:
-    try:
-        return version("AgentLens-backend")
-    except PackageNotFoundError:
-        return "0.1.0"
 
 
 @router.get("/health", response_model=HealthResponse)

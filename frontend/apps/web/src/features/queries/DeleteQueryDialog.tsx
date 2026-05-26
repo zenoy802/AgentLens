@@ -29,7 +29,6 @@ export function DeleteQueryDialog({ open, query, onOpenChange }: DeleteQueryDial
 
   const displayName = query.name ?? "（临时）";
   const labelRecordCount = query.label_record_count ?? 0;
-  const llmAnalysisCount = query.llm_analysis_count ?? 0;
 
   async function handleDelete() {
     if (query === null) {
@@ -65,7 +64,6 @@ export function DeleteQueryDialog({ open, query, onOpenChange }: DeleteQueryDial
             <p>这将同时删除：</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>{labelRecordCount} 条打标</li>
-              <li>{llmAnalysisCount} 条 LLM 分析记录</li>
               <li>视图配置</li>
             </ul>
           </div>

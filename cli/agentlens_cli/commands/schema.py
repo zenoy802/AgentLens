@@ -111,10 +111,12 @@ def labels(
 
 
 def _cli_version() -> str:
-    try:
-        return version("agentlens-cli")
-    except PackageNotFoundError:
-        return __version__
+    for package_name in ("agentlens-cli", "agentlens"):
+        try:
+            return version(package_name)
+        except PackageNotFoundError:
+            continue
+    return __version__
 
 
 __all__ = ["schema"]

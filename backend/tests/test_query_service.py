@@ -26,11 +26,15 @@ class FailingExecutor:
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> NoReturn:
         assert connection.id > 0
         assert sql == "SELECT 'super-secret'"
         assert timeout > 0
         assert row_limit > 0
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         cause = OperationalError(
             sql,
             {"password": "super-secret"},

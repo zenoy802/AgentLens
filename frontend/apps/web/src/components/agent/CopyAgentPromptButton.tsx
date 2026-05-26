@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatApiError } from "@/lib/formatApiError";
+import { formatApiError, getApiError } from "@/lib/formatApiError";
 import type { ProductLanguage } from "@/lib/productLanguage";
 import { useProductLanguageStore } from "@/stores/productLanguageStore";
 import { useQueryStore } from "@/stores/queryStore";
@@ -32,6 +32,8 @@ const COPY_LABELS: Record<
     copied: "Agent prompt copied",
   },
 };
+const LARGE_SELECTION_THRESHOLD = 500;
+const SELECTION_SNAPSHOT_TIMEOUT_MS = 15_000;
 
 interface CopyAgentPromptButtonProps {
   queryId: number | null;
@@ -60,10 +62,16 @@ export function CopyAgentPromptButton({
     try {
       let selectionId: string | null = null;
       if (selectedRowIdentities.length > 0) {
-        const snapshot = await createSelectionSnapshot(queryId, {
-          row_identities: selectedRowIdentities,
-          source: "copy_agent_prompt",
-        });
+        if (selectedRowIdentities.length >= LARGE_SELECTION_THRESHOLD) {
+          toast.info(`正在为 ${selectedRowIdentities.length} 行创建 selection snapshot`);
+        }
+        const snapshot = await withTimeout(
+          createSelectionSnapshot(queryId, {
+            row_identities: selectedRowIdentities,
+            source: "copy_agent_prompt",
+          }),
+          SELECTION_SNAPSHOT_TIMEOUT_MS,
+        );
         selectionId = snapshot.id;
       }
 
@@ -80,6 +88,10 @@ export function CopyAgentPromptButton({
       if (error instanceof ClipboardWriteError) {
         setManualPrompt(error.prompt);
         toast.error("剪贴板写入失败，请手动复制");
+        return;
+      }
+      if (getApiError(error)?.error.code === "SELECTION_TOO_LARGE") {
+        toast.error("选择行数过多，请减少选择或使用 rows live access");
         return;
       }
       toast.error(formatApiError(error));
@@ -121,6 +133,25 @@ export function CopyAgentPromptButton({
       </Dialog>
     </>
   );
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(
+      () => reject(new Error("Selection snapshot timed out. Please retry with fewer rows.")),
+      timeoutMs,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }
 
 class ClipboardWriteError extends Error {

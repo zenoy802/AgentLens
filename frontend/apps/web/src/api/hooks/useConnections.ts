@@ -23,6 +23,7 @@ export function useConnections() {
   return useQuery({
     queryKey: connectionKeys.list(),
     queryFn: fetchAllConnections,
+    staleTime: 60_000,
   });
 }
 
@@ -78,6 +79,7 @@ export function useConnection(id: number) {
       }
       return data;
     },
+    staleTime: 60_000,
   });
 }
 

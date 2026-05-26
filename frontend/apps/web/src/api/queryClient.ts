@@ -22,6 +22,7 @@ export const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 10_000,
+      gcTime: 5 * 60_000,
     },
     mutations: {
       retry: 0,

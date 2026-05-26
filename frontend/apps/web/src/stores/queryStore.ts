@@ -79,10 +79,16 @@ export interface QueryState {
   selectedRowIds: Set<string>;
   isExecuting: boolean;
   isDirty: boolean;
+  sqlDirty: boolean;
+  viewDirty: boolean;
+  labelSchemaDirty: boolean;
   setConnectionId(id: number | null): void;
   setSql(sql: string): void;
   setResult(result: ExecutionResult): void;
   markDirty(): void;
+  markSqlDirty(): void;
+  markLabelSchemaDirty(): void;
+  markLabelSchemaClean(): void;
   markClean(): void;
   setFieldRender(col: string, render: FieldRender): void;
   removeFieldRender(col: string): void;
@@ -135,6 +141,9 @@ const initialResultState = {
   warnings: [] as Warning[],
   selectedRowIds: new Set<string>(),
   isDirty: false,
+  sqlDirty: false,
+  viewDirty: false,
+  labelSchemaDirty: false,
 };
 
 export const useQueryStore = create<QueryState>((set, get) => ({
@@ -167,10 +176,22 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         filters: {},
         selectedRowIds: new Set(),
         isExecuting: false,
+        ...getDirtyState(state, { sqlDirty: false }),
       };
     }),
-  markDirty: () => set({ isDirty: true }),
-  markClean: () => set({ isDirty: false }),
+  markDirty: () => set((state) => getDirtyState(state, { viewDirty: true })),
+  markSqlDirty: () => set((state) => getDirtyState(state, { sqlDirty: true })),
+  markLabelSchemaDirty: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: true })),
+  markLabelSchemaClean: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: false })),
+  markClean: () =>
+    set({
+      isDirty: false,
+      sqlDirty: false,
+      viewDirty: false,
+      labelSchemaDirty: false,
+    }),
   setFieldRender: (col, render) => {
     set((state) => ({
       fieldRenders: {
@@ -382,7 +403,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
     const trajectoryConfig = vc.trajectory_config ?? null;
-    set({
+    set((state) => ({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
@@ -392,8 +413,8 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         vc.trajectory_config_source,
       ),
       rowIdentityColumn: vc.row_identity_column ?? null,
-    });
-    get().markClean();
+      ...getDirtyState(state, { viewDirty: false }),
+    }));
   },
   mergeSuggestedRenders: (suggested) =>
     set((state) => {
@@ -458,6 +479,21 @@ function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
 
 function normalizeLabelFilterValues(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === "string")));
+}
+
+function getDirtyState(
+  state: Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">,
+  patch: Partial<Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">>,
+) {
+  const sqlDirty = patch.sqlDirty ?? state.sqlDirty;
+  const viewDirty = patch.viewDirty ?? state.viewDirty;
+  const labelSchemaDirty = patch.labelSchemaDirty ?? state.labelSchemaDirty;
+  return {
+    sqlDirty,
+    viewDirty,
+    labelSchemaDirty,
+    isDirty: sqlDirty || viewDirty || labelSchemaDirty,
+  };
 }
 
 function trajectoryConfigsEqual(

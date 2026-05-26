@@ -33,9 +33,10 @@ interface AnnotationDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type StatusFilter = "all" | "stale" | "orphan" | "current";
+type StatusFilter = "all" | "stale" | "orphan" | "unknown-column" | "current";
 
 const ALL_VALUE = "__all";
+const EMPTY_ID_SET = new Set<number>();
 
 export function AnnotationDrawer({
   open,
@@ -49,31 +50,54 @@ export function AnnotationDrawer({
   const [setFilter, setSetFilter] = useState(ALL_VALUE);
   const deleteAnnotation = useDeleteAnnotation(queryId);
   const staleIds = useMemo(
-    () => new Set(annotationIndex.getStaleAnnotations().map((annotation) => annotation.id)),
-    [annotationIndex],
+    () =>
+      open
+        ? new Set(annotationIndex.getStaleAnnotations().map((annotation) => annotation.id))
+        : EMPTY_ID_SET,
+    [annotationIndex, open],
   );
   const orphanIds = useMemo(
-    () => new Set(annotationIndex.getOrphanAnnotations().map((annotation) => annotation.id)),
-    [annotationIndex],
+    () =>
+      open
+        ? new Set(annotationIndex.getOrphanAnnotations().map((annotation) => annotation.id))
+        : EMPTY_ID_SET,
+    [annotationIndex, open],
+  );
+  const unknownColumnIds = useMemo(
+    () =>
+      open
+        ? new Set(
+            annotationIndex.getUnknownColumnAnnotations().map((annotation) => annotation.id),
+          )
+        : EMPTY_ID_SET,
+    [annotationIndex, open],
   );
   const authorOptions = useMemo(
-    () => Array.from(new Set(annotationIndex.annotations.map((item) => item.author))).sort(),
-    [annotationIndex.annotations],
+    () =>
+      open
+        ? Array.from(new Set(annotationIndex.annotations.map((item) => item.author))).sort()
+        : [],
+    [annotationIndex.annotations, open],
   );
   const annotationSetOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          annotationIndex.annotations
-            .map((item) => item.annotation_set)
-            .filter((value): value is string => value !== null && value.length > 0),
-        ),
-      ).sort(),
-    [annotationIndex.annotations],
+      open
+        ? Array.from(
+            new Set(
+              annotationIndex.annotations
+                .map((item) => item.annotation_set)
+                .filter((value): value is string => value !== null && value.length > 0),
+            ),
+          ).sort()
+        : [],
+    [annotationIndex.annotations, open],
   );
   const visibleAnnotations = useMemo(
-    () =>
-      annotationIndex.annotations.filter((annotation) => {
+    () => {
+      if (!open) {
+        return [];
+      }
+      return annotationIndex.annotations.filter((annotation) => {
         if (authorFilter !== ALL_VALUE && annotation.author !== authorFilter) {
           return false;
         }
@@ -89,19 +113,29 @@ export function AnnotationDrawer({
         if (statusFilter === "orphan") {
           return orphanIds.has(annotation.id);
         }
+        if (statusFilter === "unknown-column") {
+          return unknownColumnIds.has(annotation.id);
+        }
         if (statusFilter === "current") {
-          return !staleIds.has(annotation.id) && !orphanIds.has(annotation.id);
+          return (
+            !staleIds.has(annotation.id) &&
+            !orphanIds.has(annotation.id) &&
+            !unknownColumnIds.has(annotation.id)
+          );
         }
         return true;
-      }),
+      });
+    },
     [
       annotationIndex.annotations,
       authorFilter,
       colorFilter,
+      open,
       orphanIds,
       setFilter,
       staleIds,
       statusFilter,
+      unknownColumnIds,
     ],
   );
 
@@ -158,6 +192,7 @@ export function AnnotationDrawer({
               <SelectItem value="current">Current</SelectItem>
               <SelectItem value="stale">Stale</SelectItem>
               <SelectItem value="orphan">Orphan</SelectItem>
+              <SelectItem value="unknown-column">Unknown column</SelectItem>
             </SelectContent>
           </Select>
           <Select value={setFilter} onValueChange={setSetFilter}>
@@ -187,6 +222,7 @@ export function AnnotationDrawer({
                   annotation={annotation}
                   stale={staleIds.has(annotation.id)}
                   orphan={orphanIds.has(annotation.id)}
+                  unknownColumn={unknownColumnIds.has(annotation.id)}
                   deletePending={deleteAnnotation.isPending}
                   onDelete={() =>
                     deleteAnnotation.mutate(annotation.id, {
@@ -207,12 +243,14 @@ function AnnotationDrawerItem({
   annotation,
   stale,
   orphan,
+  unknownColumn,
   deletePending,
   onDelete,
 }: {
   annotation: Annotation;
   stale: boolean;
   orphan: boolean;
+  unknownColumn: boolean;
   deletePending: boolean;
   onDelete: () => void;
 }) {
@@ -253,16 +291,24 @@ function AnnotationDrawerItem({
         </Button>
       </div>
       {annotation.text !== null && annotation.text.length > 0 ? (
-        <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-          {annotation.text}
+        <div
+          className="line-clamp-5 whitespace-pre-wrap break-words text-sm text-foreground"
+          title={annotation.text}
+        >
+          {truncateText(annotation.text, 500)}
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1.5">
         {stale ? <Badge variant="muted">Created on previous result</Badge> : null}
         {orphan ? <Badge variant="muted">Row not in current result</Badge> : null}
+        {unknownColumn ? <Badge variant="muted">Unknown column</Badge> : null}
       </div>
     </div>
   );
+}
+
+function truncateText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
 }
 
 function truncateMiddle(value: string, maxLength: number): string {

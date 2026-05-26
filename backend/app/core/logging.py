@@ -280,10 +280,12 @@ def setup_logging() -> None:
 
     logger.remove()
     logger.configure(patcher=mask_sensitive)
+    log_level = "DEBUG" if settings.debug else "INFO"
+
     logger.add(
         sys.stdout,
         colorize=True,
-        level="INFO",
+        level=log_level,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
         "<level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:"
         "<cyan>{line}</cyan> | <level>{message}</level>",
@@ -294,7 +296,7 @@ def setup_logging() -> None:
         retention="14 days",
         compression="zip",
         encoding="utf-8",
-        level="INFO",
+        level=log_level,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | "
         "{message} | {extra}",
         backtrace=False,

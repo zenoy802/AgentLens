@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import builtins
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,7 @@ MIN_COLLISION_ROWS = 2
 TRUNCATED_PAGE_SIZE = 100
 EXIT_BACKEND_UNAVAILABLE = 3
 EXIT_BACKEND_BUSINESS = 4
+EXPECTED_MISSING_SELECTION_REQUESTED_COUNT = 2
 
 
 class FakeClient:
@@ -141,6 +144,17 @@ class FakeClient:
         return {"query_id": query_id, "fields": []}
 
 
+class MissingSelectionRowClient(FakeClient):
+    def get_selection(self, selection_id: str) -> dict[str, Any]:
+        return {
+            "id": selection_id,
+            "query_id": 1,
+            "row_identities": ["b", "missing-row"],
+            "count": 2,
+            "source": "ui",
+        }
+
+
 class UnavailableClient(FakeClient):
     def schema_info(self) -> dict[str, Any]:
         raise BackendUnavailableError("Cannot connect to AgentLens backend at http://testserver")
@@ -221,6 +235,66 @@ def test_top_level_help_mentions_live_and_snapshot() -> None:
     assert "agentlens data rows --query 42" in result.output
     assert "Snapshot export:" in result.output
     assert "agentlens context export --query 42" in result.output
+
+
+def test_top_level_help_does_not_import_backend_server_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sys.modules.pop("agentlens_cli.commands.server", None)
+    real_import = builtins.__import__
+
+    def blocked_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "agentlens_cli.commands.server" or name in {"uvicorn", "sqlalchemy"}:
+            raise ModuleNotFoundError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    result = CliRunner().invoke(cli, ["--help"], env=BASE_ENV)
+
+    assert result.exit_code == 0
+    assert "run" in result.output
+
+
+def test_server_command_reports_unified_package_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sys.modules.pop("agentlens_cli.commands.server", None)
+    real_import = builtins.__import__
+
+    def blocked_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "uvicorn":
+            raise ModuleNotFoundError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    result = CliRunner().invoke(cli, ["run"], env=BASE_ENV)
+
+    assert result.exit_code != 0
+    assert "requires the unified agentlens package" in result.output
+    assert "Missing dependency: uvicorn" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_server_command_reports_missing_backend_app_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_import = builtins.__import__
+
+    def blocked_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.startswith("app."):
+            raise ModuleNotFoundError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    result = CliRunner().invoke(cli, ["run"], env=BASE_ENV)
+
+    assert result.exit_code != 0
+    assert "requires the unified agentlens package" in result.output
+    assert "Missing dependency: app.core.config" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_schema_info_outputs_valid_json(monkeypatch: Any) -> None:
@@ -446,6 +520,26 @@ def test_context_export_uses_backend_fallback_identity(tmp_path: Path) -> None:
         }
     ]
     assert labels == [{"row_identity": "agentlens-b", "labels": {"quality": "good"}}]
+
+
+def test_context_export_marks_missing_selection_rows(tmp_path: Path) -> None:
+    client = MissingSelectionRowClient("http://testserver")
+
+    export_context(
+        client=client,
+        query_id=1,
+        selection_id="sel_missing",
+        output_dir=tmp_path,
+    )
+
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    selection_manifest = manifest["selection"]
+    assert selection_manifest["requested_row_count"] == EXPECTED_MISSING_SELECTION_REQUESTED_COUNT
+    assert selection_manifest["exported_row_count"] == 1
+    assert selection_manifest["missing_row_count"] == 1
+    assert selection_manifest["missing_row_identities"] == ["missing-row"]
+    selection = json.loads((tmp_path / "selection.json").read_text(encoding="utf-8"))
+    assert selection["row_identities"] == ["b", "missing-row"]
 
 
 def test_context_export_fails_when_query_result_is_truncated(tmp_path: Path) -> None:

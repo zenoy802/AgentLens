@@ -71,3 +71,36 @@ async def test_selection_snapshot_api_create_get_delete() -> None:
     assert get_response.json()["row_identities"] == ["row-1", "row-2"]
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
     assert missing_response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_selection_snapshot_api_rejects_empty_selection() -> None:
+    query_id = _create_query_id()
+    transport = httpx.ASGITransport(app=cast(Any, app))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            f"/api/v1/queries/{query_id}/selection-snapshots",
+            json={"row_identities": [], "source": "copy_agent_prompt"},
+        )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["error"]["code"] == "SELECTION_EMPTY"
+
+
+@pytest.mark.asyncio
+async def test_selection_snapshot_api_rejects_too_large_selection() -> None:
+    query_id = _create_query_id()
+    transport = httpx.ASGITransport(app=cast(Any, app))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            f"/api/v1/queries/{query_id}/selection-snapshots",
+            json={
+                "row_identities": [f"row-{index}" for index in range(10001)],
+                "source": "copy_agent_prompt",
+            },
+        )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["error"]["code"] == "SELECTION_TOO_LARGE"

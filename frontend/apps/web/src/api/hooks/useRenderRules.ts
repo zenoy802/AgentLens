@@ -16,6 +16,7 @@ export function useRenderRules() {
   return useQuery({
     queryKey: renderRuleKeys.list(),
     queryFn: fetchRenderRules,
+    staleTime: 60_000,
   });
 }
 

@@ -10,8 +10,9 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import AppError, ConflictError, NotFoundError
-from app.core.logging import safe_exception_context
+from app.core.logging import safe_exception_context, sanitize_log_message
 from app.models.connection import Connection
 from app.models.label import LabelRecord, LabelSchema
 from app.models.llm import LLMAnalysis
@@ -29,6 +30,7 @@ from app.schemas.query import (
 )
 from app.schemas.render import FieldRender
 from app.schemas.view_config import TrajectoryConfig
+from app.services.fingerprint_service import compute_sql_fingerprint
 from app.services.query_executor import ExecutorResult, ExecutorService
 from app.services.render_suggestion_service import suggest, suggest_trajectory_config
 from app.services.row_identity_service import compute
@@ -108,6 +110,13 @@ class QueryService:
         query_id = query.id
         connection_id = query.connection_id
         sql_text = query.sql_text
+        sql_fingerprint = _safe_sql_fingerprint(sql_text)
+        _log_debug_sql_snippet(
+            query_id=query_id,
+            connection_id=connection_id,
+            sql_text=sql_text,
+            sql_fingerprint=sql_fingerprint,
+        )
 
         try:
             execution_result = self._executor_service.execute(
@@ -115,6 +124,8 @@ class QueryService:
                 sql_text,
                 timeout=timeout,
                 row_limit=row_limit,
+                query_id=query_id,
+                sql_fingerprint=sql_fingerprint,
             )
             warnings: list[WarningRead] = []
             self._append_row_identity_config_warnings(
@@ -145,9 +156,11 @@ class QueryService:
             )
             self.session.commit()
             logger.warning(
-                "Query execution failed: query_id={} connection_id={} context={}",
+                "Query execution failed: query_id={} connection_id={} sql_fingerprint={} "
+                "context={}",
                 query_id,
                 connection_id,
+                sql_fingerprint,
                 safe_exception_context(exc),
             )
             raise
@@ -174,11 +187,14 @@ class QueryService:
                 len(execution_result.rows),
             )
         logger.info(
-            "Query execution recorded: query_id={} connection_id={} rows={} duration_ms={}",
+            "Query executed: query_id={} connection_id={} sql_fingerprint={} row_count={} "
+            "duration_ms={} truncated={}",
             query.id,
             query.connection_id,
+            sql_fingerprint,
             len(execution_result.rows),
             execution_result.duration_ms,
+            execution_result.truncated,
         )
         return ExecutionOutcome(
             execution_result=execution_result,
@@ -198,6 +214,13 @@ class QueryService:
     ) -> ExecutionOutcome:
         connection = self._get_connection_or_raise(query.connection_id)
         view_config = self._get_or_create_view_config(query)
+        sql_fingerprint = _safe_sql_fingerprint(query.sql_text)
+        _log_debug_sql_snippet(
+            query_id=query.id,
+            connection_id=query.connection_id,
+            sql_text=query.sql_text,
+            sql_fingerprint=sql_fingerprint,
+        )
 
         try:
             execution_result = self._executor_service.execute(
@@ -205,6 +228,8 @@ class QueryService:
                 query.sql_text,
                 timeout=timeout,
                 row_limit=row_limit,
+                query_id=query.id,
+                sql_fingerprint=sql_fingerprint,
             )
             warnings: list[WarningRead] = []
             self._append_row_identity_config_warnings(
@@ -227,17 +252,21 @@ class QueryService:
         except Exception as exc:
             self.session.rollback()
             logger.warning(
-                "Readonly query execution failed: query_id={} connection_id={} context={}",
+                "Readonly query execution failed: query_id={} connection_id={} "
+                "sql_fingerprint={} context={}",
                 query.id,
                 query.connection_id,
+                sql_fingerprint,
                 safe_exception_context(exc),
             )
             raise
 
         logger.info(
-            "Readonly query executed: query_id={} connection_id={} rows={} duration_ms={}",
+            "Readonly query executed: query_id={} connection_id={} sql_fingerprint={} "
+            "row_count={} duration_ms={}",
             query.id,
             query.connection_id,
+            sql_fingerprint,
             len(execution_result.rows),
             execution_result.duration_ms,
         )
@@ -490,13 +519,13 @@ class QueryService:
                 identities.append(compute(row, view_config.row_identity_column))
             except Exception as exc:
                 logger.warning(
-                    "Row identity generation failed; using repr hash: "
+                    "Row identity generation failed; using normalized row JSON hash: "
                     "query_id={} row_index={} error={}",
                     view_config.query_id,
                     index,
                     exc,
                 )
-                identities.append(hashlib.sha1(repr(row).encode("utf-8")).hexdigest())
+                identities.append(_fallback_row_identity(row))
         return identities
 
     def _record_query_history(
@@ -650,6 +679,44 @@ def _error_message(exc: Exception) -> str:
     if isinstance(exc, AppError):
         return exc.message
     return str(exc)
+
+
+def _fallback_row_identity(row: dict[str, Any]) -> str:
+    try:
+        return compute(row, None)
+    except Exception as exc:
+        logger.warning(
+            "Normalized row identity fallback failed; using repr hash: error={}",
+            exc,
+        )
+        return hashlib.sha1(repr(row).encode("utf-8")).hexdigest()
+
+
+def _safe_sql_fingerprint(sql_text: str) -> str:
+    try:
+        return compute_sql_fingerprint(sql_text)
+    except Exception as exc:
+        logger.warning("SQL fingerprint calculation failed: error={}", exc)
+        return "unavailable"
+
+
+def _log_debug_sql_snippet(
+    *,
+    query_id: int,
+    connection_id: int,
+    sql_text: str,
+    sql_fingerprint: str,
+) -> None:
+    if not get_settings().debug:
+        return
+    truncated_sql = sanitize_log_message(sql_text[:500])
+    logger.debug(
+        "SQL debug snippet: query_id={} connection_id={} sql_fingerprint={} sql={}",
+        query_id,
+        connection_id,
+        sql_fingerprint,
+        truncated_sql,
+    )
 
 
 def _is_named_query_name_conflict(exc: IntegrityError) -> bool:

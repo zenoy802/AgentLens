@@ -280,15 +280,28 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
         if has_database_exception_context(exc):
-            logger.error("Unhandled database exception: context={}", safe_exception_context(exc))
+            _log_unhandled_exception("Unhandled database exception", exc)
         else:
-            logger.error("Unhandled exception: context={}", safe_exception_context(exc))
+            _log_unhandled_exception("Unhandled exception", exc)
         return _build_error_response(
             code="INTERNAL_ERROR",
             message="Internal server error.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=_server_error_detail(exc),
         )
+
+
+def _log_unhandled_exception(message: str, exc: Exception) -> None:
+    context = safe_exception_context(exc)
+    if get_settings().debug:
+        logger.error(
+            "{}: context={} traceback={}",
+            message,
+            context,
+            sanitize_traceback(exc),
+        )
+        return
+    logger.error("{}: context={}", message, context)
 
 
 def _extract_constraint_name(exc: IntegrityError) -> str | None:
@@ -359,6 +372,7 @@ def _request_validation_error_response(
             )
         if "/selection-snapshots" in path:
             if "row_identities" in loc and error_type == "too_short":
+                logger.warning("Selection snapshot rejected: code=SELECTION_EMPTY")
                 return _build_error_response(
                     code="SELECTION_EMPTY",
                     message="Selection row_identities must not be empty.",
@@ -366,6 +380,7 @@ def _request_validation_error_response(
                     detail=jsonable_encoder(errors),
                 )
             if "row_identities" in loc and error_type == "too_long":
+                logger.warning("Selection snapshot rejected: code=SELECTION_TOO_LARGE")
                 return _build_error_response(
                     code="SELECTION_TOO_LARGE",
                     message="Selection row_identities exceeds the limit.",

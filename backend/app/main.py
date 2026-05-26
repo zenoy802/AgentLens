@@ -22,6 +22,7 @@ from app.core.executor_registry import dispose_executor_engines
 from app.core.http_clients import close_http_clients
 from app.core.logging import safe_exception_context, setup_logging
 from app.core.scheduler import shutdown_scheduler, start_scheduler
+from app.core.version import get_app_version
 from app.db.session import dispose_engine, initialize_metadata_database
 
 API_PREFIX = "/api/v1"
@@ -59,9 +60,18 @@ def _build_openapi_schema(app: FastAPI) -> dict[str, Any]:
 
 def _default_static_dir() -> Path:
     app_static_dir = Path(__file__).parent / "static"
+    if _has_frontend_build(app_static_dir):
+        return app_static_dir
+    cwd_static_dir = Path.cwd() / "static"
+    if _has_frontend_build(cwd_static_dir):
+        return cwd_static_dir
     if app_static_dir.exists():
         return app_static_dir
-    return Path.cwd() / "static"
+    return cwd_static_dir
+
+
+def _has_frontend_build(static_dir: Path) -> bool:
+    return (static_dir / "index.html").is_file()
 
 
 def mount_static_frontend(app: FastAPI, static_dir: Path | None = None) -> None:
@@ -136,7 +146,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="AgentLens API",
-        version="0.1.0",
+        version=get_app_version(),
         openapi_url=f"{API_PREFIX}/openapi.json",
         lifespan=lifespan,
     )

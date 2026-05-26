@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { FieldRender } from "@/api/types";
 import type { CellPresentation } from "@/features/row-view/cells/cellUtils";
 import { CodeCell } from "@/features/row-view/cells/CodeCell";
@@ -15,7 +17,7 @@ interface CellDispatcherProps {
   richPreview?: boolean;
 }
 
-export function CellDispatcher({
+function CellDispatcherComponent({
   value,
   render,
   presentation = "table",
@@ -63,4 +65,31 @@ export function CellDispatcher({
       }
       return <TextCell value={value} previewLines={previewLines} />;
   }
+}
+
+export const CellDispatcher = memo(
+  CellDispatcherComponent,
+  (prev, next) =>
+    Object.is(prev.value, next.value) &&
+    fieldRenderEqual(prev.render, next.render) &&
+    prev.presentation === next.presentation &&
+    prev.previewLines === next.previewLines &&
+    prev.richPreview === next.richPreview,
+);
+
+function fieldRenderEqual(left: FieldRender, right: FieldRender): boolean {
+  return (
+    left.type === right.type &&
+    getRenderOption(left, "language") === getRenderOption(right, "language") &&
+    getRenderOption(left, "format") === getRenderOption(right, "format") &&
+    getRenderOption(left, "collapsed") === getRenderOption(right, "collapsed")
+  );
+}
+
+function getRenderOption(
+  render: FieldRender,
+  key: "language" | "format" | "collapsed",
+): string | boolean | undefined {
+  const value = key in render ? render[key] : undefined;
+  return typeof value === "string" || typeof value === "boolean" ? value : undefined;
 }

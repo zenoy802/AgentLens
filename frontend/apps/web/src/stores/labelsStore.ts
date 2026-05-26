@@ -19,6 +19,13 @@ export interface LabelsState {
     fieldKey: string,
     value: unknown,
   ): void;
+  patchLabelsForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowIds: string[],
+    fieldKey: string,
+    value: unknown,
+  ): void;
   removeLabel(rowId: string, fieldKey: string): void;
   removeLabelForQuery(
     queryId: number,
@@ -32,10 +39,22 @@ export interface LabelsState {
     rowId: string,
     fieldKey: string,
   ): void;
+  markPendingLabelsForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowIds: string[],
+    fieldKey: string,
+  ): void;
   clearPendingLabelForQuery(
     queryId: number,
     resultKey: string | null,
     rowId: string,
+    fieldKey: string,
+  ): void;
+  clearPendingLabelsForQuery(
+    queryId: number,
+    resultKey: string | null,
+    rowIds: string[],
     fieldKey: string,
   ): void;
 }
@@ -94,6 +113,36 @@ export const useLabelsStore = create<LabelsState>((set) => ({
           }
         : {},
     ),
+  patchLabelsForQuery: (queryId, resultKey, rowIds, fieldKey, value) =>
+    set((state) => {
+      if (!labelsContextMatches(state, queryId, resultKey) || rowIds.length === 0) {
+        return {};
+      }
+
+      const labelsByRow = { ...state.labelsByRow };
+      for (const rowId of rowIds) {
+        if (value === null) {
+          const rowLabels = labelsByRow[rowId];
+          if (rowLabels === undefined || !(fieldKey in rowLabels)) {
+            continue;
+          }
+          const nextRowLabels = { ...rowLabels };
+          delete nextRowLabels[fieldKey];
+          if (Object.keys(nextRowLabels).length === 0) {
+            delete labelsByRow[rowId];
+          } else {
+            labelsByRow[rowId] = nextRowLabels;
+          }
+          continue;
+        }
+        labelsByRow[rowId] = {
+          ...labelsByRow[rowId],
+          [fieldKey]: value,
+        };
+      }
+
+      return { labelsByRow };
+    }),
   removeLabel: (rowId, fieldKey) =>
     set((state) => {
       const rowLabels = state.labelsByRow[rowId];
@@ -150,6 +199,20 @@ export const useLabelsStore = create<LabelsState>((set) => ({
           }
         : {},
     ),
+  markPendingLabelsForQuery: (queryId, resultKey, rowIds, fieldKey) =>
+    set((state) => {
+      if (!labelsContextMatches(state, queryId, resultKey) || rowIds.length === 0) {
+        return {};
+      }
+      const pendingLabelsByRow = { ...state.pendingLabelsByRow };
+      for (const rowId of rowIds) {
+        pendingLabelsByRow[rowId] = {
+          ...pendingLabelsByRow[rowId],
+          [fieldKey]: true,
+        };
+      }
+      return { pendingLabelsByRow };
+    }),
   clearPendingLabelForQuery: (queryId, resultKey, rowId, fieldKey) =>
     set((state) => {
       if (!labelsContextMatches(state, queryId, resultKey)) {
@@ -172,6 +235,31 @@ export const useLabelsStore = create<LabelsState>((set) => ({
       }
 
       return { pendingLabelsByRow };
+    }),
+  clearPendingLabelsForQuery: (queryId, resultKey, rowIds, fieldKey) =>
+    set((state) => {
+      if (!labelsContextMatches(state, queryId, resultKey) || rowIds.length === 0) {
+        return {};
+      }
+
+      const pendingLabelsByRow = { ...state.pendingLabelsByRow };
+      let changed = false;
+      for (const rowId of rowIds) {
+        const rowPendingLabels = pendingLabelsByRow[rowId];
+        if (rowPendingLabels === undefined || !(fieldKey in rowPendingLabels)) {
+          continue;
+        }
+        const nextRowPendingLabels = { ...rowPendingLabels };
+        delete nextRowPendingLabels[fieldKey];
+        if (Object.keys(nextRowPendingLabels).length === 0) {
+          delete pendingLabelsByRow[rowId];
+        } else {
+          pendingLabelsByRow[rowId] = nextRowPendingLabels;
+        }
+        changed = true;
+      }
+
+      return changed ? { pendingLabelsByRow } : {};
     }),
 }));
 

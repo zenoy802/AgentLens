@@ -1,7 +1,9 @@
+import { useMemo, useState } from "react";
 import { Clipboard } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const CLI_INSTALL = "pipx install agentlens-cli";
@@ -12,36 +14,16 @@ agentlens annotate --query 42 --row <row_identity> --color yellow --text "Suspic
 
 const MCP_INSTALL = "pipx install agentlens-mcp";
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
-const CLAUDE_CODE_CONFIG = `{
-  "mcpServers": {
-    "agentlens": {
-      "command": "agentlens-mcp",
-      "args": [
-        "--backend-url", "${DEFAULT_BACKEND_URL}",
-        "--author", "agent:claude-code"
-      ]
-    }
-  }
-}`;
-const CLAUDE_DESKTOP_CONFIG = `{
-  "mcpServers": {
-    "agentlens": {
-      "command": "agentlens-mcp",
-      "args": ["--backend-url", "${DEFAULT_BACKEND_URL}", "--author", "agent:claude-desktop"]
-    }
-  }
-}`;
-const CURSOR_CONFIG = `{
-  "mcpServers": {
-    "agentlens": {
-      "command": "agentlens-mcp",
-      "args": ["--backend-url", "${DEFAULT_BACKEND_URL}", "--author", "agent:cursor"]
-    }
-  }
-}`;
-const GENERIC_MCP_CONFIG = `agentlens-mcp --backend-url ${DEFAULT_BACKEND_URL} --author agent:<client-name>`;
 
 export function AgentIntegrationTab() {
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
+  const normalizedBackendUrl = backendUrl.trim();
+  const backendUrlError = validateBackendUrl(normalizedBackendUrl);
+  const mcpConfig = useMemo(
+    () => buildMcpConfig(normalizedBackendUrl),
+    [normalizedBackendUrl],
+  );
+
   return (
     <div className="space-y-4">
       <section className="rounded-lg border bg-background p-5">
@@ -62,6 +44,21 @@ export function AgentIntegrationTab() {
 
       <section className="rounded-lg border bg-background p-5">
         <h2 className="text-base font-semibold">MCP Server</h2>
+        <div className="mt-3 max-w-xl space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="agentlens-backend-url">
+            Backend URL
+          </label>
+          <Input
+            id="agentlens-backend-url"
+            value={backendUrl}
+            placeholder={DEFAULT_BACKEND_URL}
+            onChange={(event) => setBackendUrl(event.target.value)}
+            aria-invalid={backendUrlError !== null}
+          />
+          {backendUrlError !== null ? (
+            <div className="text-xs text-destructive">{backendUrlError}</div>
+          ) : null}
+        </div>
         <div className="mt-4">
           <CodeBlock title="Install" code={MCP_INSTALL} />
         </div>
@@ -73,16 +70,36 @@ export function AgentIntegrationTab() {
             <TabsTrigger value="generic">Generic MCP</TabsTrigger>
           </TabsList>
           <TabsContent value="claude-code">
-            <CodeBlock title="Claude Code .mcp.json" code={CLAUDE_CODE_CONFIG} />
+            <CodeBlock
+              title="Claude Code .mcp.json"
+              code={mcpConfig.claudeCode}
+              disabled={backendUrlError !== null}
+              disabledMessage={backendUrlError ?? undefined}
+            />
           </TabsContent>
           <TabsContent value="claude-desktop">
-            <CodeBlock title="Claude Desktop config" code={CLAUDE_DESKTOP_CONFIG} />
+            <CodeBlock
+              title="Claude Desktop config"
+              code={mcpConfig.claudeDesktop}
+              disabled={backendUrlError !== null}
+              disabledMessage={backendUrlError ?? undefined}
+            />
           </TabsContent>
           <TabsContent value="cursor">
-            <CodeBlock title="Cursor config" code={CURSOR_CONFIG} />
+            <CodeBlock
+              title="Cursor config"
+              code={mcpConfig.cursor}
+              disabled={backendUrlError !== null}
+              disabledMessage={backendUrlError ?? undefined}
+            />
           </TabsContent>
           <TabsContent value="generic">
-            <CodeBlock title="Generic MCP command" code={GENERIC_MCP_CONFIG} />
+            <CodeBlock
+              title="Generic MCP command"
+              code={mcpConfig.generic}
+              disabled={backendUrlError !== null}
+              disabledMessage={backendUrlError ?? undefined}
+            />
           </TabsContent>
         </Tabs>
       </section>
@@ -101,8 +118,23 @@ export function AgentIntegrationTab() {
   );
 }
 
-function CodeBlock({ title, code }: { title: string; code: string }) {
+function CodeBlock({
+  title,
+  code,
+  disabled = false,
+  disabledMessage = "Backend URL is invalid",
+}: {
+  title: string;
+  code: string;
+  disabled?: boolean;
+  disabledMessage?: string;
+}) {
   async function handleCopy() {
+    if (disabled) {
+      toast.error(disabledMessage);
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(code);
       toast.success("Copied");
@@ -125,5 +157,45 @@ function CodeBlock({ title, code }: { title: string; code: string }) {
         <code>{code}</code>
       </pre>
     </div>
+  );
+}
+
+function validateBackendUrl(value: string): string | null {
+  if (value.length === 0) {
+    return "Backend URL is required.";
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "Backend URL must start with http:// or https://.";
+    }
+  } catch {
+    return "Backend URL is not a valid URL.";
+  }
+  return null;
+}
+
+function buildMcpConfig(backendUrl: string) {
+  return {
+    claudeCode: buildJsonMcpConfig(backendUrl, "agent:claude-code"),
+    claudeDesktop: buildJsonMcpConfig(backendUrl, "agent:claude-desktop"),
+    cursor: buildJsonMcpConfig(backendUrl, "agent:cursor"),
+    generic: `agentlens-mcp --backend-url ${backendUrl} --author agent:<client-name>`,
+  };
+}
+
+function buildJsonMcpConfig(backendUrl: string, author: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        agentlens: {
+          command: "agentlens-mcp",
+          args: ["--backend-url", backendUrl, "--author", author],
+        },
+      },
+    },
+    null,
+    2,
   );
 }

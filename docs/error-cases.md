@@ -135,15 +135,36 @@ tail -f ~/.agentlens/logs/agentlens.log
 ## Log Examples
 
 ```text
-2026-05-24 10:02:11.123 | INFO     | app.core.logging:setup_logging:109 | Logging initialized: file=/Users/you/.agentlens/logs/agentlens.log | {}
+2026-05-24 10:02:11.123 | INFO     | app.core.logging:setup_logging:109 | Logging initialized: file=/Users/you/.agentlens/logs/agentlens.log rotation=10 MB retention=14 days compression=zip | {}
 2026-05-24 10:02:15.456 | INFO     | app.services.query_service:create_temporary_query:75 | Temporary query created: query_id=42 connection_id=1 | {}
-2026-05-24 10:02:15.489 | INFO     | app.services.query_executor:execute:135 | Query executed: connection_id=1 duration_ms=18 rows=25 truncated=False | {}
-2026-05-24 10:02:16.001 | WARNING  | app.core.sql_guard:validate_sql:82 | SQL safety validation failed: code=SQL_NOT_ALLOWED | {}
-2026-05-24 10:02:20.000 | INFO     | app.main:lifespan:117 | AgentLens shutdown complete | {}
+2026-05-24 10:02:15.489 | INFO     | app.services.query_executor:execute:135 | Query executed: query_id=42 connection_id=1 sql_fingerprint=9b1e... duration_ms=18 row_count=25 truncated=False | {}
+2026-05-24 10:02:16.001 | WARNING  | app.services.query_service:execute_and_record:159 | Query execution failed: query_id=42 connection_id=1 sql_fingerprint=4c22... context={'error_type': 'SqlForbiddenError'} | {}
+2026-05-24 10:02:17.221 | WARNING  | app.services.query_service:_compute_row_identities:528 | Row identity generation failed; using normalized row JSON hash: query_id=42 row_index=3 error=... | {}
+2026-05-24 10:02:18.104 | INFO     | app.services.annotation_service:create:203 | Annotation created: query_id=42 annotation_id=88 author=agent:claude-code color=yellow | {}
 ```
 
 Sensitive values must be masked:
 
 ```text
 Authorization: *** password=*** api_key=*** database_url=***
+```
+
+## Error Code Inventory
+
+- SQL/DB: `SQL_NOT_ALLOWED`, `SQL_PARSE_ERROR`, `SQL_DANGEROUS_FUNCTION`, `SQL_TIMEOUT`, `SQL_SYNTAX_ERROR`, `SQL_EXECUTION_ERROR`, `DB_INTEGRITY_ERROR`, `DB_OPERATIONAL_ERROR`, `MYSQL_OPERATIONAL_ERROR`, `MYSQL_QUERY_ERROR`.
+- Query/View: `QUERY_NOT_FOUND`, `NOT_FOUND`, `ROW_IDENTITY_COLUMN_MISSING`, `ROW_IDENTITY_COLUMN_NULL`, `ROW_IDENTITY_DUPLICATE`.
+- Label: `LABEL_FIELD_NOT_FOUND`, `LABEL_ROW_IDENTITY_INVALID`.
+- Annotation: `ANNOTATION_INVALID_COLOR`, `ANNOTATION_INVALID_AUTHOR`, `ANNOTATION_NOT_FOUND`, `ANNOTATION_CLEAR_REQUIRES_FILTER`, `ANNOTATION_BATCH_TOO_LARGE`.
+- Selection/Context: `SELECTION_NOT_FOUND`, `SELECTION_EXPIRED`, `SELECTION_EMPTY`, `SELECTION_TOO_LARGE`, `CONTEXT_SELECTION_REQUIRED`, `CONTEXT_SELECTION_QUERY_MISMATCH`, `CONTEXT_EXPORT_TRUNCATED`, `CONTEXT_EXPORT_OUTPUT_DIR_NOT_WRITABLE`, `CONTEXT_EXPORT_OUTPUT_DIR_NOT_EMPTY`.
+- HTTP client/fallback: `HTTP_CLIENT_TIMEOUT`, `HTTP_CLIENT_CONNECT_ERROR`, `INTERNAL_ERROR`.
+
+## Graceful Shutdown Log Example
+
+Stop a local server with `Ctrl+C` or `docker stop`, then confirm the log contains the shutdown sequence:
+
+```text
+2026-05-24 10:02:20.000 | INFO     | app.main:lifespan:103 | AgentLens shutdown starting | {}
+2026-05-24 10:02:20.011 | INFO     | app.scheduler:shutdown:78 | Scheduler shutdown complete | {}
+2026-05-24 10:02:20.018 | INFO     | app.services.query_executor:dispose_all:244 | Query executor engine cache disposed | {}
+2026-05-24 10:02:20.022 | INFO     | app.main:lifespan:117 | AgentLens shutdown complete | {}
 ```

@@ -92,6 +92,8 @@ class ExecutorService:
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         validate_sql(sql)
         start = time_module.perf_counter()
@@ -114,16 +116,21 @@ class ExecutorService:
                     result.close()
         except DBAPIError as exc:
             logger.warning(
-                "SQL execution DBAPI error: connection_id={} error_class={} error_code={}",
+                "SQL execution DBAPI error: query_id={} connection_id={} "
+                "sql_fingerprint={} error_class={} error_code={}",
+                query_id,
                 connection.id,
+                sql_fingerprint,
                 _dbapi_error_class(exc),
                 _extract_operational_error_code(exc),
             )
             self._raise_sql_error(exc, timeout=timeout)
         except (OSError, TypeError, ValueError) as exc:
             logger.error(
-                "SQL execution failed: connection_id={} context={}",
+                "SQL execution failed: query_id={} connection_id={} sql_fingerprint={} context={}",
+                query_id,
                 connection.id,
+                sql_fingerprint,
                 safe_exception_context(exc),
             )
             raise SqlExecutionError(
@@ -135,20 +142,36 @@ class ExecutorService:
         if truncated:
             rows_raw = rows_raw[:row_limit]
             logger.warning(
-                "Query result truncated by row_limit: connection_id={} row_limit={}",
+                "Query result truncated by row_limit: query_id={} connection_id={} "
+                "sql_fingerprint={} row_limit={}",
+                query_id,
                 connection.id,
+                sql_fingerprint,
                 row_limit,
             )
 
         columns = self._build_columns(description)
         self._promote_text_json_columns(columns, rows_raw)
-        rows = self._build_rows(columns, rows_raw, connection_id=connection.id)
+        rows = self._build_rows(
+            columns,
+            rows_raw,
+            query_id=query_id,
+            connection_id=connection.id,
+        )
         if not rows:
-            logger.warning("Query returned zero rows: connection_id={}", connection.id)
+            logger.warning(
+                "Query returned zero rows: query_id={} connection_id={} sql_fingerprint={}",
+                query_id,
+                connection.id,
+                sql_fingerprint,
+            )
         duration_ms = int((time_module.perf_counter() - start) * 1000)
         logger.info(
-            "Query executed: connection_id={} duration_ms={} rows={} truncated={}",
+            "Query executed: query_id={} connection_id={} sql_fingerprint={} "
+            "duration_ms={} row_count={} truncated={}",
+            query_id,
             connection.id,
+            sql_fingerprint,
             duration_ms,
             len(rows),
             truncated,
@@ -244,6 +267,7 @@ class ExecutorService:
         columns: Sequence[Column],
         rows_raw: Sequence[Sequence[Any]],
         *,
+        query_id: int | None,
         connection_id: int,
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -261,7 +285,8 @@ class ExecutorService:
             rows.append(row)
         if stats.has_events():
             logger.info(
-                "Special SQL field serialization applied: connection_id={} stats={}",
+                "Special SQL field serialization applied: query_id={} connection_id={} stats={}",
+                query_id,
                 connection_id,
                 stats.as_log_extra(),
             )

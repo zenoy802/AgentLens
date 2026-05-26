@@ -6,7 +6,6 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LlmProvidersPanel } from "@/features/llm/LlmProvidersPanel";
 import { RenderRulesPanel } from "@/features/render-rules/RenderRulesPanel";
 import { AgentIntegrationTab } from "@/pages/Settings/AgentIntegrationTab";
 
@@ -36,15 +35,11 @@ export function Settings() {
       <Tabs defaultValue="render-rules">
         <TabsList>
           <TabsTrigger value="render-rules">字段渲染规则</TabsTrigger>
-          <TabsTrigger value="llm">LLM 配置</TabsTrigger>
           <TabsTrigger value="agent-integration">Agent Integration</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
         <TabsContent value="render-rules">
           <RenderRulesPanel />
-        </TabsContent>
-        <TabsContent value="llm">
-          <LlmProvidersPanel />
         </TabsContent>
         <TabsContent value="agent-integration">
           <AgentIntegrationTab />
