@@ -1,3 +1,4 @@
+import { memo, useState } from "react";
 import { MarkdownRenderer } from "@agentlens/markdown-renderer";
 import { Copy } from "lucide-react";
 
@@ -26,12 +27,13 @@ interface MarkdownCellProps {
   richPreview?: boolean;
 }
 
-export function MarkdownCell({
+function MarkdownCellComponent({
   value,
   presentation = "table",
   previewLines = 1,
   richPreview = false,
 }: MarkdownCellProps) {
+  const [open, setOpen] = useState(false);
   const content = toCellText(value);
 
   if (value == null) {
@@ -47,22 +49,13 @@ export function MarkdownCell({
     );
   }
 
-  if (richPreview) {
-    return (
-      <div
-        data-row-click-stop
-        className="h-full min-w-0 overflow-auto rounded border bg-background p-2 text-xs"
-      >
-        <MarkdownRenderer content={content} />
-      </div>
-    );
-  }
-
   const preview =
-    previewLines === 1 ? truncatePreview(content) : truncateMultilinePreview(content);
+    previewLines === 1 && !richPreview
+      ? truncatePreview(content)
+      : truncateMultilinePreview(content, richPreview ? 1200 : 800);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -89,12 +82,23 @@ export function MarkdownCell({
             复制
           </Button>
         </div>
-        <MarkdownRenderer
-          content={content}
-          className="rounded-md border bg-background p-4 text-sm"
-          maxHeight={640}
-        />
+        {open ? (
+          <MarkdownRenderer
+            content={content}
+            className="rounded-md border bg-background p-4 text-sm"
+            maxHeight={640}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
+
+export const MarkdownCell = memo(
+  MarkdownCellComponent,
+  (prev, next) =>
+    Object.is(prev.value, next.value) &&
+    prev.presentation === next.presentation &&
+    prev.previewLines === next.previewLines &&
+    prev.richPreview === next.richPreview,
+);

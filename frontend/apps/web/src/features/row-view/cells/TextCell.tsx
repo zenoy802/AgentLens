@@ -1,6 +1,13 @@
+import { memo } from "react";
+
 import { getLineClampStyle } from "@/features/row-view/cells/cellUtils";
 
-export function TextCell({ value, previewLines = 1 }: { value: unknown; previewLines?: number }) {
+interface TextCellProps {
+  value: unknown;
+  previewLines?: number;
+}
+
+function TextCellComponent({ value, previewLines = 1 }: TextCellProps) {
   if (value == null) {
     return <span className="text-muted-foreground">NULL</span>;
   }
@@ -12,6 +19,11 @@ export function TextCell({ value, previewLines = 1 }: { value: unknown; previewL
     </div>
   );
 }
+
+export const TextCell = memo(
+  TextCellComponent,
+  (prev, next) => Object.is(prev.value, next.value) && prev.previewLines === next.previewLines,
+);
 
 function formatTextValue(value: unknown): string {
   if (typeof value === "string") {

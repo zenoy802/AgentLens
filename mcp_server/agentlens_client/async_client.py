@@ -8,7 +8,6 @@ import httpx
 from agentlens_client.config import DEFAULT_TIMEOUT
 from agentlens_client.errors import (
     BackendBusinessError,
-    api_path,
     decode_response,
     raise_unavailable,
     request_url,
@@ -21,36 +20,36 @@ _PRIMARY_ROW_IDENTITY_KEY = "_row_identity"
 _FALLBACK_ROW_IDENTITY_PREFIX = "_agent_lens_row_identity"
 
 
-class AgentLensSyncClient:
+class AgentLensAsyncClient:
     def __init__(self, base_url: str, timeout: int = DEFAULT_TIMEOUT) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._client = httpx.Client(timeout=timeout)
+        self._client = httpx.AsyncClient(timeout=timeout)
 
-    def close(self) -> None:
-        self._client.close()
+    async def close(self) -> None:
+        await self._client.aclose()
 
-    def __enter__(self) -> AgentLensSyncClient:
+    async def __aenter__(self) -> AgentLensAsyncClient:
         return self
 
-    def __exit__(self, *_: object) -> None:
-        self.close()
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return self._request("GET", path, params=_clean_params(params))
+    async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return await self._request("GET", path, params=_clean_params(params))
 
-    def post(self, path: str, json: dict[str, Any] | None = None) -> Any:
-        return self._request("POST", path, json=json)
+    async def post(self, path: str, json: dict[str, Any] | None = None) -> Any:
+        return await self._request("POST", path, json=json)
 
-    def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return self._request("DELETE", path, params=_clean_params(params))
+    async def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return await self._request("DELETE", path, params=_clean_params(params))
 
-    def list_connections(self) -> Any:
-        data = self.get("/connections", params={"page_size": 100})
+    async def list_connections(self) -> Any:
+        data = await self.get("/connections", params={"page_size": 100})
         return _redact_sensitive(data)
 
-    def show_connection(self, name: str) -> Any:
-        for connection in _list_paginated(self, "/connections"):
+    async def show_connection(self, name: str) -> Any:
+        for connection in await _list_paginated(self, "/connections"):
             if isinstance(connection, dict) and connection.get("name") == name:
                 return _redact_sensitive(connection)
         raise BackendBusinessError(
@@ -61,14 +60,14 @@ class AgentLensSyncClient:
             backend_url=self.base_url,
         )
 
-    def list_queries(self) -> Any:
-        return self.get("/queries", params={"page_size": 100})
+    async def list_queries(self) -> Any:
+        return await self.get("/queries", params={"page_size": 100})
 
-    def show_query(self, query_id: int) -> Any:
-        return self.get(f"/queries/{query_id}")
+    async def show_query(self, query_id: int) -> Any:
+        return await self.get(f"/queries/{query_id}")
 
-    def exec_query(self, connection: str, sql: str, row_limit: int | None = None) -> Any:
-        connection_info = self.show_connection(connection)
+    async def exec_query(self, connection: str, sql: str, row_limit: int | None = None) -> Any:
+        connection_info = await self.show_connection(connection)
         connection_id = _require_int(connection_info, "id")
         payload: dict[str, Any] = {
             "connection_id": connection_id,
@@ -77,14 +76,17 @@ class AgentLensSyncClient:
         }
         if row_limit is not None:
             payload["row_limit"] = row_limit
-        return self.post("/execute", json=payload)
+        return await self.post("/execute", json=payload)
 
-    def rerun_query(self, query_id: int) -> Any:
-        return self.post(f"/queries/{query_id}/execute", json={})
+    async def rerun_query(self, query_id: int) -> Any:
+        return await self.post(f"/queries/{query_id}/execute", json={})
 
-    def get_rows(self, query_id: int, limit: int = 100, offset: int = 0) -> Any:
+    async def get_rows(self, query_id: int, limit: int = 100, offset: int = 0) -> Any:
         requested_limit = max(min(limit + offset, _MAX_ROWS_REQUEST), 1)
-        result = self.post(f"/queries/{query_id}/execute", json={"row_limit": requested_limit})
+        result = await self.post(
+            f"/queries/{query_id}/execute",
+            json={"row_limit": requested_limit},
+        )
         all_rows = _as_list(result.get("rows") if isinstance(result, dict) else None)
         rows = all_rows[offset : offset + limit]
         execution = result.get("execution", {}) if isinstance(result, dict) else {}
@@ -108,8 +110,8 @@ class AgentLensSyncClient:
             "warnings": result.get("warnings", []) if isinstance(result, dict) else [],
         }
 
-    def get_trajectories(self, query_id: int, session_id: str | None = None) -> Any:
-        result = self.post(f"/queries/{query_id}/trajectories", json={})
+    async def get_trajectories(self, query_id: int, session_id: str | None = None) -> Any:
+        result = await self.post(f"/queries/{query_id}/trajectories", json={})
         if session_id is None or not isinstance(result, dict):
             return result
         trajectories = [
@@ -119,8 +121,8 @@ class AgentLensSyncClient:
         ]
         return {**result, "trajectories": trajectories}
 
-    def get_labels(self, query_id: int) -> Any:
-        rows_envelope = self.get_rows(query_id, limit=_MAX_ROWS_REQUEST, offset=0)
+    async def get_labels(self, query_id: int) -> Any:
+        rows_envelope = await self.get_rows(query_id, limit=_MAX_ROWS_REQUEST, offset=0)
         rows = _as_list(rows_envelope.get("rows") if isinstance(rows_envelope, dict) else None)
         identity_key = _identity_key(rows_envelope)
         row_identities = [
@@ -128,12 +130,9 @@ class AgentLensSyncClient:
             for row in rows
             if isinstance(row, dict) and (identity := _row_identity(row, identity_key)) is not None
         ]
-        return self.get_labels_for_rows(query_id, row_identities)
-
-    def get_labels_for_rows(self, query_id: int, row_identities: list[str]) -> Any:
         labels_by_row: dict[str, Any] = {}
         for chunk in _chunks(row_identities, _LABEL_QUERY_CHUNK_SIZE):
-            payload = self.post(
+            payload = await self.post(
                 f"/queries/{query_id}/labels/query",
                 json={"row_identities": chunk},
             )
@@ -141,37 +140,41 @@ class AgentLensSyncClient:
                 labels_by_row.update(payload["labels_by_row"])
         return {"query_id": query_id, "labels_by_row": labels_by_row}
 
-    def get_annotations(self, query_id: int, **filters: Any) -> Any:
-        return self.get(f"/queries/{query_id}/annotations", params=_clean_params(filters))
+    async def get_annotations(self, query_id: int, **filters: Any) -> Any:
+        return await self.get(f"/queries/{query_id}/annotations", params=_clean_params(filters))
 
-    def get_selection(self, selection_id: str) -> Any:
-        return self.get(f"/selections/{selection_id}")
+    async def get_selection(self, selection_id: str) -> Any:
+        return await self.get(f"/selections/{selection_id}")
 
-    def create_annotation(self, query_id: int, payload: dict[str, Any]) -> Any:
-        return self.post(f"/queries/{query_id}/annotations", json=payload)
+    async def create_annotation(self, query_id: int, payload: dict[str, Any]) -> Any:
+        return await self.post(f"/queries/{query_id}/annotations", json=payload)
 
-    def create_annotations_batch(self, query_id: int, annotations: list[dict[str, Any]]) -> Any:
-        return self.post(
+    async def create_annotations_batch(
+        self,
+        query_id: int,
+        annotations: list[dict[str, Any]],
+    ) -> Any:
+        return await self.post(
             f"/queries/{query_id}/annotations/batch",
             json={"annotations": annotations},
         )
 
-    def clear_annotations(self, query_id: int, **filters: Any) -> Any:
-        return self.delete(f"/queries/{query_id}/annotations", params=_clean_params(filters))
+    async def clear_annotations(self, query_id: int, **filters: Any) -> Any:
+        return await self.delete(f"/queries/{query_id}/annotations", params=_clean_params(filters))
 
-    def create_selection_snapshot(
+    async def create_selection_snapshot(
         self,
         query_id: int,
         row_identities: list[str],
         source: str,
     ) -> Any:
-        return self.post(
+        return await self.post(
             f"/queries/{query_id}/selection-snapshots",
             json={"row_identities": row_identities, "source": source},
         )
 
-    def schema_info(self) -> Any:
-        health = self.get("/health")
+    async def schema_info(self) -> Any:
+        health = await self.get("/health")
         backend_version = (
             health.get("version", "unknown") if isinstance(health, dict) else "unknown"
         )
@@ -191,8 +194,8 @@ class AgentLensSyncClient:
             ),
         }
 
-    def get_column_schema(self, query_id: int) -> Any:
-        rows = self.get_rows(query_id, limit=1, offset=0)
+    async def get_column_schema(self, query_id: int) -> Any:
+        rows = await self.get_rows(query_id, limit=1, offset=0)
         return {
             "query_id": query_id,
             "columns": rows.get("columns", []) if isinstance(rows, dict) else [],
@@ -202,12 +205,16 @@ class AgentLensSyncClient:
             "fingerprints": rows.get("fingerprints", {}) if isinstance(rows, dict) else {},
         }
 
-    def get_label_schema(self, query_id: int) -> Any:
-        return self.get(f"/queries/{query_id}/label-schema")
+    async def get_label_schema(self, query_id: int) -> Any:
+        return await self.get(f"/queries/{query_id}/label-schema")
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            response = self._client.request(method, request_url(self.base_url, path), **kwargs)
+            response = await self._client.request(
+                method,
+                request_url(self.base_url, path),
+                **kwargs,
+            )
         except httpx.RequestError as exc:
             raise_unavailable(exc, backend_url=self.base_url)
         return decode_response(response, backend_url=self.base_url)
@@ -220,11 +227,11 @@ def _clean_params(params: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return cleaned or None
 
 
-def _list_paginated(client: AgentLensSyncClient, path: str) -> list[dict[str, Any]]:
+async def _list_paginated(client: AgentLensAsyncClient, path: str) -> list[dict[str, Any]]:
     page = 1
     items: list[dict[str, Any]] = []
     while True:
-        data = client.get(path, params={"page": page, "page_size": 100})
+        data = await client.get(path, params={"page": page, "page_size": 100})
         if not isinstance(data, dict):
             return items
         page_items = [item for item in _as_list(data.get("items")) if isinstance(item, dict)]
@@ -332,4 +339,4 @@ def _redact_sensitive(value: Any) -> Any:
     return value
 
 
-__all__ = ["AgentLensSyncClient", "api_path"]
+__all__ = ["AgentLensAsyncClient"]

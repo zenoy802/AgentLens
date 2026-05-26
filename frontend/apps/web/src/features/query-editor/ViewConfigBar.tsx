@@ -20,7 +20,7 @@ interface ViewConfigBarProps {
 }
 
 export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
-  const isDirty = useQueryStore((state) => state.isDirty);
+  const viewDirty = useQueryStore((state) => state.viewDirty);
   const applyViewConfig = useQueryStore((state) => state.applyViewConfig);
   const [isRestoring, setIsRestoring] = useState(false);
   const isRestoringRef = useRef(false);
@@ -35,7 +35,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
   const resolvedQueryId: number = activeQueryId;
 
   async function handleSave() {
-    if (isRestoringRef.current) {
+    if (!viewDirty || isRestoringRef.current) {
       return;
     }
 
@@ -59,7 +59,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
   }
 
   async function handleRestore() {
-    if (saveViewConfig.isPending || isRestoringRef.current) {
+    if (!viewDirty || saveViewConfig.isPending || isRestoringRef.current) {
       return;
     }
 
@@ -87,7 +87,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
   return (
     <div className="flex h-9 items-center justify-between border-b bg-muted/30 px-3 text-sm">
       <div className="flex items-center gap-2 text-muted-foreground">
-        {isDirty ? (
+        {viewDirty ? (
           <>
             <CircleDot className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
             <span>有未保存的视图变更</span>
@@ -104,7 +104,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
         <Button
           variant="ghost"
           size="sm"
-          disabled={!isDirty || saveViewConfig.isPending || isRestoring}
+          disabled={!viewDirty || saveViewConfig.isPending || isRestoring}
           onClick={() => void handleRestore()}
           title="放弃未保存的变更，重新从服务端加载"
         >
@@ -113,7 +113,7 @@ export function ViewConfigBar({ queryId }: ViewConfigBarProps) {
         </Button>
         <Button
           size="sm"
-          disabled={!isDirty || saveViewConfig.isPending || isRestoring}
+          disabled={!viewDirty || saveViewConfig.isPending || isRestoring}
           onClick={() => void handleSave()}
         >
           <Save className="mr-1 h-3.5 w-3.5" aria-hidden="true" />

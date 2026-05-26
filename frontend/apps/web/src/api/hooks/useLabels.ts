@@ -14,7 +14,6 @@ import { formatApiError, getApiError } from "@/lib/formatApiError";
 import { useLabelsStore } from "@/stores/labelsStore";
 
 const MAX_LABEL_ROWS_PER_REQUEST = 1000;
-const ROW_IDENTITY_KEY_SEPARATOR = "\u001f";
 const CELL_MUTATION_KEY_SEPARATOR = "\u001e";
 const labelMutationQueues = new Map<string, Promise<void>>();
 
@@ -65,8 +64,9 @@ export function useLabels(
     () => Array.from(new Set(rowIdentities.filter((item) => item.length > 0))).sort(),
     [rowIdentities],
   );
-  const normalizedRowIdentitiesKey = normalizedRowIdentities.join(
-    ROW_IDENTITY_KEY_SEPARATOR,
+  const rowIdentitiesCacheKey = useMemo(
+    () => getRowIdentitiesCacheKey(normalizedRowIdentities),
+    [normalizedRowIdentities],
   );
   const enabled = queryId !== null && normalizedRowIdentities.length > 0;
 
@@ -74,10 +74,9 @@ export function useLabels(
     queryKey:
       queryId === null
         ? labelsKeys.rows(0, "null", resultKey)
-        : labelsKeys.rows(queryId, normalizedRowIdentitiesKey, resultKey),
+        : labelsKeys.rows(queryId, rowIdentitiesCacheKey, resultKey),
     enabled,
-    gcTime: 0,
-    staleTime: 15_000,
+    staleTime: 10_000,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<LabelsByRowResponse> => {
       const chunks = chunkRowIdentities(normalizedRowIdentities);
@@ -103,10 +102,7 @@ export function useLabels(
       );
 
       return {
-        labels_by_row: responses.reduce<LabelsByRow>(
-          (merged, item) => ({ ...merged, ...item.labels_by_row }),
-          {},
-        ),
+        labels_by_row: mergeLabelResponses(responses),
       };
     },
   });
@@ -317,15 +313,19 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
         getLabelSnapshot(queryId, resultKey, rowIdentity, args.fieldKey),
       );
       const labelsStore = useLabelsStore.getState();
-      for (const rowIdentity of args.rowIdentities) {
-        labelsStore.markPendingLabelForQuery(
-          queryId,
-          resultKey,
-          rowIdentity,
-          args.fieldKey,
-        );
-        applyOptimisticLabel(queryId, resultKey, rowIdentity, args.fieldKey, args.value);
-      }
+      labelsStore.markPendingLabelsForQuery(
+        queryId,
+        resultKey,
+        args.rowIdentities,
+        args.fieldKey,
+      );
+      labelsStore.patchLabelsForQuery(
+        queryId,
+        resultKey,
+        args.rowIdentities,
+        args.fieldKey,
+        args.value,
+      );
       return snapshots;
     },
     onError: (error, _args, snapshots) => {
@@ -353,11 +353,14 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
     },
     onSettled: async (_data, _error, args, snapshots) => {
       const settledResultKey = snapshots?.[0]?.resultKey ?? resultKey;
-      for (const rowIdentity of args.rowIdentities) {
-        useLabelsStore
-          .getState()
-          .clearPendingLabelForQuery(queryId, settledResultKey, rowIdentity, args.fieldKey);
-      }
+      useLabelsStore
+        .getState()
+        .clearPendingLabelsForQuery(
+          queryId,
+          settledResultKey,
+          args.rowIdentities,
+          args.fieldKey,
+        );
       if (activeLabelContextMatches(queryId, settledResultKey)) {
         await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
       }
@@ -371,6 +374,35 @@ function chunkRowIdentities(rowIdentities: string[]): string[][] {
     chunks.push(rowIdentities.slice(index, index + MAX_LABEL_ROWS_PER_REQUEST));
   }
   return chunks;
+}
+
+function mergeLabelResponses(responses: LabelsByRowResponse[]): LabelsByRow {
+  const merged: LabelsByRow = {};
+  for (const item of responses) {
+    Object.assign(merged, item.labels_by_row);
+  }
+  return merged;
+}
+
+function getRowIdentitiesCacheKey(rowIdentities: string[]): string {
+  if (rowIdentities.length === 0) {
+    return "0";
+  }
+
+  let hash = 2166136261;
+  for (const rowIdentity of rowIdentities) {
+    for (let index = 0; index < rowIdentity.length; index += 1) {
+      hash ^= rowIdentity.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+
+  return [
+    rowIdentities.length,
+    rowIdentities[0],
+    rowIdentities[rowIdentities.length - 1],
+    (hash >>> 0).toString(36),
+  ].join(":");
 }
 
 function getLabelSnapshot(

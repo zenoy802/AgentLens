@@ -4,13 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentlens-mcp"
-version = "0.1.0"
+version = "1.0.0"
 description = "AgentLens MCP server for agent trajectory analysis."
 requires-python = ">=3.11"
 dependencies = [
   "mcp>=1.0.0",
   "httpx>=0.27",
-  "agentlens-client",
 ]
 
 [project.optional-dependencies]
@@ -26,7 +25,14 @@ dev = [
 agentlens-mcp = "agentlens_mcp.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agentlens_mcp"]
+packages = ["agentlens_mcp", "agentlens_client"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/agentlens_mcp",
+  "/agentlens_client",
+  "/pyproject.toml",
+]
 
 [tool.ruff]
 line-length = 100
@@ -67,7 +73,6 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = [
-  "agentlens_client.*",
   "mcp.*",
 ]
 ignore_missing_imports = true

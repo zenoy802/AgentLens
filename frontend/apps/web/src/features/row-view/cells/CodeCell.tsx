@@ -1,3 +1,4 @@
+import { memo, useState } from "react";
 import { CodeRenderer } from "@agentlens/code-renderer";
 
 import {
@@ -26,7 +27,7 @@ interface CodeCellProps {
   richPreview?: boolean;
 }
 
-export function CodeCell({
+function CodeCellComponent({
   value,
   language,
   maxHeight,
@@ -35,6 +36,7 @@ export function CodeCell({
   previewLines = 1,
   richPreview = false,
 }: CodeCellProps) {
+  const [open, setOpen] = useState(false);
   const code = toCellText(value);
 
   if (value == null) {
@@ -52,16 +54,13 @@ export function CodeCell({
     );
   }
 
-  if (richPreview) {
-    return (
-      <div data-row-click-stop className="h-full min-w-0 overflow-auto rounded-md">
-        <CodeRenderer code={code} language={language} showLineNumbers={showLineNumbers} />
-      </div>
-    );
-  }
+  const preview =
+    previewLines === 1 && !richPreview
+      ? truncatePreview(code)
+      : truncateMultilinePreview(code, richPreview ? 1200 : 800);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -69,7 +68,7 @@ export function CodeCell({
           style={getLineClampStyle(previewLines)}
           onClick={(event) => event.stopPropagation()}
         >
-          {previewLines === 1 ? truncatePreview(code) : truncateMultilinePreview(code)}
+          {preview}
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-6xl">
@@ -77,13 +76,27 @@ export function CodeCell({
           <DialogTitle>Code</DialogTitle>
           <DialogDescription className="sr-only">完整代码内容。</DialogDescription>
         </DialogHeader>
-        <CodeRenderer
-          code={code}
-          language={language}
-          maxHeight={maxHeight ?? 640}
-          showLineNumbers={showLineNumbers}
-        />
+        {open ? (
+          <CodeRenderer
+            code={code}
+            language={language}
+            maxHeight={maxHeight ?? 640}
+            showLineNumbers={showLineNumbers}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
+
+export const CodeCell = memo(
+  CodeCellComponent,
+  (prev, next) =>
+    Object.is(prev.value, next.value) &&
+    prev.language === next.language &&
+    prev.maxHeight === next.maxHeight &&
+    prev.showLineNumbers === next.showLineNumbers &&
+    prev.presentation === next.presentation &&
+    prev.previewLines === next.previewLines &&
+    prev.richPreview === next.richPreview,
+);

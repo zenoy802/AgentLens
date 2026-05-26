@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentlens-cli"
-version = "0.1.0"
+version = "1.0.0"
 description = "AgentLens command line interface."
 requires-python = ">=3.11"
 dependencies = [
@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-agentlens = "agentlens_cli.main:main"
+agentlens = "agentlens_cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentlens_cli"]
@@ -55,6 +55,9 @@ ignore = [
   "ANN401",
   "PLR0913",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"agentlens_cli/commands/server.py" = ["PLC0415"]
 
 [tool.ruff.format]
 quote-style = "double"

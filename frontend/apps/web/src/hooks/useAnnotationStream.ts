@@ -164,6 +164,9 @@ export function useAnnotationStream(queryId: number | null): {
           }
           return;
         }
+        if (parsed.query_id !== undefined && parsed.query_id !== activeQueryId) {
+          return;
+        }
 
         setLastEvent(parsed);
         if (INVALIDATING_EVENT_TYPES.has(parsed.type)) {

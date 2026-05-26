@@ -41,6 +41,7 @@ export const queryKeys = {
 export function useQueries(params: QueryListParams = {}) {
   return useQuery({
     queryKey: queryKeys.list(params),
+    staleTime: 30_000,
     queryFn: async () => {
       const { data, error, response } = await apiClient.GET("/queries", {
         params: {
@@ -72,6 +73,7 @@ export function useQueryById(id: number) {
   return useQuery({
     queryKey: queryKeys.detail(id),
     enabled: Number.isFinite(id) && id > 0,
+    staleTime: 30_000,
     queryFn: () => fetchQueryById(id),
   });
 }
@@ -95,6 +97,7 @@ export function useQueryDetailsByIds(ids: number[]): Map<number, QueryDetailStat
     queries: uniqueIds.map((id) => ({
       queryKey: queryKeys.detail(id),
       queryFn: () => fetchQueryById(id),
+      staleTime: 30_000,
     })),
   });
 

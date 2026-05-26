@@ -109,6 +109,7 @@ export function Query() {
   const trajectoryConfig = useQueryStore((state) => state.trajectoryConfig);
   const isExecuting = useQueryStore((state) => state.isExecuting);
   const isDirty = useQueryStore((state) => state.isDirty);
+  const viewDirty = useQueryStore((state) => state.viewDirty);
   const setConnectionId = useQueryStore((state) => state.setConnectionId);
   const setSql = useQueryStore((state) => state.setSql);
   const setResult = useQueryStore((state) => state.setResult);
@@ -526,7 +527,7 @@ export function Query() {
   }
 
   async function handleSaveViewConfig() {
-    if (queryId === null || !isDirty || saveViewConfig.isPending) {
+    if (queryId === null || !viewDirty || saveViewConfig.isPending) {
       return;
     }
 
@@ -542,7 +543,7 @@ export function Query() {
     if (activeQueryId === null) {
       return false;
     }
-    if (!useQueryStore.getState().isDirty) {
+    if (!useQueryStore.getState().viewDirty) {
       return true;
     }
 
@@ -570,7 +571,16 @@ export function Query() {
   }
 
   async function handleBeforeExport() {
-    if (!useQueryStore.getState().isDirty) {
+    const currentState = useQueryStore.getState();
+    if (currentState.sqlDirty) {
+      toast.error("请先运行当前 SQL 后再导出");
+      return false;
+    }
+    if (currentState.labelSchemaDirty) {
+      toast.error("请先在打标字段管理中保存 Schema 后再导出");
+      return false;
+    }
+    if (!currentState.viewDirty) {
       return true;
     }
 
@@ -597,6 +607,7 @@ export function Query() {
 
     setSql(nextSql);
     clearCurrentQueryIdentity();
+    useQueryStore.getState().markSqlDirty();
   }
 
   function shouldExecuteSavedQuery(): boolean {
@@ -646,6 +657,9 @@ export function Query() {
       nextState.trajectoryConfigSource = null;
       nextState.rowIdentityColumn = null;
       nextState.isDirty = false;
+      nextState.sqlDirty = false;
+      nextState.viewDirty = false;
+      nextState.labelSchemaDirty = false;
     }
 
     useQueryStore.setState(nextState);
@@ -688,6 +702,7 @@ export function Query() {
       currentSql.trim().length === 0 ? QUERY_TEMPLATE_SQL : `${currentSql}\n${QUERY_TEMPLATE_SQL}`;
     setSql(nextSql);
     clearCurrentQueryIdentity();
+    useQueryStore.getState().markSqlDirty();
   }
 
   function handleOpenExport(includeLabelsDefault: boolean) {

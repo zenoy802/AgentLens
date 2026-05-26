@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import {
   memo,
+  useEffect,
   useCallback,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -68,6 +70,7 @@ type ResizeState = {
 };
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
+const DEFAULT_MESSAGE_PREVIEW_LIMIT = 200;
 
 export const TrajectoryColumn = memo(function TrajectoryColumn({
   index,
@@ -88,8 +91,19 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
   onMessagePinnedChange,
 }: TrajectoryColumnProps) {
   const resizeStateRef = useRef<ResizeState | null>(null);
+  const [showAllMessages, setShowAllMessages] = useState(false);
   const roleOptions = useMemo(() => getTrajectoryRoles([trajectory]), [trajectory]);
   const metaFields = useMemo(() => getMetaFields(trajectory), [trajectory]);
+  const hasMessagePreviewLimit = trajectory.messages.length > DEFAULT_MESSAGE_PREVIEW_LIMIT;
+  const visibleTrajectory = useMemo(() => {
+    if (!hasMessagePreviewLimit || showAllMessages) {
+      return trajectory;
+    }
+    return {
+      ...trajectory,
+      messages: trajectory.messages.slice(0, DEFAULT_MESSAGE_PREVIEW_LIMIT),
+    };
+  }, [hasMessagePreviewLimit, showAllMessages, trajectory]);
   const selectedRoleSet = useMemo(
     () => new Set(selectedRoles.map((role) => normalizeTrajectoryRole(role))),
     [selectedRoles],
@@ -106,6 +120,10 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
     (node: HTMLDivElement | null) => setScrollRef(index, node),
     [index, setScrollRef],
   );
+
+  useEffect(() => {
+    setShowAllMessages(false);
+  }, [trajectory.group_key]);
 
   const handleModeChange = useCallback(
     (value: string) => {
@@ -298,6 +316,17 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
               </button>
             ))}
           </div>
+          {hasMessagePreviewLimit ? (
+            <Button
+              type="button"
+              variant={showAllMessages ? "secondary" : "outline"}
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs"
+              onClick={() => setShowAllMessages((current) => !current)}
+            >
+              {showAllMessages ? "前 200" : "全部"}
+            </Button>
+          ) : null}
         </div>
       </header>
       <div
@@ -306,7 +335,7 @@ export const TrajectoryColumn = memo(function TrajectoryColumn({
         data-trajectory-column-scroll={trajectoryKey}
       >
         <TrajectoryViewer
-          trajectory={trajectory}
+          trajectory={visibleTrajectory}
           filterRoles={activeRoleFilter}
           renderMessageActions={renderMessageActions}
           messageClassName={getMessageClassName}

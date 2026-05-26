@@ -47,6 +47,7 @@ export interface AnnotationIndex {
 
   getStaleAnnotations(): Annotation[];
   getOrphanAnnotations(): Annotation[];
+  getUnknownColumnAnnotations(): Annotation[];
 }
 
 export function useAnnotationIndex(
@@ -57,8 +58,12 @@ export function useAnnotationIndex(
 ): AnnotationIndex {
   const annotationsQuery = useAnnotations(queryId);
   const annotations = annotationsQuery.data ?? EMPTY_ANNOTATIONS;
+  const resultSchemaLoaded = columns !== undefined && columns.length > 0;
 
   const rowIdentitySet = useMemo(() => {
+    if (!resultSchemaLoaded) {
+      return null;
+    }
     const rowIdentities = new Set<string>();
     for (const row of rows) {
       const rowIdentity = getExistingRowIdentity(row, columns);
@@ -67,19 +72,27 @@ export function useAnnotationIndex(
       }
     }
     return rowIdentities;
-  }, [columns, rows]);
+  }, [columns, resultSchemaLoaded, rows]);
+  const columnKeySet = useMemo(
+    () =>
+      !resultSchemaLoaded
+        ? null
+        : new Set(columns.map((column) => column.name)),
+    [columns, resultSchemaLoaded],
+  );
 
   const index = useMemo(() => {
     const rowAnnotations = new Map<string, Annotation[]>();
     const cellAnnotations = new Map<string, Annotation[]>();
     const staleIds = new Set<number>();
     const orphanIds = new Set<number>();
+    const unknownColumnIds = new Set<number>();
     const byAuthor: Record<string, number> = {};
 
     for (const annotation of annotations) {
       byAuthor[annotation.author] = (byAuthor[annotation.author] ?? 0) + 1;
 
-      if (!rowIdentitySet.has(annotation.row_identity)) {
+      if (rowIdentitySet !== null && !rowIdentitySet.has(annotation.row_identity)) {
         orphanIds.add(annotation.id);
       }
 
@@ -98,6 +111,9 @@ export function useAnnotationIndex(
         existing.push(annotation);
         rowAnnotations.set(annotation.row_identity, existing);
       } else {
+        if (columnKeySet !== null && !columnKeySet.has(annotation.column_key)) {
+          unknownColumnIds.add(annotation.id);
+        }
         const key = getCellKey(annotation.row_identity, annotation.column_key);
         const existing = cellAnnotations.get(key) ?? [];
         existing.push(annotation);
@@ -105,17 +121,24 @@ export function useAnnotationIndex(
       }
     }
 
-    return { byAuthor, cellAnnotations, orphanIds, rowAnnotations, staleIds };
-  }, [annotations, currentFingerprints?.result, rowIdentitySet]);
+    return {
+      byAuthor,
+      cellAnnotations,
+      orphanIds,
+      rowAnnotations,
+      staleIds,
+      unknownColumnIds,
+    };
+  }, [annotations, columnKeySet, currentFingerprints?.result, rowIdentitySet]);
 
   const getRowAnnotations = useCallback(
-    (rowIdentity: string) => index.rowAnnotations.get(rowIdentity) ?? [],
+    (rowIdentity: string) => index.rowAnnotations.get(rowIdentity) ?? EMPTY_ANNOTATIONS,
     [index.rowAnnotations],
   );
 
   const getCellAnnotations = useCallback(
     (rowIdentity: string, columnKey: string) =>
-      index.cellAnnotations.get(getCellKey(rowIdentity, columnKey)) ?? [],
+      index.cellAnnotations.get(getCellKey(rowIdentity, columnKey)) ?? EMPTY_ANNOTATIONS,
     [index.cellAnnotations],
   );
 
@@ -158,6 +181,10 @@ export function useAnnotationIndex(
     () => annotations.filter((annotation) => index.orphanIds.has(annotation.id)),
     [annotations, index.orphanIds],
   );
+  const getUnknownColumnAnnotations = useCallback(
+    () => annotations.filter((annotation) => index.unknownColumnIds.has(annotation.id)),
+    [annotations, index.unknownColumnIds],
+  );
 
   return {
     annotations,
@@ -169,6 +196,7 @@ export function useAnnotationIndex(
     getCellVisualState,
     getStaleAnnotations,
     getOrphanAnnotations,
+    getUnknownColumnAnnotations,
   };
 }
 

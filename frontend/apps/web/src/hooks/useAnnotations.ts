@@ -31,7 +31,7 @@ export function useAnnotations(
         : annotationKeys.list(queryId, filters),
     enabled: queryId !== null,
     queryFn: () => listAnnotations(queryId!, filters),
-    staleTime: 2_000,
+    staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
 }
