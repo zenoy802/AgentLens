@@ -52,7 +52,6 @@ class NamedQueryRead(BaseModel):
     last_executed_at: datetime | None
     expires_at: datetime | None
     label_record_count: int
-    llm_analysis_count: int
 
     @model_validator(mode="after")
     def normalize_datetimes(self) -> NamedQueryRead:

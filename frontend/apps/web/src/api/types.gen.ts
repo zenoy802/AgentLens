@@ -584,8 +584,6 @@ export interface components {
             history_records_deleted: number;
             /** Cascade Label Records Deleted */
             cascade_label_records_deleted: number;
-            /** Cascade Analyses Deleted */
-            cascade_analyses_deleted: number;
             /** Dry Run */
             dry_run: boolean;
         };
@@ -1046,8 +1044,6 @@ export interface components {
             expires_at: string | null;
             /** Label Record Count */
             label_record_count: number;
-            /** Llm Analysis Count */
-            llm_analysis_count: number;
         };
         /** NamedQueryUpdate */
         NamedQueryUpdate: {

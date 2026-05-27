@@ -1,6 +1,4 @@
-import { JsonRenderer } from "@agentlens/json-renderer";
-import { MarkdownRenderer } from "@agentlens/markdown-renderer";
-import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { Suspense, lazy, useId, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { TrajectoryMessage } from "./types";
 
@@ -23,6 +21,14 @@ const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms
 const DEFAULT_COLLAPSED_CONTENT_HEIGHT = 280;
 const DEFAULT_EXPAND_LABEL = "Expand";
 const DEFAULT_COLLAPSE_LABEL = "Collapse";
+const MarkdownRenderer = lazy(async () => {
+  const module = await import("@agentlens/markdown-renderer");
+  return { default: module.MarkdownRenderer };
+});
+const JsonRenderer = lazy(async () => {
+  const module = await import("@agentlens/json-renderer");
+  return { default: module.JsonRenderer };
+});
 
 export function MessageBubble({
   message,
@@ -109,14 +115,45 @@ export function MessageBubble({
 
 function renderDefaultContent(content: unknown) {
   if (typeof content === "string") {
-    return <MarkdownRenderer content={content} />;
+    return (
+      <Suspense fallback={<TextFallback value={content} />}>
+        <MarkdownRenderer content={content} />
+      </Suspense>
+    );
   }
 
-  return <JsonRenderer value={content} collapsed={false} />;
+  return (
+    <Suspense fallback={<TextFallback value={content} />}>
+      <JsonRenderer value={content} collapsed={false} />
+    </Suspense>
+  );
 }
 
 function renderDefaultToolCalls(message: TrajectoryMessage) {
-  return <JsonRenderer value={message.tool_calls} collapsed={false} />;
+  return (
+    <Suspense fallback={<TextFallback value={message.tool_calls} />}>
+      <JsonRenderer value={message.tool_calls} collapsed={false} />
+    </Suspense>
+  );
+}
+
+function TextFallback({ value }: { value: unknown }) {
+  return (
+    <pre className="whitespace-pre-wrap break-words rounded-md border border-black/10 bg-white/60 p-3 text-sm">
+      {formatFallbackValue(value)}
+    </pre>
+  );
+}
+
+function formatFallbackValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function getRoleKind(role: string): "system" | "user" | "assistant" | "tool" | "unknown" | "other" {

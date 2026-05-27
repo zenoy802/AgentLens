@@ -1,6 +1,6 @@
 # AgentLens
 
-## LLM Trajectory Analyzer
+## SQL-First Trajectory Workbench
 
 AgentLens is a local-first SQL query and visualization tool for Agent developers. It connects to an existing MySQL database with read-only access, runs SELECT-only SQL, and renders the result as a row table or a trajectory view without requiring any Agent code changes.
 
@@ -11,6 +11,7 @@ AgentLens is a local-first SQL query and visualization tool for Agent developers
 - 行级表格支持 text、markdown、JSON、code、timestamp 等字段渲染。
 - ViewConfig 可保存列渲染、表格配置和 Trajectory 聚合配置。
 - Trajectory 视图按 group/role/content/order 字段聚合并渲染对话流。
+- 内置 Agent Bridge：UI 复制 Agent Prompt，CLI/MCP 负责 live access、context export 和 annotation write-back。
 
 ## 截图
 

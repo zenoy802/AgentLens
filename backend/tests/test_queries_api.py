@@ -12,7 +12,6 @@ from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
 from app.models.connection import Connection
 from app.models.label import LabelRecord, LabelSchema
-from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
@@ -23,7 +22,6 @@ HTTP_CONFLICT = status.HTTP_409_CONFLICT
 HTTP_UNPROCESSABLE_ENTITY = status.HTTP_422_UNPROCESSABLE_CONTENT
 LEGACY_LIMIT = 2
 EXPECTED_LABEL_RECORD_COUNT = 2
-EXPECTED_LLM_ANALYSIS_COUNT = 1
 EXPECTED_LAST_EXECUTED_ORDER_TOTAL = 3
 
 
@@ -141,18 +139,6 @@ async def test_list_includes_connection_name_and_stats() -> None:
                     field_key="quality",
                     value='"bad"',
                 ),
-                LLMAnalysis(
-                    query_id=query_id,
-                    provider_id=None,
-                    selection="{}",
-                    structure_format="json",
-                    prompt="Analyze rows",
-                    structured_input="[]",
-                    response="{}",
-                    model_name="test-model",
-                    token_usage=None,
-                    status="completed",
-                ),
             ]
         )
         session.commit()
@@ -168,7 +154,6 @@ async def test_list_includes_connection_name_and_stats() -> None:
     assert payload["items"][0]["id"] == query_id
     assert payload["items"][0]["connection_name"] == "queries-mysql"
     assert payload["items"][0]["label_record_count"] == EXPECTED_LABEL_RECORD_COUNT
-    assert payload["items"][0]["llm_analysis_count"] == EXPECTED_LLM_ANALYSIS_COUNT
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import type { AnnotationStreamStatus } from "@/hooks/useAnnotationStream";
 import { useClearAnnotations } from "@/hooks/useAnnotations";
 import { formatApiError } from "@/lib/formatApiError";
+import { markAnnotationsSeen } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import { useQueryStore } from "@/stores/queryStore";
 
@@ -43,6 +44,12 @@ export function AnnotationBanner({
     }
     return Array.from(selectedRowIds)[0] ?? null;
   }, [selectedRowIds]);
+
+  useEffect(() => {
+    if (annotationIndex.totalCount > 0) {
+      markAnnotationsSeen();
+    }
+  }, [annotationIndex.totalCount]);
 
   if (queryId === null) {
     return null;

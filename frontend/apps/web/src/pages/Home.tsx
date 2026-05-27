@@ -14,9 +14,13 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  didCopyAgentPrompt,
+  hasSeenAnnotations,
+  isOnboardingDone,
+  markOnboardingDone,
+} from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
-
-const ONBOARDING_DONE_KEY = "agentlens_onboarding_done";
 
 async function fetchHealth(): Promise<HealthResponse> {
   const { data, error, response } = await apiClient.GET("/health");
@@ -33,6 +37,8 @@ async function fetchHealth(): Promise<HealthResponse> {
 
 export function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [seenAnnotations, setSeenAnnotations] = useState(false);
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: fetchHealth,
@@ -69,11 +75,13 @@ export function Home() {
   const topNamedQueries = (namedQueries.data?.items ?? []).slice(0, 10);
 
   useEffect(() => {
-    setShowOnboarding(localStorage.getItem(ONBOARDING_DONE_KEY) !== "true");
+    setShowOnboarding(!isOnboardingDone());
+    setCopiedPrompt(didCopyAgentPrompt());
+    setSeenAnnotations(hasSeenAnnotations());
   }, []);
 
   function completeOnboarding() {
-    localStorage.setItem(ONBOARDING_DONE_KEY, "true");
+    markOnboardingDone();
     setShowOnboarding(false);
   }
 
@@ -112,6 +120,8 @@ export function Home() {
           connectionsReady={(connections.data?.items.length ?? 0) > 0}
           hasQueryHistory={recentHistory.length > 0}
           hasNamedQuery={topNamedQueries.length > 0}
+          copiedPrompt={copiedPrompt}
+          seenAnnotations={seenAnnotations}
           onDone={completeOnboarding}
         />
       ) : null}
@@ -285,11 +295,15 @@ function QuickStartCard({
   connectionsReady,
   hasQueryHistory,
   hasNamedQuery,
+  copiedPrompt,
+  seenAnnotations,
   onDone,
 }: {
   connectionsReady: boolean;
   hasQueryHistory: boolean;
   hasNamedQuery: boolean;
+  copiedPrompt: boolean;
+  seenAnnotations: boolean;
   onDone: () => void;
 }) {
   const steps = [
@@ -297,9 +311,17 @@ function QuickStartCard({
     { label: "写第一条 SELECT SQL", done: hasQueryHistory },
     { label: "配置字段渲染", done: hasQueryHistory },
     { label: "保存命名查询", done: hasNamedQuery },
-    { label: "可选：选择几行并点击 Copy Agent Prompt", done: false },
-    { label: "查看 agent 写回的 annotations", done: false },
+    { label: "可选：选择几行并点击 Copy Agent Prompt", done: copiedPrompt },
+    { label: "查看 agent 写回的 annotations", done: seenAnnotations },
   ];
+  const allStepsDone = steps.every((step) => step.done);
+
+  useEffect(() => {
+    if (!allStepsDone) {
+      return;
+    }
+    onDone();
+  }, [allStepsDone, onDone]);
 
   return (
     <section className="rounded-lg border bg-card p-5 shadow-sm">
@@ -325,7 +347,7 @@ function QuickStartCard({
           </ol>
         </div>
         <Button variant="outline" size="sm" onClick={onDone}>
-          完成
+          {allStepsDone ? "已完成" : "完成"}
         </Button>
       </div>
     </section>

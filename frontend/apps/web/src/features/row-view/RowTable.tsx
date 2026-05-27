@@ -136,21 +136,9 @@ function RowTableComponent({ columns, rows, onRowClick, isFullscreen = false }: 
     [columns, sortedRows],
   );
   const annotationIndex = useAnnotationIndex(queryId, rows, fingerprints, columns);
-  const staleAnnotationIds = useMemo(
-    () => new Set(annotationIndex.getStaleAnnotations().map((annotation) => annotation.id)),
-    [annotationIndex],
-  );
-  const orphanAnnotationIds = useMemo(
-    () => new Set(annotationIndex.getOrphanAnnotations().map((annotation) => annotation.id)),
-    [annotationIndex],
-  );
-  const unknownColumnAnnotationIds = useMemo(
-    () =>
-      new Set(
-        annotationIndex.getUnknownColumnAnnotations().map((annotation) => annotation.id),
-      ),
-    [annotationIndex],
-  );
+  const staleAnnotationIds = annotationIndex.staleIds;
+  const orphanAnnotationIds = annotationIndex.orphanIds;
+  const unknownColumnAnnotationIds = annotationIndex.unknownColumnIds;
   const rowIdentities = useMemo(
     () =>
       sortedRows.map(
@@ -1147,12 +1135,9 @@ const RowAnnotationBar = memo(
     prev.queryId === next.queryId &&
     annotationsEqual(prev.annotations, next.annotations) &&
     annotationSegmentsEqual(prev.segments, next.segments) &&
-    annotationIdSetVersion(prev.staleAnnotationIds) ===
-      annotationIdSetVersion(next.staleAnnotationIds) &&
-    annotationIdSetVersion(prev.orphanAnnotationIds) ===
-      annotationIdSetVersion(next.orphanAnnotationIds) &&
-    annotationIdSetVersion(prev.unknownColumnAnnotationIds) ===
-      annotationIdSetVersion(next.unknownColumnAnnotationIds),
+    prev.staleAnnotationIds === next.staleAnnotationIds &&
+    prev.orphanAnnotationIds === next.orphanAnnotationIds &&
+    prev.unknownColumnAnnotationIds === next.unknownColumnAnnotationIds,
 );
 
 function getRowHeightConfig(mode: RowHeightMode, richPreview: boolean) {
@@ -1192,10 +1177,6 @@ function annotationSegmentsEqual(
   right: Array<keyof typeof ANNOTATION_COLORS>,
 ): boolean {
   return left.length === right.length && left.every((color, index) => color === right[index]);
-}
-
-function annotationIdSetVersion(ids: ReadonlySet<number>): string {
-  return `${ids.size}:${Array.from(ids).join(",")}`;
 }
 
 function shouldIgnoreRowClick(event: MouseEvent<HTMLElement>): boolean {
@@ -1533,12 +1514,9 @@ const CellAnnotationBadge = memo(
   (prev, next) =>
     prev.queryId === next.queryId &&
     annotationsEqual(prev.annotations, next.annotations) &&
-    annotationIdSetVersion(prev.staleAnnotationIds) ===
-      annotationIdSetVersion(next.staleAnnotationIds) &&
-    annotationIdSetVersion(prev.orphanAnnotationIds) ===
-      annotationIdSetVersion(next.orphanAnnotationIds) &&
-    annotationIdSetVersion(prev.unknownColumnAnnotationIds) ===
-      annotationIdSetVersion(next.unknownColumnAnnotationIds),
+    prev.staleAnnotationIds === next.staleAnnotationIds &&
+    prev.orphanAnnotationIds === next.orphanAnnotationIds &&
+    prev.unknownColumnAnnotationIds === next.unknownColumnAnnotationIds,
 );
 
 function getColumnStyle(width: number): CSSProperties {

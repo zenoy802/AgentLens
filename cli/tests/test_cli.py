@@ -293,7 +293,7 @@ def test_server_command_reports_missing_backend_app_requirement(
 
     assert result.exit_code != 0
     assert "requires the unified agentlens package" in result.output
-    assert "Missing dependency: app.core.config" in result.output
+    assert "Missing dependency: app.server_runtime" in result.output
     assert "Traceback" not in result.output
 
 
