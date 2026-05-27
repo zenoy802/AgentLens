@@ -1,5 +1,4 @@
-import { memo, useState } from "react";
-import { JsonRenderer } from "@agentlens/json-renderer";
+import { Suspense, lazy, memo, useState } from "react";
 
 import {
   Dialog,
@@ -25,6 +24,11 @@ interface JsonCellProps {
   richPreview?: boolean;
 }
 
+const JsonRenderer = lazy(async () => {
+  const module = await import("@agentlens/json-renderer");
+  return { default: module.JsonRenderer };
+});
+
 type ParsedJson =
   | { ok: true; value: unknown }
   | { ok: false };
@@ -43,7 +47,11 @@ function JsonCellComponent({
   }
 
   if (presentation === "detail") {
-    return <JsonDetail value={value} collapsed={false} maxDepth={10} />;
+    return (
+      <Suspense fallback={<TextCell value={value} />}>
+        <JsonDetail value={value} collapsed={false} maxDepth={10} />
+      </Suspense>
+    );
   }
 
   const previewText = richPreview
@@ -68,7 +76,11 @@ function JsonCellComponent({
           <DialogDescription className="sr-only">完整 JSON 树。</DialogDescription>
         </DialogHeader>
         <div className="max-h-[72vh] min-h-0 overflow-auto rounded-md">
-          {open ? <JsonDetail value={value} collapsed={false} maxDepth={10} /> : null}
+          {open ? (
+            <Suspense fallback={<TextCell value={value} />}>
+              <JsonDetail value={value} collapsed={false} maxDepth={10} />
+            </Suspense>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

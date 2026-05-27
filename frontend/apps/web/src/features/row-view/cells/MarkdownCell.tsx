@@ -1,5 +1,4 @@
-import { memo, useState } from "react";
-import { MarkdownRenderer } from "@agentlens/markdown-renderer";
+import { Suspense, lazy, memo, useState } from "react";
 import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +26,11 @@ interface MarkdownCellProps {
   richPreview?: boolean;
 }
 
+const MarkdownRenderer = lazy(async () => {
+  const module = await import("@agentlens/markdown-renderer");
+  return { default: module.MarkdownRenderer };
+});
+
 function MarkdownCellComponent({
   value,
   presentation = "table",
@@ -42,10 +46,12 @@ function MarkdownCellComponent({
 
   if (presentation === "detail") {
     return (
-      <MarkdownRenderer
-        content={content}
-        className="rounded-md border bg-background p-3 text-sm"
-      />
+      <Suspense fallback={<RendererFallback content={content} className="p-3" />}>
+        <MarkdownRenderer
+          content={content}
+          className="rounded-md border bg-background p-3 text-sm"
+        />
+      </Suspense>
     );
   }
 
@@ -83,14 +89,30 @@ function MarkdownCellComponent({
           </Button>
         </div>
         {open ? (
-          <MarkdownRenderer
-            content={content}
-            className="rounded-md border bg-background p-4 text-sm"
-            maxHeight={640}
-          />
+          <Suspense fallback={<RendererFallback content={content} className="p-4" />}>
+            <MarkdownRenderer
+              content={content}
+              className="rounded-md border bg-background p-4 text-sm"
+              maxHeight={640}
+            />
+          </Suspense>
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RendererFallback({
+  content,
+  className,
+}: {
+  content: string;
+  className: string;
+}) {
+  return (
+    <pre className={`overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background text-sm ${className}`}>
+      {content}
+    </pre>
   );
 }
 

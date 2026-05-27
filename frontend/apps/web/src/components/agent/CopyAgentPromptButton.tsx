@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatApiError, getApiError } from "@/lib/formatApiError";
+import { markAgentPromptCopied } from "@/lib/onboarding";
 import type { ProductLanguage } from "@/lib/productLanguage";
 import { useProductLanguageStore } from "@/stores/productLanguageStore";
 import { useQueryStore } from "@/stores/queryStore";
@@ -83,6 +84,7 @@ export function CopyAgentPromptButton({
       });
 
       await copyPromptToClipboard(prompt);
+      markAgentPromptCopied();
       toast.success(COPY_LABELS[language].copied);
     } catch (error) {
       if (error instanceof ClipboardWriteError) {

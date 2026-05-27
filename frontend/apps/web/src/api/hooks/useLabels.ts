@@ -14,6 +14,7 @@ import { formatApiError, getApiError } from "@/lib/formatApiError";
 import { useLabelsStore } from "@/stores/labelsStore";
 
 const MAX_LABEL_ROWS_PER_REQUEST = 1000;
+const PARALLEL_LABEL_FETCH_THRESHOLD = 1000;
 const CELL_MUTATION_KEY_SEPARATOR = "\u001e";
 const labelMutationQueues = new Map<string, Promise<void>>();
 
@@ -79,27 +80,11 @@ export function useLabels(
     staleTime: 10_000,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<LabelsByRowResponse> => {
-      const chunks = chunkRowIdentities(normalizedRowIdentities);
-      const responses = await Promise.all(
-        chunks.map(async (chunk) => {
-          const { data, error, response } = await apiClient.POST(
-            "/queries/{query_id}/labels/query",
-            {
-              params: { path: { query_id: queryId! } },
-              body: { row_identities: chunk },
-            },
-          );
-
-          if (error !== undefined) {
-            throw { data, error, response };
-          }
-          if (!response.ok || data === undefined) {
-            throw new Error(`Failed to load labels with status ${response.status}`);
-          }
-
-          return data;
-        }),
-      );
+      const chunks =
+        normalizedRowIdentities.length > PARALLEL_LABEL_FETCH_THRESHOLD
+          ? chunkRowIdentities(normalizedRowIdentities)
+          : [normalizedRowIdentities];
+      const responses = await Promise.all(chunks.map((chunk) => fetchLabelsChunk(queryId!, chunk)));
 
       return {
         labels_by_row: mergeLabelResponses(responses),
@@ -374,6 +359,28 @@ function chunkRowIdentities(rowIdentities: string[]): string[][] {
     chunks.push(rowIdentities.slice(index, index + MAX_LABEL_ROWS_PER_REQUEST));
   }
   return chunks;
+}
+
+async function fetchLabelsChunk(
+  queryId: number,
+  rowIdentities: string[],
+): Promise<LabelsByRowResponse> {
+  const { data, error, response } = await apiClient.POST(
+    "/queries/{query_id}/labels/query",
+    {
+      params: { path: { query_id: queryId } },
+      body: { row_identities: rowIdentities },
+    },
+  );
+
+  if (error !== undefined) {
+    throw { data, error, response };
+  }
+  if (!response.ok || data === undefined) {
+    throw new Error(`Failed to load labels with status ${response.status}`);
+  }
+
+  return data;
 }
 
 function mergeLabelResponses(responses: LabelsByRowResponse[]): LabelsByRow {

@@ -15,7 +15,6 @@ from app.core.errors import AppError, ConflictError, NotFoundError
 from app.core.logging import safe_exception_context, sanitize_log_message
 from app.models.connection import Connection
 from app.models.label import LabelRecord, LabelSchema
-from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
@@ -332,27 +331,16 @@ class QueryService:
             .group_by(LabelRecord.query_id)
             .subquery()
         )
-        analysis_counts = (
-            select(
-                LLMAnalysis.query_id.label("query_id"),
-                func.count(LLMAnalysis.id).label("llm_analysis_count"),
-            )
-            .group_by(LLMAnalysis.query_id)
-            .subquery()
-        )
         label_record_count = func.coalesce(label_counts.c.label_record_count, 0)
-        llm_analysis_count = func.coalesce(analysis_counts.c.llm_analysis_count, 0)
 
-        stmt: Select[tuple[NamedQuery, str, int, int]] = (
+        stmt: Select[tuple[NamedQuery, str, int]] = (
             select(
                 NamedQuery,
                 Connection.name,
                 label_record_count,
-                llm_analysis_count,
             )
             .join(Connection, NamedQuery.connection_id == Connection.id)
             .outerjoin(label_counts, label_counts.c.query_id == NamedQuery.id)
-            .outerjoin(analysis_counts, analysis_counts.c.query_id == NamedQuery.id)
             .where(*filters)
         )
         if order_by == "last_executed_at":
@@ -375,9 +363,8 @@ class QueryService:
                     query,
                     connection_name=connection_name,
                     label_record_count=int(label_count),
-                    llm_analysis_count=int(analysis_count),
                 )
-                for query, connection_name, label_count, analysis_count in rows
+                for query, connection_name, label_count in rows
             ],
             pagination=Pagination(
                 page=page,
@@ -393,7 +380,6 @@ class QueryService:
         *,
         connection_name: str | None = None,
         label_record_count: int | None = None,
-        llm_analysis_count: int | None = None,
     ) -> NamedQueryRead:
         resolved_connection_name = connection_name
         if resolved_connection_name is None:
@@ -404,15 +390,6 @@ class QueryService:
             resolved_label_record_count = (
                 self.session.scalar(
                     select(func.count(LabelRecord.id)).where(LabelRecord.query_id == query.id)
-                )
-                or 0
-            )
-
-        resolved_llm_analysis_count = llm_analysis_count
-        if resolved_llm_analysis_count is None:
-            resolved_llm_analysis_count = (
-                self.session.scalar(
-                    select(func.count(LLMAnalysis.id)).where(LLMAnalysis.query_id == query.id)
                 )
                 or 0
             )
@@ -430,7 +407,6 @@ class QueryService:
             last_executed_at=query.last_executed_at,
             expires_at=query.expires_at,
             label_record_count=resolved_label_record_count,
-            llm_analysis_count=resolved_llm_analysis_count,
         )
 
     def update(self, query_id: int, payload: NamedQueryUpdate) -> NamedQuery:

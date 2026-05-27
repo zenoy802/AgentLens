@@ -1,5 +1,4 @@
-import { memo, useState } from "react";
-import { CodeRenderer } from "@agentlens/code-renderer";
+import { Suspense, lazy, memo, useState } from "react";
 
 import {
   Dialog,
@@ -27,6 +26,11 @@ interface CodeCellProps {
   richPreview?: boolean;
 }
 
+const CodeRenderer = lazy(async () => {
+  const module = await import("@agentlens/code-renderer");
+  return { default: module.CodeRenderer };
+});
+
 function CodeCellComponent({
   value,
   language,
@@ -45,12 +49,14 @@ function CodeCellComponent({
 
   if (presentation === "detail") {
     return (
-      <CodeRenderer
-        code={code}
-        language={language}
-        maxHeight={maxHeight}
-        showLineNumbers={showLineNumbers}
-      />
+      <Suspense fallback={<CodeRendererFallback code={code} maxHeight={maxHeight} />}>
+        <CodeRenderer
+          code={code}
+          language={language}
+          maxHeight={maxHeight}
+          showLineNumbers={showLineNumbers}
+        />
+      </Suspense>
     );
   }
 
@@ -77,15 +83,36 @@ function CodeCellComponent({
           <DialogDescription className="sr-only">完整代码内容。</DialogDescription>
         </DialogHeader>
         {open ? (
-          <CodeRenderer
-            code={code}
-            language={language}
-            maxHeight={maxHeight ?? 640}
-            showLineNumbers={showLineNumbers}
-          />
+          <Suspense
+            fallback={<CodeRendererFallback code={code} maxHeight={maxHeight ?? 640} />}
+          >
+            <CodeRenderer
+              code={code}
+              language={language}
+              maxHeight={maxHeight ?? 640}
+              showLineNumbers={showLineNumbers}
+            />
+          </Suspense>
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CodeRendererFallback({
+  code,
+  maxHeight,
+}: {
+  code: string;
+  maxHeight?: number;
+}) {
+  return (
+    <pre
+      className="overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-4 font-mono text-xs"
+      style={maxHeight === undefined ? undefined : { maxHeight }}
+    >
+      {code}
+    </pre>
   );
 }
 

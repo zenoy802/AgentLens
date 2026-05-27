@@ -3,7 +3,7 @@ services:
     image: agentlens:1.0.0
     build: .
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${AGENTLENS_PUBLISHED_PORT:-8000}:8000"
     volumes:
       - agentlens-data:/data
     environment:

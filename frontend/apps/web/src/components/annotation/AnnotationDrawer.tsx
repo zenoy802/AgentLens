@@ -37,6 +37,7 @@ type StatusFilter = "all" | "stale" | "orphan" | "unknown-column" | "current";
 
 const ALL_VALUE = "__all";
 const EMPTY_ID_SET = new Set<number>();
+const DRAWER_TEXT_PREVIEW_LIMIT = 320;
 
 export function AnnotationDrawer({
   open,
@@ -49,29 +50,9 @@ export function AnnotationDrawer({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [setFilter, setSetFilter] = useState(ALL_VALUE);
   const deleteAnnotation = useDeleteAnnotation(queryId);
-  const staleIds = useMemo(
-    () =>
-      open
-        ? new Set(annotationIndex.getStaleAnnotations().map((annotation) => annotation.id))
-        : EMPTY_ID_SET,
-    [annotationIndex, open],
-  );
-  const orphanIds = useMemo(
-    () =>
-      open
-        ? new Set(annotationIndex.getOrphanAnnotations().map((annotation) => annotation.id))
-        : EMPTY_ID_SET,
-    [annotationIndex, open],
-  );
-  const unknownColumnIds = useMemo(
-    () =>
-      open
-        ? new Set(
-            annotationIndex.getUnknownColumnAnnotations().map((annotation) => annotation.id),
-          )
-        : EMPTY_ID_SET,
-    [annotationIndex, open],
-  );
+  const staleIds = open ? annotationIndex.staleIds : EMPTY_ID_SET;
+  const orphanIds = open ? annotationIndex.orphanIds : EMPTY_ID_SET;
+  const unknownColumnIds = open ? annotationIndex.unknownColumnIds : EMPTY_ID_SET;
   const authorOptions = useMemo(
     () =>
       open
@@ -295,7 +276,7 @@ function AnnotationDrawerItem({
           className="line-clamp-5 whitespace-pre-wrap break-words text-sm text-foreground"
           title={annotation.text}
         >
-          {truncateText(annotation.text, 500)}
+          {truncateText(annotation.text, DRAWER_TEXT_PREVIEW_LIMIT)}
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1.5">

@@ -25,6 +25,8 @@ interface AnnotationPopoverProps {
   children: ReactNode;
 }
 
+const POPOVER_TEXT_PREVIEW_LIMIT = 400;
+
 function AnnotationPopoverComponent({
   queryId,
   annotations,
@@ -94,8 +96,11 @@ function AnnotationPopoverComponent({
                     </Button>
                   </div>
                   {annotation.text !== null && annotation.text.length > 0 ? (
-                    <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-                      {annotation.text}
+                    <div
+                      className="line-clamp-4 whitespace-pre-wrap break-words text-sm text-foreground"
+                      title={annotation.text}
+                    >
+                      {truncateText(annotation.text, POPOVER_TEXT_PREVIEW_LIMIT)}
                     </div>
                   ) : null}
                   <div className="flex flex-wrap gap-1.5">
@@ -136,4 +141,8 @@ function formatRelativeTime(value: string): string {
     return value;
   }
   return formatDistanceToNow(date, { addSuffix: true });
+}
+
+function truncateText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
 }
