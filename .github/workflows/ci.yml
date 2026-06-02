@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend
+        run: pip install -e "backend[dev]"
+
+      - name: Ruff
+        working-directory: backend
+        run: ruff check .
+
+      - name: Mypy
+        working-directory: backend
+        run: mypy app
+
+      - name: Pytest
+        working-directory: backend
+        run: pytest
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: frontend
+        run: pnpm lint
+
+      - name: Build
+        working-directory: frontend
+        run: pnpm build
+
+  cli:
+    name: CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install CLI
+        run: |
+          pip install -e packages/agentlens-client
+          pip install -e "cli[dev]"
+
+      - name: Pytest
+        run: pytest cli/tests
+
+      - name: Help
+        run: agentlens --help
+
+  mcp:
+    name: MCP
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install MCP server
+        run: |
+          pip install -e packages/agentlens-client
+          pip install -e "mcp_server[dev]"
+
+      - name: Pytest
+        run: pytest mcp_server/tests
+
+      - name: Help
+        run: agentlens-mcp --help

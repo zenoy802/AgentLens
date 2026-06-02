@@ -9,8 +9,8 @@ from pydantic import BaseModel, field_serializer
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.health import get_app_version
 from app.core.config import get_settings
+from app.core.version import get_app_version
 from app.db.session import get_db_session
 from app.models.connection import Connection
 from app.models.named_query import NamedQuery
