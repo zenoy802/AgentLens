@@ -56,14 +56,14 @@ Context export verification:
 | `pipx install dist/agentlens_mcp-1.0.0-py3-none-any.whl` | success | Passed |
 | `agentlens-mcp --help` after pipx install | usable | Passed |
 | `agentlens-mcp --author agent:test` stdout | clean | Passed; no stdout output when stdin closed |
-| Docker image size | < 500MB | 420MB |
+| Docker image size | < 500MB | 102,831,144 bytes (~98.1 MiB) |
 | Docker cold start to first healthy check | < 10s | First healthy check completed in ~5.2s after container start |
 | Docker non-root user | UID 1000 | Passed |
 | Docker Web UI | browser reachable | `GET /` returned 200 on `127.0.0.1:8010` |
 | `docker compose up -d` | browser reachable | Passed on `127.0.0.1:8011` with `AGENTLENS_PUBLISHED_PORT=8011`; `GET /` and `GET /api/v1/health` returned 200 |
 
-Removed metrics:
+Out-of-scope metrics for v1:
 
-- Built-in LLM analysis token latency
-- LLM streaming first-token latency
-- LLM provider analysis history throughput
+- External agent provider/model latency, which is controlled by the user's own CLI agent.
+- External agent token usage, which AgentLens does not collect.
+- Cloud API throughput outside the AgentLens process.

@@ -49,7 +49,7 @@ function JsonCellComponent({
   if (presentation === "detail") {
     return (
       <Suspense fallback={<TextCell value={value} />}>
-        <JsonDetail value={value} collapsed={false} maxDepth={10} />
+        <JsonDetail value={value} collapsed={collapsed} maxDepth={10} />
       </Suspense>
     );
   }
@@ -78,7 +78,7 @@ function JsonCellComponent({
         <div className="max-h-[72vh] min-h-0 overflow-auto rounded-md">
           {open ? (
             <Suspense fallback={<TextCell value={value} />}>
-              <JsonDetail value={value} collapsed={false} maxDepth={10} />
+              <JsonDetail value={value} collapsed={collapsed} maxDepth={10} />
             </Suspense>
           ) : null}
         </div>
