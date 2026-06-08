@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "@/api/client";
 import type { ViewConfigPayload, ViewConfigRead } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 import { formatApiError } from "@/lib/formatApiError";
 
 export const viewConfigKey = (queryId: number) => ["view-config", queryId] as const;
@@ -45,6 +46,7 @@ export function useSaveViewConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async ({ queryId, payload }: SaveViewConfigArgs): Promise<ViewConfigRead> => {
       return enqueueViewConfigSave(queryId, async () => {
         const { data, error, response } = await apiClient.PUT("/queries/{query_id}/view-config", {

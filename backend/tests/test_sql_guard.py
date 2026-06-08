@@ -55,7 +55,7 @@ def test_validate_sql_rejects_non_select(sql: str, statement_type: str) -> None:
     with pytest.raises(SqlForbiddenError) as exc_info:
         validate_sql(sql)
 
-    assert exc_info.value.code == "SQL_FORBIDDEN_STATEMENT"
+    assert exc_info.value.code == "SQL_NOT_ALLOWED"
     assert exc_info.value.detail == {"statement_type": statement_type}
 
 
@@ -70,7 +70,7 @@ def test_validate_sql_rejects_multiple_statements(sql: str) -> None:
     with pytest.raises(SqlForbiddenError) as exc_info:
         validate_sql(sql)
 
-    assert exc_info.value.code == "SQL_FORBIDDEN_STATEMENT"
+    assert exc_info.value.code == "SQL_NOT_ALLOWED"
     assert exc_info.value.detail == {"statement_type": "MULTI_STATEMENT"}
 
 
@@ -116,5 +116,5 @@ def test_validate_sql_rejects_empty_comment_or_semicolon_only(sql: str) -> None:
     with pytest.raises(SqlForbiddenError) as exc_info:
         validate_sql(sql)
 
-    assert exc_info.value.code == "SQL_FORBIDDEN_STATEMENT"
+    assert exc_info.value.code == "SQL_NOT_ALLOWED"
     assert exc_info.value.detail == {"statement_type": "EMPTY"}

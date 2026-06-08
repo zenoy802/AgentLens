@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from loguru import logger
 
 from app.api.execute import get_query_service
 from app.core.errors import AppError
@@ -50,6 +51,12 @@ def aggregate_query_trajectories(
         row_identities=outcome.row_identities,
     )
     warnings = _build_execution_warnings(outcome, row_identity_key) + aggregate_warnings
+    logger.info(
+        "Trajectory aggregation API completed: query_id={} trajectories={} warnings={}",
+        query_id,
+        len(trajectories),
+        len(warnings),
+    )
     return TrajectoryAggregateResponse(trajectories=trajectories, warnings=warnings)
 
 

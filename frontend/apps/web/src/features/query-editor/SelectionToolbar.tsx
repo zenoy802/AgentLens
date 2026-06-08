@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bot, ChevronDown, Tag, X } from "lucide-react";
+import { ChevronDown, Tag, X } from "lucide-react";
 
 import type { LabelField } from "@/api/types";
 import { Button } from "@/components/ui/button";
@@ -84,10 +84,6 @@ export function SelectionToolbar({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="outline" size="sm" className="gap-1.5 bg-background" disabled>
-          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
-          用 LLM 分析
-        </Button>
         <Button variant="ghost" size="sm" className="gap-1.5" onClick={clearSelection}>
           <X className="h-3.5 w-3.5" aria-hidden="true" />
           取消选择

@@ -8,6 +8,7 @@ import pytest
 from starlette import status
 
 from app.api.admin import _scheduler_jobs
+from app.core.version import get_app_version
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
 from app.models.connection import Connection
@@ -62,7 +63,7 @@ async def test_admin_info_returns_runtime_counts() -> None:
 
     assert response.status_code == status.HTTP_200_OK
     payload = response.json()
-    assert payload["version"] == "0.1.0"
+    assert payload["version"] == get_app_version()
     assert payload["data_dir"]
     assert payload["db_path"].endswith("metadata.db")
     assert isinstance(payload["uptime_seconds"], int)

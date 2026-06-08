@@ -5,6 +5,7 @@ import type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -16,6 +17,7 @@ export type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -64,6 +66,7 @@ export interface QueryState {
   columns: Column[];
   rows: Row[];
   execution: ExecutionInfo | null;
+  fingerprints: QueryFingerprints | null;
   suggestedRenders: Record<string, FieldRender>;
   fieldRenders: Record<string, FieldRender>;
   manualFieldRenderColumns: string[];
@@ -76,10 +79,16 @@ export interface QueryState {
   selectedRowIds: Set<string>;
   isExecuting: boolean;
   isDirty: boolean;
+  sqlDirty: boolean;
+  viewDirty: boolean;
+  labelSchemaDirty: boolean;
   setConnectionId(id: number | null): void;
   setSql(sql: string): void;
   setResult(result: ExecutionResult): void;
   markDirty(): void;
+  markSqlDirty(): void;
+  markLabelSchemaDirty(): void;
+  markLabelSchemaClean(): void;
   markClean(): void;
   setFieldRender(col: string, render: FieldRender): void;
   removeFieldRender(col: string): void;
@@ -120,6 +129,7 @@ const initialResultState = {
   columns: [] as Column[],
   rows: [] as Row[],
   execution: null,
+  fingerprints: null as QueryFingerprints | null,
   suggestedRenders: {} as Record<string, FieldRender>,
   fieldRenders: {} as Record<string, FieldRender>,
   manualFieldRenderColumns: [] as string[],
@@ -131,6 +141,9 @@ const initialResultState = {
   warnings: [] as Warning[],
   selectedRowIds: new Set<string>(),
   isDirty: false,
+  sqlDirty: false,
+  viewDirty: false,
+  labelSchemaDirty: false,
 };
 
 export const useQueryStore = create<QueryState>((set, get) => ({
@@ -151,6 +164,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         columns: result.columns,
         rows: result.rows,
         execution: result.execution,
+        fingerprints: result.fingerprints,
         suggestedRenders: result.suggested_field_renders,
         fieldRenders: filterFieldRenders(state.fieldRenders, result.columns),
         manualFieldRenderColumns: filterColumnNames(
@@ -162,10 +176,22 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         filters: {},
         selectedRowIds: new Set(),
         isExecuting: false,
+        ...getDirtyState(state, { sqlDirty: false }),
       };
     }),
-  markDirty: () => set({ isDirty: true }),
-  markClean: () => set({ isDirty: false }),
+  markDirty: () => set((state) => getDirtyState(state, { viewDirty: true })),
+  markSqlDirty: () => set((state) => getDirtyState(state, { sqlDirty: true })),
+  markLabelSchemaDirty: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: true })),
+  markLabelSchemaClean: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: false })),
+  markClean: () =>
+    set({
+      isDirty: false,
+      sqlDirty: false,
+      viewDirty: false,
+      labelSchemaDirty: false,
+    }),
   setFieldRender: (col, render) => {
     set((state) => ({
       fieldRenders: {
@@ -377,7 +403,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
     const trajectoryConfig = vc.trajectory_config ?? null;
-    set({
+    set((state) => ({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
@@ -387,8 +413,8 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         vc.trajectory_config_source,
       ),
       rowIdentityColumn: vc.row_identity_column ?? null,
-    });
-    get().markClean();
+      ...getDirtyState(state, { viewDirty: false }),
+    }));
   },
   mergeSuggestedRenders: (suggested) =>
     set((state) => {
@@ -455,6 +481,21 @@ function normalizeLabelFilterValues(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === "string")));
 }
 
+function getDirtyState(
+  state: Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">,
+  patch: Partial<Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">>,
+) {
+  const sqlDirty = patch.sqlDirty ?? state.sqlDirty;
+  const viewDirty = patch.viewDirty ?? state.viewDirty;
+  const labelSchemaDirty = patch.labelSchemaDirty ?? state.labelSchemaDirty;
+  return {
+    sqlDirty,
+    viewDirty,
+    labelSchemaDirty,
+    isDirty: sqlDirty || viewDirty || labelSchemaDirty,
+  };
+}
+
 function trajectoryConfigsEqual(
   left: TrajectoryConfig | null,
   right: TrajectoryConfig | null,
@@ -482,6 +523,7 @@ function isSameResult(state: QueryState, result: ExecutionResult): boolean {
     state.queryId === result.query_id &&
     state.columns === result.columns &&
     state.rows === result.rows &&
+    state.fingerprints === result.fingerprints &&
     state.suggestedRenders === result.suggested_field_renders &&
     state.warnings === result.warnings &&
     execution !== null &&

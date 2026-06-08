@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { apiClient } from "@/api/client";
 import { queryKeys } from "@/api/hooks/useQueries";
 import type { LabelField, LabelSchemaRead } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 import { formatApiError } from "@/lib/formatApiError";
 
 export const labelSchemaKey = (queryId: number) => ["label-schema", queryId] as const;
@@ -40,6 +41,7 @@ export function useSaveLabelSchema() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async ({ queryId, fields }: SaveLabelSchemaArgs): Promise<LabelSchemaRead> => {
       const { data, error, response } = await apiClient.PUT(
         "/queries/{query_id}/label-schema",

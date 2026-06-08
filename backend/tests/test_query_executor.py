@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, cast
 
 import pytest
@@ -21,7 +22,7 @@ from app.db.session import get_session_factory, initialize_metadata_database
 from app.models.connection import Connection
 from app.schemas.connection import ConnectionUpdate
 from app.services.connection_service import ConnectionService
-from app.services.query_executor import ExecutorService
+from app.services.query_executor import ExecutorService, _safe_dbapi_error_message
 
 FETCHMANY_ROW_LIMIT_PLUS_ONE = 3
 TIMEOUT_SECONDS = 3
@@ -116,7 +117,10 @@ class FakeOrigError(Exception):
 
 class FakeSyntaxError(Exception):
     def __init__(self) -> None:
-        super().__init__(1064, "You have an error in your SQL syntax")
+        super().__init__(
+            1064,
+            "You have an error in your SQL syntax near 'secret@example.com'",
+        )
 
 
 class FakeConnectionError(Exception):
@@ -304,6 +308,68 @@ def test_execute_preserves_duplicate_column_values(monkeypatch: pytest.MonkeyPat
     assert executor_result.rows == [{"id": 1, "id__2": 2}]
 
 
+def test_execute_preserves_special_column_names_and_zero_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    description = [
+        ("space col", FIELD_TYPE.VAR_STRING, None, None, None, None, True),
+        ('quoted"col', FIELD_TYPE.VAR_STRING, None, None, None, None, True),
+    ]
+    result = FakeResult([], description)
+    fake_engine = FakeEngine(FakeDbConnection(result=result))
+
+    def fake_get_or_create_engine(
+        self: ExecutorService,
+        connection: Connection,
+    ) -> Engine:
+        assert isinstance(self, ExecutorService)
+        assert connection.id == 1
+        return cast(Engine, fake_engine)
+
+    monkeypatch.setattr(ExecutorService, "_get_or_create_engine", fake_get_or_create_engine)
+
+    executor_result = ExecutorService().execute(_connection(), "SELECT 1", timeout=1, row_limit=10)
+
+    assert [column.name for column in executor_result.columns] == ["space col", 'quoted"col']
+    assert executor_result.rows == []
+
+
+def test_execute_serializes_bytes_without_json_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    description = [
+        ("binary_payload", FIELD_TYPE.BIT, None, 2, None, None, True),
+        ("text_payload", FIELD_TYPE.VAR_STRING, None, None, None, None, True),
+    ]
+    result = FakeResult([(b"\xff\x00", b"\xff")], description)
+    fake_engine = FakeEngine(FakeDbConnection(result=result))
+
+    def fake_get_or_create_engine(
+        self: ExecutorService,
+        connection: Connection,
+    ) -> Engine:
+        assert isinstance(self, ExecutorService)
+        assert connection.id == 1
+        return cast(Engine, fake_engine)
+
+    monkeypatch.setattr(ExecutorService, "_get_or_create_engine", fake_get_or_create_engine)
+
+    executor_result = ExecutorService().execute(_connection(), "SELECT 1", timeout=1, row_limit=10)
+
+    assert executor_result.rows == [
+        {
+            "binary_payload": {
+                "__type": "bytes",
+                "encoding": "base64",
+                "value": "/wA=",
+            },
+            "text_payload": {
+                "__type": "bytes",
+                "encoding": "base64",
+                "value": "/w==",
+            },
+        }
+    ]
+
+
 def test_execute_converts_datetime_and_json_string(monkeypatch: pytest.MonkeyPatch) -> None:
     created_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
     description = [
@@ -420,6 +486,30 @@ def test_execute_odps_timeout_stops_instance(monkeypatch: pytest.MonkeyPatch) ->
     assert instance.stopped is True
 
 
+def test_execute_serializes_decimal_columns_as_numeric_float(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    description = [("score", FIELD_TYPE.NEWDECIMAL, None, None, None, None, True)]
+    result = FakeResult([(Decimal("12.34"),)], description)
+    fake_engine = FakeEngine(FakeDbConnection(result=result))
+
+    def fake_get_or_create_engine(
+        self: ExecutorService,
+        connection: Connection,
+    ) -> Engine:
+        assert isinstance(self, ExecutorService)
+        assert connection.id == 1
+        return cast(Engine, fake_engine)
+
+    monkeypatch.setattr(ExecutorService, "_get_or_create_engine", fake_get_or_create_engine)
+
+    executor_result = ExecutorService().execute(_connection(), "SELECT 1", timeout=1, row_limit=10)
+
+    assert executor_result.columns[0].inferred_type == "float"
+    assert executor_result.rows == [{"score": 12.34}]
+    assert isinstance(executor_result.rows[0]["score"], float)
+
+
 def test_execute_raises_timeout_for_mysql_3024(monkeypatch: pytest.MonkeyPatch) -> None:
     operational_error = OperationalError("SELECT SLOW", {}, FakeOrigError())
     fake_engine = FakeEngine(FakeDbConnection(query_error=operational_error))
@@ -468,7 +558,11 @@ def test_execute_maps_programming_error_to_sql_syntax_error(
 
     assert exc_info.value.code == "SQL_SYNTAX_ERROR"
     assert exc_info.value.detail is not None
-    assert "SQL syntax" in str(exc_info.value.detail["orig"])
+    assert exc_info.value.detail == {
+        "error_class": "FakeSyntaxError",
+        "error_code": 1064,
+    }
+    assert "secret@example.com" not in str(exc_info.value.detail)
 
 
 def test_execute_maps_non_syntax_dbapi_error_to_sql_execution_error(
@@ -493,6 +587,22 @@ def test_execute_maps_non_syntax_dbapi_error_to_sql_execution_error(
     assert exc_info.value.code == "SQL_EXECUTION_ERROR"
     assert exc_info.value.detail is not None
     assert "Can't connect" in str(exc_info.value.detail["orig"])
+
+
+def test_safe_dbapi_error_message_omits_statement_and_parameters() -> None:
+    error = OperationalError(
+        "SELECT 'super-secret'",
+        {"password": "super-secret"},
+        FakeSyntaxError(),
+    )
+
+    message = _safe_dbapi_error_message(error)
+
+    assert "SQL syntax" in message
+    assert "SELECT" not in message
+    assert "super-secret" not in message
+    assert "secret@example.com" not in message
+    assert "parameters" not in message.lower()
 
 
 def test_execute_maps_raw_connect_os_error_to_sql_execution_error(

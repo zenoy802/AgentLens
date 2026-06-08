@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "@/api/client";
 import type { RenderRuleCreate, RenderRuleRead, RenderRuleUpdate } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 
 export type { RenderRuleCreate, RenderRuleRead, RenderRuleUpdate };
 
@@ -15,6 +16,7 @@ export function useRenderRules() {
   return useQuery({
     queryKey: renderRuleKeys.list(),
     queryFn: fetchRenderRules,
+    staleTime: 60_000,
   });
 }
 
@@ -34,6 +36,7 @@ async function fetchRenderRules(): Promise<RenderRuleRead[]> {
 export function useCreateRenderRule() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (payload: RenderRuleCreate) => {
       const { data, error, response } = await apiClient.POST("/render-rules", {
         body: payload,
@@ -55,6 +58,7 @@ export function useCreateRenderRule() {
 export function useUpdateRenderRule() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async ({ id, payload }: { id: number; payload: RenderRuleUpdate }) => {
       const { data, error, response } = await apiClient.PATCH("/render-rules/{rule_id}", {
         params: { path: { rule_id: id } },
@@ -80,6 +84,7 @@ export function useUpdateRenderRule() {
 export function useDeleteRenderRule() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (id: number) => {
       const { error, response } = await apiClient.DELETE("/render-rules/{rule_id}", {
         params: { path: { rule_id: id } },

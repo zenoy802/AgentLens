@@ -13,6 +13,7 @@ import type {
   NamedQueryRead,
   NamedQueryUpdate,
 } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 
 export type {
   NamedQueryListResponse,
@@ -40,6 +41,7 @@ export const queryKeys = {
 export function useQueries(params: QueryListParams = {}) {
   return useQuery({
     queryKey: queryKeys.list(params),
+    staleTime: 30_000,
     queryFn: async () => {
       const { data, error, response } = await apiClient.GET("/queries", {
         params: {
@@ -71,6 +73,7 @@ export function useQueryById(id: number) {
   return useQuery({
     queryKey: queryKeys.detail(id),
     enabled: Number.isFinite(id) && id > 0,
+    staleTime: 30_000,
     queryFn: () => fetchQueryById(id),
   });
 }
@@ -94,6 +97,7 @@ export function useQueryDetailsByIds(ids: number[]): Map<number, QueryDetailStat
     queries: uniqueIds.map((id) => ({
       queryKey: queryKeys.detail(id),
       queryFn: () => fetchQueryById(id),
+      staleTime: 30_000,
     })),
   });
 
@@ -133,6 +137,7 @@ export function useDeleteQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (id: number) => {
       const { error, response } = await apiClient.DELETE("/queries/{query_id}", {
         params: { path: { query_id: id } },
@@ -155,6 +160,7 @@ export function useUpdateQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (variables: { id: number; payload: NamedQueryUpdate }) => {
       const { data, error, response } = await apiClient.PATCH("/queries/{query_id}", {
         params: { path: { query_id: variables.id } },
@@ -183,6 +189,7 @@ export function usePromoteQuery() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (variables: { id: number; payload: NamedQueryPromote }) => {
       const { data, error, response } = await apiClient.POST("/queries/{query_id}/promote", {
         params: { path: { query_id: variables.id } },

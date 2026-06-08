@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     query_default_timeout: int = 30
     query_default_row_limit: int = 10000
     query_history_retention_days: int = 30
-    llm_request_timeout: int = 120
     reload: bool = False
+    debug: bool = False
 
     @property
     def db_url(self) -> str:

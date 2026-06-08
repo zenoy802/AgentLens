@@ -20,6 +20,8 @@ export const queryHistoryKeys = {
 export function useQueryHistory(params: QueryHistoryParams = {}) {
   return useQuery({
     queryKey: queryHistoryKeys.list(params),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data, error, response } = await apiClient.GET("/query-history", {
         params: {

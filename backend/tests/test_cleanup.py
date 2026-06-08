@@ -11,11 +11,12 @@ from starlette import status
 
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
+from app.models.annotation import Annotation
 from app.models.connection import Connection
 from app.models.label import LabelRecord
-from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
+from app.models.selection_snapshot import SelectionSnapshot
 from app.services.cleanup_service import CleanupService
 
 
@@ -66,17 +67,6 @@ def test_cleanup_dry_run_reports_without_deleting() -> None:
             )
         )
         session.add(
-            LLMAnalysis(
-                query_id=expired_query.id,
-                provider_id=None,
-                selection="{}",
-                structure_format="rows",
-                prompt="Analyze",
-                structured_input="{}",
-                status="completed",
-            )
-        )
-        session.add(
             QueryHistory(
                 connection_id=connection_id,
                 query_id=expired_query.id,
@@ -93,12 +83,10 @@ def test_cleanup_dry_run_reports_without_deleting() -> None:
 
         assert report.expired_queries_deleted == 1
         assert report.cascade_label_records_deleted == 1
-        assert report.cascade_analyses_deleted == 1
         assert report.history_records_deleted == 1
         assert report.dry_run is True
         assert _count(session, NamedQuery) == 1
         assert _count(session, LabelRecord) == 1
-        assert _count(session, LLMAnalysis) == 1
         assert _count(session, QueryHistory) == 1
     finally:
         session.close()
@@ -134,37 +122,26 @@ def test_cleanup_deletes_expired_queries_and_old_history() -> None:
             )
         )
         session.add(
-            LLMAnalysis(
+            QueryHistory(
+                connection_id=connection_id,
                 query_id=expired_query.id,
-                provider_id=None,
-                selection="{}",
-                structure_format="rows",
-                prompt="Analyze",
-                structured_input="{}",
-                status="completed",
+                sql_text="SELECT old",
+                row_count=1,
+                duration_ms=5,
+                status="success",
+                executed_at=_now() - timedelta(days=60),
             )
         )
-        session.add_all(
-            [
-                QueryHistory(
-                    connection_id=connection_id,
-                    query_id=expired_query.id,
-                    sql_text="SELECT old",
-                    row_count=1,
-                    duration_ms=5,
-                    status="success",
-                    executed_at=_now() - timedelta(days=60),
-                ),
-                QueryHistory(
-                    connection_id=connection_id,
-                    query_id=active_query.id,
-                    sql_text="SELECT recent",
-                    row_count=1,
-                    duration_ms=5,
-                    status="success",
-                    executed_at=_now() - timedelta(days=1),
-                ),
-            ]
+        session.add(
+            QueryHistory(
+                connection_id=connection_id,
+                query_id=active_query.id,
+                sql_text="SELECT recent",
+                row_count=1,
+                duration_ms=5,
+                status="success",
+                executed_at=_now() - timedelta(days=1),
+            )
         )
         session.commit()
         active_query_id = active_query.id
@@ -173,14 +150,76 @@ def test_cleanup_deletes_expired_queries_and_old_history() -> None:
 
         assert report.expired_queries_deleted == 1
         assert report.cascade_label_records_deleted == 1
-        assert report.cascade_analyses_deleted == 1
         assert report.history_records_deleted == 1
         assert report.dry_run is False
         assert session.get(NamedQuery, expired_query.id) is None
         assert session.get(NamedQuery, active_query_id) is not None
         assert _count(session, LabelRecord) == 0
-        assert _count(session, LLMAnalysis) == 0
         assert _count(session, QueryHistory) == 1
+    finally:
+        session.close()
+
+
+def test_cleanup_deletes_expired_annotations_and_selection_snapshots() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        query = NamedQuery(
+            connection_id=connection_id,
+            name=None,
+            sql_text="SELECT active",
+            is_named=False,
+            expires_at=_now() + timedelta(days=1),
+        )
+        session.add(query)
+        session.flush()
+        session.add_all(
+            [
+                Annotation(
+                    query_id=query.id,
+                    row_identity="expired-row",
+                    author="agent:codex",
+                    color="red",
+                    created_at=_now() - timedelta(days=2),
+                    expires_at=_now() - timedelta(days=1),
+                ),
+                Annotation(
+                    query_id=query.id,
+                    row_identity="active-row",
+                    author="agent:codex",
+                    color="green",
+                    created_at=_now(),
+                    expires_at=_now() + timedelta(days=1),
+                ),
+                SelectionSnapshot(
+                    id="sel_20260518_103000_deadbeef",
+                    query_id=query.id,
+                    row_identities_json='["expired-row"]',
+                    source="manual",
+                    created_at=_now() - timedelta(days=8),
+                    expires_at=_now() - timedelta(days=1),
+                ),
+                SelectionSnapshot(
+                    id="sel_20260518_103000_feedface",
+                    query_id=query.id,
+                    row_identities_json='["active-row"]',
+                    source="manual",
+                    created_at=_now(),
+                    expires_at=_now() + timedelta(days=1),
+                ),
+            ]
+        )
+        session.commit()
+
+        service = CleanupService()
+        expired_annotations = service.delete_expired_annotations(session)
+        expired_snapshots = service.delete_expired_selection_snapshots(session)
+
+        assert expired_annotations == 1
+        assert expired_snapshots == 1
+        assert _count(session, Annotation) == 1
+        assert _count(session, SelectionSnapshot) == 1
     finally:
         session.close()
 
@@ -198,6 +237,5 @@ async def test_admin_cleanup_endpoint_returns_report() -> None:
         "expired_queries_deleted": 0,
         "history_records_deleted": 0,
         "cascade_label_records_deleted": 0,
-        "cascade_analyses_deleted": 0,
         "dry_run": True,
     }

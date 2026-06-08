@@ -38,6 +38,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Annotations */
+        get: operations["list_annotations_api_v1_queries__query_id__annotations_get"];
+        put?: never;
+        /** Create Annotation */
+        post: operations["create_annotation_api_v1_queries__query_id__annotations_post"];
+        /** Delete Annotations */
+        delete: operations["delete_annotations_api_v1_queries__query_id__annotations_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/annotations/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Annotations Batch */
+        post: operations["create_annotations_batch_api_v1_queries__query_id__annotations_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/annotations/{annotation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Annotation */
+        delete: operations["delete_annotation_api_v1_queries__query_id__annotations__annotation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connections": {
         parameters: {
             query?: never;
@@ -355,6 +408,41 @@ export interface paths {
         patch: operations["update_render_rule_api_v1_render_rules__rule_id__patch"];
         trace?: never;
     };
+    "/queries/{query_id}/selection-snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Selection Snapshot */
+        post: operations["create_selection_snapshot_api_v1_queries__query_id__selection_snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selections/{selection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Selection Snapshot */
+        get: operations["get_selection_snapshot_api_v1_selections__selection_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Selection Snapshot */
+        delete: operations["delete_selection_snapshot_api_v1_selections__selection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/trajectories": {
         parameters: {
             query?: never;
@@ -411,6 +499,83 @@ export interface components {
             /** Named Queries Count */
             named_queries_count: number;
         };
+        /** AnnotationBatchCreate */
+        AnnotationBatchCreate: {
+            /** Annotations */
+            annotations: components["schemas"]["AnnotationCreate"][];
+        };
+        /**
+         * AnnotationColor
+         * @enum {string}
+         */
+        AnnotationColor: "red" | "yellow" | "green" | "blue" | "gray";
+        /** AnnotationCreate */
+        AnnotationCreate: {
+            /** Row Identity */
+            row_identity: string;
+            /** Column Key */
+            column_key?: string | null;
+            /** Author */
+            author: string;
+            color: components["schemas"]["AnnotationColor"];
+            /** Title */
+            title?: string | null;
+            /** Text */
+            text?: string | null;
+            severity?: components["schemas"]["AnnotationSeverity"] | null;
+            /** Annotation Set */
+            annotation_set?: string | null;
+            /** Sql Fingerprint */
+            sql_fingerprint?: string | null;
+            /** Schema Fingerprint */
+            schema_fingerprint?: string | null;
+            /** Result Fingerprint */
+            result_fingerprint?: string | null;
+        };
+        /** AnnotationDeleteResponse */
+        AnnotationDeleteResponse: {
+            /** Deleted Count */
+            deleted_count: number;
+        };
+        /** AnnotationOut */
+        AnnotationOut: {
+            /** Id */
+            id: number;
+            /** Query Id */
+            query_id: number;
+            /** Row Identity */
+            row_identity: string;
+            /** Column Key */
+            column_key: string | null;
+            /** Author */
+            author: string;
+            color: components["schemas"]["AnnotationColor"];
+            /** Title */
+            title: string | null;
+            /** Text */
+            text: string | null;
+            severity: components["schemas"]["AnnotationSeverity"] | null;
+            /** Annotation Set */
+            annotation_set: string | null;
+            /** Sql Fingerprint */
+            sql_fingerprint: string | null;
+            /** Schema Fingerprint */
+            schema_fingerprint: string | null;
+            /** Result Fingerprint */
+            result_fingerprint: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+        };
+        /**
+         * AnnotationSeverity
+         * @enum {string}
+         */
+        AnnotationSeverity: "info" | "warning" | "error";
         /** CleanupReport */
         CleanupReport: {
             /** Expired Queries Deleted */
@@ -419,8 +584,6 @@ export interface components {
             history_records_deleted: number;
             /** Cascade Label Records Deleted */
             cascade_label_records_deleted: number;
-            /** Cascade Analyses Deleted */
-            cascade_analyses_deleted: number;
             /** Dry Run */
             dry_run: boolean;
         };
@@ -613,6 +776,15 @@ export interface components {
             /** Row Limit */
             row_limit?: number | null;
         };
+        /** ExecutionFingerprints */
+        ExecutionFingerprints: {
+            /** Sql */
+            sql: string;
+            /** Schema */
+            schema: string;
+            /** Result */
+            result: string;
+        };
         /** ExecutionInfo */
         ExecutionInfo: {
             /**
@@ -634,6 +806,7 @@ export interface components {
             /** Is Temporary */
             is_temporary: boolean;
             execution: components["schemas"]["ExecutionInfo"];
+            fingerprints: components["schemas"]["ExecutionFingerprints"];
             /** Columns */
             columns: components["schemas"]["ColumnRead"][];
             /** Rows */
@@ -885,8 +1058,6 @@ export interface components {
             expires_at: string | null;
             /** Label Record Count */
             label_record_count: number;
-            /** Llm Analysis Count */
-            llm_analysis_count: number;
         };
         /** NamedQueryUpdate */
         NamedQueryUpdate: {
@@ -1026,6 +1197,36 @@ export interface components {
             trigger: string;
             /** Next Run */
             next_run: string | null;
+        };
+        /** SelectionSnapshotCreate */
+        SelectionSnapshotCreate: {
+            /** Row Identities */
+            row_identities: string[];
+            /** Source */
+            source?: string | null;
+        };
+        /** SelectionSnapshotOut */
+        SelectionSnapshotOut: {
+            /** Id */
+            id: string;
+            /** Query Id */
+            query_id: number;
+            /** Row Identities */
+            row_identities: string[];
+            /** Count */
+            count: number;
+            /** Source */
+            source: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** SingleSelectField */
         SingleSelectField: {
@@ -1307,6 +1508,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminInfoResponse"];
+                };
+            };
+        };
+    };
+    list_annotations_api_v1_queries__query_id__annotations_get: {
+        parameters: {
+            query?: {
+                author?: string | null;
+                author_prefix?: string | null;
+                color?: components["schemas"]["AnnotationColor"] | null;
+                row_identity?: string | null;
+                column_key?: string | null;
+                annotation_set?: string | null;
+                include_expired?: boolean;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_annotation_api_v1_queries__query_id__annotations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_annotations_api_v1_queries__query_id__annotations_delete: {
+        parameters: {
+            query?: {
+                author?: string | null;
+                author_prefix?: string | null;
+                color?: components["schemas"]["AnnotationColor"] | null;
+                annotation_set?: string | null;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_annotations_batch_api_v1_queries__query_id__annotations_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_annotation_api_v1_queries__query_id__annotations__annotation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+                annotation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2231,6 +2607,101 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RenderRuleRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_selection_snapshot_api_v1_queries__query_id__selection_snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionSnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionSnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_selection_snapshot_api_v1_selections__selection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionSnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_selection_snapshot_api_v1_selections__selection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

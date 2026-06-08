@@ -1,3 +1,4 @@
+from importlib.metadata import PackageNotFoundError
 from typing import Any, cast
 
 import httpx
@@ -5,7 +6,9 @@ import pytest
 from sqlalchemy import inspect
 from starlette import status
 
+from app.core import version as version_module
 from app.core.config import get_settings
+from app.core.version import APP_VERSION, get_app_version
 from app.db.session import get_engine, initialize_metadata_database
 from app.main import app
 
@@ -22,10 +25,47 @@ async def test_health_endpoint() -> None:
 
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["version"] == "0.1.0"
+    assert isinstance(payload["version"], str)
+    assert payload["version"]
+    assert payload["version"] == app.version
     assert payload["metadata_db"] == "ok"
     assert isinstance(payload["uptime_seconds"], int)
     assert payload["uptime_seconds"] >= 0
+
+
+def test_get_app_version_prefers_unified_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_version(package_name: str) -> str:
+        if package_name == "agentlens":
+            return "1.0.0"
+        raise PackageNotFoundError(package_name)
+
+    monkeypatch.setattr(version_module, "version", fake_version)
+
+    assert get_app_version() == "1.0.0"
+
+
+def test_get_app_version_falls_back_to_legacy_backend_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_version(package_name: str) -> str:
+        if package_name == "AgentLens-backend":
+            return "0.9.0"
+        raise PackageNotFoundError(package_name)
+
+    monkeypatch.setattr(version_module, "version", fake_version)
+
+    assert get_app_version() == "0.9.0"
+
+
+def test_get_app_version_falls_back_to_current_app_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_version(package_name: str) -> str:
+        raise PackageNotFoundError(package_name)
+
+    monkeypatch.setattr(version_module, "version", fake_version)
+
+    assert get_app_version() == APP_VERSION
 
 
 def test_initialize_metadata_database_creates_expected_tables() -> None:

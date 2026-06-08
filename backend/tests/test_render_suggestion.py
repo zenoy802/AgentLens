@@ -449,3 +449,32 @@ def test_invalid_regex_rule_is_skipped_with_warning() -> None:
     assert warnings[0].detail is not None
     assert warnings[0].detail["rule_id"] == 1
     assert "invalid regex" in str(warnings[0].detail["reason"])
+
+
+def test_dangerous_regex_rule_is_skipped_with_warning() -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        session.add(
+            GlobalRenderRule(
+                match_pattern=r"(a+)+$",
+                match_type="regex",
+                render_config=json.dumps({"type": "markdown"}),
+                priority=100,
+                enabled=True,
+            )
+        )
+        session.commit()
+        warnings: list[WarningRead] = []
+
+        result = suggest(
+            [Column(name="content", sql_type="TEXT", inferred_type="text")],
+            session,
+            warnings=warnings,
+        )
+    finally:
+        session.close()
+
+    assert result["content"].type == "markdown"
+    assert [warning.code for warning in warnings] == ["RENDER_RULE_INVALID"]
+    assert warnings[0].detail == {"rule_id": 1, "reason": "dangerous regex pattern skipped"}

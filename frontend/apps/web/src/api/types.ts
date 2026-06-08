@@ -5,6 +5,14 @@ export type { components, operations, paths };
 type Schemas = components["schemas"];
 
 export type AdminInfoResponse = Schemas["AdminInfoResponse"];
+export type Annotation = Schemas["AnnotationOut"];
+export type AnnotationColor = Schemas["AnnotationColor"];
+export type AnnotationCreate = Schemas["AnnotationCreate"];
+export type AnnotationSeverity = Schemas["AnnotationSeverity"];
+export type AnnotationFilters =
+  operations["list_annotations_api_v1_queries__query_id__annotations_get"]["parameters"]["query"];
+export type AnnotationClearFilters =
+  operations["delete_annotations_api_v1_queries__query_id__annotations_delete"]["parameters"]["query"];
 export type CleanupReport = Schemas["CleanupReport"];
 export type CleanupRequest = Schemas["CleanupRequest"];
 export type Column = Schemas["ColumnRead"];
@@ -15,6 +23,7 @@ export type ConnectionTestResponse = Schemas["ConnectionTestResponse"];
 export type ConnectionUpdate = Schemas["ConnectionUpdate"];
 export type ExecuteRequest = Schemas["ExecuteRequest"];
 export type ExportRequest = Schemas["ExportRequest"];
+export type ExecutionFingerprints = Schemas["ExecutionFingerprints"];
 export type ExecutionInfo = Schemas["ExecutionInfo"];
 export type FieldRender =
   | Schemas["TextRender"]
@@ -52,6 +61,8 @@ export type RenderRuleCreate = Schemas["RenderRuleCreate"];
 export type RenderRuleRead = Schemas["RenderRuleRead"];
 export type RenderRuleUpdate = Schemas["RenderRuleUpdate"];
 export type SchedulerJobRead = Schemas["SchedulerJobRead"];
+export type SelectionSnapshot = Schemas["SelectionSnapshotOut"];
+export type SelectionSnapshotCreate = Schemas["SelectionSnapshotCreate"];
 export type Trajectory = Schemas["Trajectory"];
 export type TrajectoryAggregateRequest = Schemas["TrajectoryAggregateRequest"];
 export type TrajectoryAggregateResponse = Schemas["TrajectoryAggregateResponse"];
@@ -65,6 +76,7 @@ export type Warning = Schemas["WarningRead"];
 export type WarningRead = Schemas["WarningRead"];
 
 export type Row = Record<string, unknown>;
+export type QueryFingerprints = ExecutionFingerprints;
 export type RenderRuleConfig = FieldRender | TrajectoryConfigRule;
 export type ExecutionResult = Omit<Schemas["ExecutionResult"], "rows"> & {
   rows: Row[];
