@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { isValid, parseISO } from "date-fns";
 
 import { TextCell } from "@/features/row-view/cells/TextCell";
@@ -7,7 +8,7 @@ interface TimestampCellProps {
   format: string;
 }
 
-export function TimestampCell({ value, format }: TimestampCellProps) {
+function TimestampCellComponent({ value, format }: TimestampCellProps) {
   if (value == null) {
     return <span className="text-muted-foreground">NULL</span>;
   }
@@ -28,6 +29,11 @@ export function TimestampCell({ value, format }: TimestampCellProps) {
     return <TextCell value={value} />;
   }
 }
+
+export const TimestampCell = memo(
+  TimestampCellComponent,
+  (prev, next) => Object.is(prev.value, next.value) && prev.format === next.format,
+);
 
 function parseDate(value: unknown): Date | null {
   if (value instanceof Date) {

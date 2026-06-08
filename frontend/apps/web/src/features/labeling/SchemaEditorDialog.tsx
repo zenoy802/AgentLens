@@ -26,6 +26,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { formatApiError } from "@/lib/formatApiError";
 import { FieldEditorModal } from "@/features/labeling/FieldEditorModal";
+import { useQueryStore } from "@/stores/queryStore";
 
 type SchemaEditorDialogProps = {
   open: boolean;
@@ -43,6 +44,8 @@ export function SchemaEditorDialog({ open, queryId, onOpenChange }: SchemaEditor
   const [fields, setFields] = useState<LabelField[]>([]);
   const [savedFields, setSavedFields] = useState<LabelField[]>([]);
   const [fieldEditor, setFieldEditor] = useState<FieldEditorState | null>(null);
+  const markLabelSchemaDirty = useQueryStore((state) => state.markLabelSchemaDirty);
+  const markLabelSchemaClean = useQueryStore((state) => state.markLabelSchemaClean);
   const schemaReady =
     queryId !== null && schema.isSuccess && schema.data?.query_id === queryId;
 
@@ -55,6 +58,31 @@ export function SchemaEditorDialog({ open, queryId, onOpenChange }: SchemaEditor
     setFields(nextFields);
     setSavedFields(cloneFields(schema.data.fields));
   }, [open, schema.data]);
+
+  useEffect(() => {
+    if (!open) {
+      markLabelSchemaClean();
+      return;
+    }
+    if (!schemaReady) {
+      return;
+    }
+
+    if (fieldsEqual(fields, savedFields)) {
+      markLabelSchemaClean();
+      return;
+    }
+    markLabelSchemaDirty();
+  }, [
+    fields,
+    markLabelSchemaClean,
+    markLabelSchemaDirty,
+    open,
+    savedFields,
+    schemaReady,
+  ]);
+
+  useEffect(() => () => markLabelSchemaClean(), [markLabelSchemaClean]);
 
   function handleFieldSubmit(field: LabelField) {
     setFields((current) => {
@@ -107,6 +135,7 @@ export function SchemaEditorDialog({ open, queryId, onOpenChange }: SchemaEditor
       const nextFields = cloneFields(result.fields);
       setFields(nextFields);
       setSavedFields(cloneFields(result.fields));
+      markLabelSchemaClean();
       if (result.cascade_deleted_records > 0) {
         toast.success(`Schema 已保存。清理了 ${result.cascade_deleted_records} 条过时打标。`);
       } else {
@@ -270,6 +299,10 @@ function cloneFields(fields: LabelField[]): LabelField[] {
       options: getFieldOptions(field).map((option) => ({ ...option })),
     };
   });
+}
+
+function fieldsEqual(left: LabelField[], right: LabelField[]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function getTypeLabel(field: LabelField): string {

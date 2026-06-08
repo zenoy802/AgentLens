@@ -2,22 +2,23 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.models.annotation import Annotation
 from app.models.label import LabelRecord
-from app.models.llm import LLMAnalysis
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
+from app.models.selection_snapshot import SelectionSnapshot
 
 
 class CleanupReport(BaseModel):
     expired_queries_deleted: int
     history_records_deleted: int
     cascade_label_records_deleted: int
-    cascade_analyses_deleted: int
     dry_run: bool
 
 
@@ -49,15 +50,6 @@ class CleanupService:
                 LabelRecord.query_id.in_(expired_query_ids),
             ),
         )
-        analyses_count = self._count(
-            db,
-            select(func.count())
-            .select_from(LLMAnalysis)
-            .where(
-                LLMAnalysis.query_id.in_(expired_query_ids),
-            ),
-        )
-
         if not dry_run:
             db.execute(
                 delete(NamedQuery).where(
@@ -80,13 +72,50 @@ class CleanupService:
             db.execute(delete(QueryHistory).where(QueryHistory.executed_at < history_cutoff))
 
         db.commit()
-        return CleanupReport(
+        report = CleanupReport(
             expired_queries_deleted=expired_queries_count,
             history_records_deleted=history_records_count,
             cascade_label_records_deleted=label_records_count,
-            cascade_analyses_deleted=analyses_count,
             dry_run=dry_run,
         )
+        logger.info("Cleanup completed: {}", report.model_dump())
+        return report
+
+    def delete_expired_annotations(self, db: Session, dry_run: bool = False) -> int:
+        now = _utcnow()
+        expired_count = self._count(
+            db,
+            select(func.count())
+            .select_from(Annotation)
+            .where(
+                Annotation.expires_at.is_not(None),
+                Annotation.expires_at < now,
+            ),
+        )
+        if not dry_run:
+            db.execute(
+                delete(Annotation).where(
+                    Annotation.expires_at.is_not(None),
+                    Annotation.expires_at < now,
+                )
+            )
+        db.commit()
+        logger.info("Expired annotations cleanup completed: deleted={}", expired_count)
+        return expired_count
+
+    def delete_expired_selection_snapshots(self, db: Session, dry_run: bool = False) -> int:
+        now = _utcnow()
+        expired_count = self._count(
+            db,
+            select(func.count())
+            .select_from(SelectionSnapshot)
+            .where(SelectionSnapshot.expires_at < now),
+        )
+        if not dry_run:
+            db.execute(delete(SelectionSnapshot).where(SelectionSnapshot.expires_at < now))
+        db.commit()
+        logger.info("Expired selection snapshots cleanup completed: deleted={}", expired_count)
+        return expired_count
 
     @staticmethod
     def _count(db: Session, stmt: Select[tuple[int]]) -> int:

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentlens-client"
+version = "1.0.0"
+description = "Shared HTTP client for AgentLens CLI and MCP integrations."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+  "mypy",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentlens_client"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "C4",
+  "DTZ",
+  "E",
+  "F",
+  "I",
+  "N",
+  "PIE",
+  "PL",
+  "PTH",
+  "RUF",
+  "SIM",
+  "UP",
+  "W",
+]
+ignore = [
+  "ANN401",
+  "PLR0913",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

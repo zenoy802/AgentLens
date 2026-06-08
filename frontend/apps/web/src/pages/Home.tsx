@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, type ReactNode } from "react";
-import { CheckCircle2, Clock3, Database, ListChecks, Plus, Terminal } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Check, CheckCircle2, Clock3, Database, ListChecks, Plus, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "@/api/client";
@@ -14,6 +14,12 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  didCopyAgentPrompt,
+  hasSeenAnnotations,
+  isOnboardingDone,
+  markOnboardingDone,
+} from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
 async function fetchHealth(): Promise<HealthResponse> {
@@ -30,6 +36,9 @@ async function fetchHealth(): Promise<HealthResponse> {
 }
 
 export function Home() {
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [seenAnnotations, setSeenAnnotations] = useState(false);
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: fetchHealth,
@@ -65,6 +74,17 @@ export function Home() {
   const historyQueryStates = useQueryDetailsByIds(recentHistoryQueryIds);
   const topNamedQueries = (namedQueries.data?.items ?? []).slice(0, 10);
 
+  useEffect(() => {
+    setShowOnboarding(!isOnboardingDone());
+    setCopiedPrompt(didCopyAgentPrompt());
+    setSeenAnnotations(hasSeenAnnotations());
+  }, []);
+
+  function completeOnboarding() {
+    markOnboardingDone();
+    setShowOnboarding(false);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -94,6 +114,17 @@ export function Home() {
           to="/queries"
         />
       </div>
+
+      {showOnboarding ? (
+        <QuickStartCard
+          connectionsReady={(connections.data?.items.length ?? 0) > 0}
+          hasQueryHistory={recentHistory.length > 0}
+          hasNamedQuery={topNamedQueries.length > 0}
+          copiedPrompt={copiedPrompt}
+          seenAnnotations={seenAnnotations}
+          onDone={completeOnboarding}
+        />
+      ) : null}
 
       <div className="rounded-lg border bg-card p-5 text-card-foreground shadow-sm">
         {healthQuery.isLoading ? (
@@ -257,6 +288,69 @@ export function Home() {
         )}
       </section>
     </div>
+  );
+}
+
+function QuickStartCard({
+  connectionsReady,
+  hasQueryHistory,
+  hasNamedQuery,
+  copiedPrompt,
+  seenAnnotations,
+  onDone,
+}: {
+  connectionsReady: boolean;
+  hasQueryHistory: boolean;
+  hasNamedQuery: boolean;
+  copiedPrompt: boolean;
+  seenAnnotations: boolean;
+  onDone: () => void;
+}) {
+  const steps = [
+    { label: "创建数据库连接", done: connectionsReady },
+    { label: "写第一条 SELECT SQL", done: hasQueryHistory },
+    { label: "配置字段渲染", done: hasQueryHistory },
+    { label: "保存命名查询", done: hasNamedQuery },
+    { label: "可选：选择几行并点击 Copy Agent Prompt", done: copiedPrompt },
+    { label: "查看 agent 写回的 annotations", done: seenAnnotations },
+  ];
+  const allStepsDone = steps.every((step) => step.done);
+
+  useEffect(() => {
+    if (!allStepsDone) {
+      return;
+    }
+    onDone();
+  }, [allStepsDone, onDone]);
+
+  return (
+    <section className="rounded-lg border bg-card p-5 shadow-sm">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">快速开始</h2>
+          <ol className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+            {steps.map((step, index) => (
+              <li key={step.label} className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold",
+                    step.done
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                      : "bg-background text-muted-foreground",
+                  )}
+                >
+                  {step.done ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
+                </span>
+                <span>{step.label}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <Button variant="outline" size="sm" onClick={onDone}>
+          {allStepsDone ? "已完成" : "完成"}
+        </Button>
+      </div>
+    </section>
   );
 }
 

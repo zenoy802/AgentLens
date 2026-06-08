@@ -245,10 +245,6 @@ export function Queries() {
                           <span className="whitespace-nowrap">
                             {query.label_record_count ?? 0} 打标
                           </span>
-                          <span className="mx-1">/</span>
-                          <span className="whitespace-nowrap">
-                            {query.llm_analysis_count ?? 0} 分析
-                          </span>
                         </td>
                         <td className="px-4 py-3 align-top">
                           <div className="flex justify-end">

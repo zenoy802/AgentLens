@@ -29,6 +29,7 @@ class ViewConfigService:
     def get(self, db: Session, query_id: int) -> ViewConfigRead:
         query = self._get_query_or_raise(db, query_id)
         view_config = self._get_or_create_view_config(db, query)
+        logger.info("View config read: query_id={}", query_id)
 
         return ViewConfigRead(
             query_id=query_id,
@@ -71,6 +72,7 @@ class ViewConfigService:
 
         db.commit()
         db.refresh(view_config)
+        logger.info("View config saved: query_id={}", query_id)
         return self.get(db, query_id)
 
     @staticmethod
@@ -79,7 +81,7 @@ class ViewConfigService:
         if query is None:
             raise NotFoundError(
                 "query not found",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query
@@ -95,6 +97,7 @@ class ViewConfigService:
         db.add(view_config)
         db.commit()
         db.refresh(view_config)
+        logger.info("View config created: query_id={}", query.id)
         return view_config
 
     @staticmethod

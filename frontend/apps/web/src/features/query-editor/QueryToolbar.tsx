@@ -15,6 +15,7 @@ type QueryToolbarProps = {
   runDisabled?: boolean;
   labelingDisabled?: boolean;
   resultTabs?: ReactNode;
+  agentPromptAction?: ReactNode;
   onConnectionChange: (id: number | null) => void;
   onRun: () => void;
   onSaveAs: () => void;
@@ -32,6 +33,7 @@ export function QueryToolbar({
   runDisabled: runBlocked = false,
   labelingDisabled = false,
   resultTabs,
+  agentPromptAction,
   onConnectionChange,
   onRun,
   onSaveAs,
@@ -72,6 +74,7 @@ export function QueryToolbar({
           <Tags className="h-4 w-4" aria-hidden="true" />
           打标
         </Button>
+        {agentPromptAction}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">

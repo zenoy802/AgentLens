@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 from starlette import status
 
+from app.api.execute import _safe_fingerprint
 from app.core.sql_guard import validate_sql
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
@@ -16,11 +17,13 @@ from app.models.label import LabelSchema
 from app.models.misc import GlobalRenderRule, QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
+from app.services.fingerprint_service import compute_sql_fingerprint
 from app.services.query_executor import Column, ExecutorResult, ExecutorService
 from app.services.row_identity_service import compute
 
 HTTP_OK = status.HTTP_200_OK
 HTTP_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
+MAX_ANNOTATION_FINGERPRINT_LENGTH = 80
 
 
 def _is_utc_iso(value: str) -> bool:
@@ -43,6 +46,20 @@ def _create_connection(session: Session) -> int:
     return connection.id
 
 
+def test_fingerprint_fallback_fits_annotation_validation_limit() -> None:
+    def broken_compute(_: dict[str, str]) -> str:
+        raise RuntimeError("fingerprint boom")
+
+    fingerprint = _safe_fingerprint(
+        kind="schema",
+        compute_fn=broken_compute,
+        payload={"column": "value"},
+    )
+
+    assert fingerprint.startswith("sha256:")
+    assert len(fingerprint) <= MAX_ANNOTATION_FINGERPRINT_LENGTH
+
+
 def _patch_executor(
     monkeypatch: pytest.MonkeyPatch,
     result: ExecutorResult,
@@ -54,11 +71,15 @@ def _patch_executor(
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         assert isinstance(self, ExecutorService)
         assert connection.id > 0
         assert timeout > 0
         assert row_limit > 0
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         validate_sql(sql)
         return result
 
@@ -96,6 +117,9 @@ async def test_execute_creates_temporary_query(monkeypatch: pytest.MonkeyPatch) 
     assert payload["is_temporary"] is True
     assert payload["query_id"] > 0
     assert _is_utc_iso(payload["execution"]["executed_at"])
+    assert payload["fingerprints"]["sql"] == compute_sql_fingerprint("SELECT 1 AS a")
+    assert payload["fingerprints"]["schema"].startswith("sha256:")
+    assert payload["fingerprints"]["result"].startswith("sha256:")
     assert payload["rows"][0]["a"] == 1
     assert "_row_identity" in payload["rows"][0]
 
@@ -487,7 +511,7 @@ async def test_execute_forbidden_sql(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert response.status_code == HTTP_BAD_REQUEST
-    assert response.json()["error"]["code"] == "SQL_FORBIDDEN_STATEMENT"
+    assert response.json()["error"]["code"] == "SQL_NOT_ALLOWED"
 
     session = get_session_factory()()
     try:

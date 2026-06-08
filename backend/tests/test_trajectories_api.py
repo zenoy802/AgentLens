@@ -93,11 +93,15 @@ def _patch_executor(
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         assert isinstance(self, ExecutorService)
         assert connection.id > 0
         assert timeout == expected_timeout
         assert row_limit == expected_row_limit
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         validate_sql(sql)
         return result
 

@@ -38,8 +38,12 @@ class FakeExecutorService(ExecutorService):
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         assert connection.id > 0
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         self.calls.append((sql, timeout, row_limit))
         return self.result
 
@@ -203,12 +207,16 @@ async def test_export_api_returns_stream_with_encoded_filename(
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         assert isinstance(self, ExecutorService)
         assert connection.id > 0
         assert sql == "SELECT * FROM trajectory_rows"
         assert timeout == DEFAULT_TIMEOUT
         assert row_limit == DEFAULT_ROW_LIMIT
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         return result
 
     monkeypatch.setattr(ExecutorService, "execute", fake_execute)

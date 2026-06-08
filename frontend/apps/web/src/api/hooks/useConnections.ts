@@ -7,6 +7,7 @@ import type {
   ConnectionRead,
   ConnectionUpdate,
 } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 
 export type { ConnectionCreate, ConnectionListResponse, ConnectionRead, ConnectionUpdate };
 
@@ -22,6 +23,7 @@ export function useConnections() {
   return useQuery({
     queryKey: connectionKeys.list(),
     queryFn: fetchAllConnections,
+    staleTime: 60_000,
   });
 }
 
@@ -77,12 +79,14 @@ export function useConnection(id: number) {
       }
       return data;
     },
+    staleTime: 60_000,
   });
 }
 
 export function useCreateConnection() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (payload: ConnectionCreate) => {
       const { data, error, response } = await apiClient.POST("/connections", { body: payload });
       if (error !== undefined) {
@@ -102,6 +106,7 @@ export function useCreateConnection() {
 export function useUpdateConnection() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async ({ id, payload }: { id: number; payload: ConnectionUpdate }) => {
       const { data, error, response } = await apiClient.PATCH("/connections/{connection_id}", {
         params: { path: { connection_id: id } },
@@ -127,6 +132,7 @@ export function useUpdateConnection() {
 export function useDeleteConnection() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (id: number) => {
       const { error, response } = await apiClient.DELETE("/connections/{connection_id}", {
         params: { path: { connection_id: id } },
@@ -147,6 +153,7 @@ export function useDeleteConnection() {
 export function useTestConnection() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (id: number) => {
       const { data, error, response } = await apiClient.POST("/connections/{connection_id}/test", {
         params: { path: { connection_id: id } },

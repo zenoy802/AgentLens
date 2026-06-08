@@ -3,16 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiClient } from "@/api/client";
+import { labelSchemaKey } from "@/api/hooks/useLabelSchema";
 import type {
   LabelBatchResult,
   LabelRecordRead,
   LabelsByRowResponse,
 } from "@/api/types";
-import { formatApiError } from "@/lib/formatApiError";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
+import { formatApiError, getApiError } from "@/lib/formatApiError";
 import { useLabelsStore } from "@/stores/labelsStore";
 
 const MAX_LABEL_ROWS_PER_REQUEST = 1000;
-const ROW_IDENTITY_KEY_SEPARATOR = "\u001f";
+const PARALLEL_LABEL_FETCH_THRESHOLD = 1000;
 const CELL_MUTATION_KEY_SEPARATOR = "\u001e";
 const labelMutationQueues = new Map<string, Promise<void>>();
 
@@ -63,8 +65,9 @@ export function useLabels(
     () => Array.from(new Set(rowIdentities.filter((item) => item.length > 0))).sort(),
     [rowIdentities],
   );
-  const normalizedRowIdentitiesKey = normalizedRowIdentities.join(
-    ROW_IDENTITY_KEY_SEPARATOR,
+  const rowIdentitiesCacheKey = useMemo(
+    () => getRowIdentitiesCacheKey(normalizedRowIdentities),
+    [normalizedRowIdentities],
   );
   const enabled = queryId !== null && normalizedRowIdentities.length > 0;
 
@@ -72,39 +75,19 @@ export function useLabels(
     queryKey:
       queryId === null
         ? labelsKeys.rows(0, "null", resultKey)
-        : labelsKeys.rows(queryId, normalizedRowIdentitiesKey, resultKey),
+        : labelsKeys.rows(queryId, rowIdentitiesCacheKey, resultKey),
     enabled,
-    gcTime: 0,
-    staleTime: 15_000,
+    staleTime: 10_000,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<LabelsByRowResponse> => {
-      const chunks = chunkRowIdentities(normalizedRowIdentities);
-      const responses = await Promise.all(
-        chunks.map(async (chunk) => {
-          const { data, error, response } = await apiClient.POST(
-            "/queries/{query_id}/labels/query",
-            {
-              params: { path: { query_id: queryId! } },
-              body: { row_identities: chunk },
-            },
-          );
-
-          if (error !== undefined) {
-            throw { data, error, response };
-          }
-          if (!response.ok || data === undefined) {
-            throw new Error(`Failed to load labels with status ${response.status}`);
-          }
-
-          return data;
-        }),
-      );
+      const chunks =
+        normalizedRowIdentities.length > PARALLEL_LABEL_FETCH_THRESHOLD
+          ? chunkRowIdentities(normalizedRowIdentities)
+          : [normalizedRowIdentities];
+      const responses = await Promise.all(chunks.map((chunk) => fetchLabelsChunk(queryId!, chunk)));
 
       return {
-        labels_by_row: responses.reduce<LabelsByRow>(
-          (merged, item) => ({ ...merged, ...item.labels_by_row }),
-          {},
-        ),
+        labels_by_row: mergeLabelResponses(responses),
       };
     },
   });
@@ -132,6 +115,7 @@ export function useUpsertLabel(queryId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (args: UpsertLabelMutationArgs): Promise<LabelRecordRead | null> => {
       if (!activeLabelContextMatches(queryId, args.resultKey)) {
         return null;
@@ -186,6 +170,11 @@ export function useUpsertLabel(queryId: number) {
     onError: (error, _args, snapshot) => {
       if (snapshot !== undefined) {
         restoreLabelSnapshot(snapshot);
+      }
+      if (isLabelFieldNotFound(error)) {
+        toast.error("LABEL_FIELD_NOT_FOUND: 打标字段已变更，已重新拉取 schema");
+        void queryClient.invalidateQueries({ queryKey: labelSchemaKey(queryId) });
+        return;
       }
       toast.error(formatApiError(error));
     },
@@ -272,6 +261,7 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (args: BatchUpsertLabelArgs): Promise<LabelBatchResult> => {
       if (!activeLabelContextMatches(queryId, resultKey)) {
         return {
@@ -308,15 +298,19 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
         getLabelSnapshot(queryId, resultKey, rowIdentity, args.fieldKey),
       );
       const labelsStore = useLabelsStore.getState();
-      for (const rowIdentity of args.rowIdentities) {
-        labelsStore.markPendingLabelForQuery(
-          queryId,
-          resultKey,
-          rowIdentity,
-          args.fieldKey,
-        );
-        applyOptimisticLabel(queryId, resultKey, rowIdentity, args.fieldKey, args.value);
-      }
+      labelsStore.markPendingLabelsForQuery(
+        queryId,
+        resultKey,
+        args.rowIdentities,
+        args.fieldKey,
+      );
+      labelsStore.patchLabelsForQuery(
+        queryId,
+        resultKey,
+        args.rowIdentities,
+        args.fieldKey,
+        args.value,
+      );
       return snapshots;
     },
     onError: (error, _args, snapshots) => {
@@ -336,15 +330,22 @@ export function useBatchUpsertLabels(queryId: number, resultKey: string | null) 
           );
         }
         toast.warning(`${errors.length} 行失败`);
+        if (errors.some((error) => error.code === "LABEL_FIELD_NOT_FOUND")) {
+          toast.error("LABEL_FIELD_NOT_FOUND: 打标字段已变更，已重新拉取 schema");
+          void queryClient.invalidateQueries({ queryKey: labelSchemaKey(queryId) });
+        }
       }
     },
     onSettled: async (_data, _error, args, snapshots) => {
       const settledResultKey = snapshots?.[0]?.resultKey ?? resultKey;
-      for (const rowIdentity of args.rowIdentities) {
-        useLabelsStore
-          .getState()
-          .clearPendingLabelForQuery(queryId, settledResultKey, rowIdentity, args.fieldKey);
-      }
+      useLabelsStore
+        .getState()
+        .clearPendingLabelsForQuery(
+          queryId,
+          settledResultKey,
+          args.rowIdentities,
+          args.fieldKey,
+        );
       if (activeLabelContextMatches(queryId, settledResultKey)) {
         await queryClient.invalidateQueries({ queryKey: labelsKeys.query(queryId) });
       }
@@ -358,6 +359,57 @@ function chunkRowIdentities(rowIdentities: string[]): string[][] {
     chunks.push(rowIdentities.slice(index, index + MAX_LABEL_ROWS_PER_REQUEST));
   }
   return chunks;
+}
+
+async function fetchLabelsChunk(
+  queryId: number,
+  rowIdentities: string[],
+): Promise<LabelsByRowResponse> {
+  const { data, error, response } = await apiClient.POST(
+    "/queries/{query_id}/labels/query",
+    {
+      params: { path: { query_id: queryId } },
+      body: { row_identities: rowIdentities },
+    },
+  );
+
+  if (error !== undefined) {
+    throw { data, error, response };
+  }
+  if (!response.ok || data === undefined) {
+    throw new Error(`Failed to load labels with status ${response.status}`);
+  }
+
+  return data;
+}
+
+function mergeLabelResponses(responses: LabelsByRowResponse[]): LabelsByRow {
+  const merged: LabelsByRow = {};
+  for (const item of responses) {
+    Object.assign(merged, item.labels_by_row);
+  }
+  return merged;
+}
+
+function getRowIdentitiesCacheKey(rowIdentities: string[]): string {
+  if (rowIdentities.length === 0) {
+    return "0";
+  }
+
+  let hash = 2166136261;
+  for (const rowIdentity of rowIdentities) {
+    for (let index = 0; index < rowIdentity.length; index += 1) {
+      hash ^= rowIdentity.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+
+  return [
+    rowIdentities.length,
+    rowIdentities[0],
+    rowIdentities[rowIdentities.length - 1],
+    (hash >>> 0).toString(36),
+  ].join(":");
 }
 
 function getLabelSnapshot(
@@ -435,4 +487,8 @@ function restoreActiveQueryLabelSnapshots(snapshots: LabelSnapshot[]) {
 function activeLabelContextMatches(queryId: number, resultKey: string | null): boolean {
   const state = useLabelsStore.getState();
   return state.activeQueryId === queryId && state.activeResultKey === resultKey;
+}
+
+function isLabelFieldNotFound(error: unknown): boolean {
+  return getApiError(error)?.error.code === "LABEL_FIELD_NOT_FOUND";
 }
