@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from fastapi import status
 from loguru import logger
@@ -164,7 +165,7 @@ class AnnotationService:
         if _has_text(filters.annotation_set):
             stmt = stmt.where(Annotation.annotation_set == filters.annotation_set)
 
-        result: CursorResult[tuple[()]] = self.session.execute(stmt)
+        result = cast(CursorResult[tuple[()]], self.session.execute(stmt))
         self.session.commit()
         deleted = int(result.rowcount or 0)
         logger.info("Annotations deleted by filter: query_id={} count={}", query_id, deleted)
