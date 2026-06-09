@@ -260,6 +260,8 @@ def test_server_command_reports_unified_package_requirement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sys.modules.pop("agentlens_cli.commands.server", None)
+    sys.modules.pop("app.server_runtime", None)
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "backend"))
     real_import = builtins.__import__
 
     def blocked_import(name: str, *args: Any, **kwargs: Any) -> Any:
