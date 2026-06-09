@@ -6,6 +6,7 @@ import type {
   TrajectoryAggregateResponse,
   TrajectoryConfig,
 } from "@/api/types";
+import { locallyHandledMutationMeta } from "@/api/mutationMeta";
 import { formatApiError } from "@/lib/formatApiError";
 
 export interface UseTrajectoriesOptions {
@@ -17,6 +18,7 @@ export interface UseTrajectoriesOptions {
 
 export function useTrajectories(queryId: number, options?: UseTrajectoriesOptions) {
   return useMutation({
+    meta: locallyHandledMutationMeta,
     mutationFn: async (
       override?: UseTrajectoriesOptions,
     ): Promise<TrajectoryAggregateResponse> => {

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from loguru import logger
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import AppError, ConflictError, NotFoundError
+from app.core.logging import safe_exception_context, sanitize_log_message
 from app.models.connection import Connection
-from app.models.label import LabelSchema
+from app.models.label import LabelRecord, LabelSchema
 from app.models.misc import QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
@@ -23,8 +28,10 @@ from app.schemas.query import (
     NamedQueryUpdate,
 )
 from app.schemas.render import FieldRender
+from app.schemas.view_config import TrajectoryConfig
+from app.services.fingerprint_service import compute_sql_fingerprint
 from app.services.query_executor import ExecutorResult, ExecutorService
-from app.services.render_suggestion_service import suggest
+from app.services.render_suggestion_service import suggest, suggest_trajectory_config
 from app.services.row_identity_service import compute
 
 _TEMPORARY_QUERY_TTL_DAYS = 7
@@ -35,6 +42,7 @@ _NAMED_QUERY_TTL_DAYS = 90
 class ExecutionOutcome:
     execution_result: ExecutorResult
     suggested_field_renders: dict[str, FieldRender]
+    suggested_trajectory_config: TrajectoryConfig | None
     row_identities: list[str]
     executed_at: datetime
     warnings: list[WarningRead]
@@ -59,6 +67,11 @@ class QueryService:
         self.session.add(query)
         self.session.commit()
         self.session.refresh(query)
+        logger.info(
+            "Temporary query created: query_id={} connection_id={}",
+            query.id,
+            connection_id,
+        )
         return query
 
     def create_named_query(self, payload: NamedQueryCreate) -> NamedQuery:
@@ -76,6 +89,12 @@ class QueryService:
         self.session.add(query)
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info(
+            "Named query created: query_id={} connection_id={} name={}",
+            query.id,
+            payload.connection_id,
+            payload.name,
+        )
         return query
 
     def execute_and_record(
@@ -90,6 +109,13 @@ class QueryService:
         query_id = query.id
         connection_id = query.connection_id
         sql_text = query.sql_text
+        sql_fingerprint = _safe_sql_fingerprint(sql_text)
+        _log_debug_sql_snippet(
+            query_id=query_id,
+            connection_id=connection_id,
+            sql_text=sql_text,
+            sql_fingerprint=sql_fingerprint,
+        )
 
         try:
             execution_result = self._executor_service.execute(
@@ -97,6 +123,8 @@ class QueryService:
                 sql_text,
                 timeout=timeout,
                 row_limit=row_limit,
+                query_id=query_id,
+                sql_fingerprint=sql_fingerprint,
             )
             warnings: list[WarningRead] = []
             self._append_row_identity_config_warnings(
@@ -104,11 +132,14 @@ class QueryService:
                 execution_result,
                 warnings,
             )
-            row_identities = [
-                compute(row, view_config.row_identity_column) for row in execution_result.rows
-            ]
+            row_identities = self._compute_row_identities(view_config, execution_result.rows)
             self._append_duplicate_row_identity_warning(row_identities, warnings)
             suggested_field_renders = suggest(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
+            suggested_trajectory_config = suggest_trajectory_config(
                 execution_result.columns,
                 self.session,
                 warnings=warnings,
@@ -123,6 +154,14 @@ class QueryService:
                 error_message=_error_message(exc),
             )
             self.session.commit()
+            logger.warning(
+                "Query execution failed: query_id={} connection_id={} sql_fingerprint={} "
+                "context={}",
+                query_id,
+                connection_id,
+                sql_fingerprint,
+                safe_exception_context(exc),
+            )
             raise
 
         executed_at = _utcnow()
@@ -138,9 +177,28 @@ class QueryService:
         )
         self.session.commit()
         self.session.refresh(query)
+        if len(execution_result.rows) == 0:
+            logger.warning("Query returned zero rows: query_id={}", query.id)
+        if execution_result.truncated:
+            logger.warning(
+                "Query row_limit truncated: query_id={} row_count={}",
+                query.id,
+                len(execution_result.rows),
+            )
+        logger.info(
+            "Query executed: query_id={} connection_id={} sql_fingerprint={} row_count={} "
+            "duration_ms={} truncated={}",
+            query.id,
+            query.connection_id,
+            sql_fingerprint,
+            len(execution_result.rows),
+            execution_result.duration_ms,
+            execution_result.truncated,
+        )
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
+            suggested_trajectory_config=suggested_trajectory_config,
             row_identities=row_identities,
             executed_at=executed_at,
             warnings=warnings,
@@ -155,6 +213,13 @@ class QueryService:
     ) -> ExecutionOutcome:
         connection = self._get_connection_or_raise(query.connection_id)
         view_config = self._get_or_create_view_config(query)
+        sql_fingerprint = _safe_sql_fingerprint(query.sql_text)
+        _log_debug_sql_snippet(
+            query_id=query.id,
+            connection_id=query.connection_id,
+            sql_text=query.sql_text,
+            sql_fingerprint=sql_fingerprint,
+        )
 
         try:
             execution_result = self._executor_service.execute(
@@ -162,6 +227,8 @@ class QueryService:
                 query.sql_text,
                 timeout=timeout,
                 row_limit=row_limit,
+                query_id=query.id,
+                sql_fingerprint=sql_fingerprint,
             )
             warnings: list[WarningRead] = []
             self._append_row_identity_config_warnings(
@@ -169,22 +236,43 @@ class QueryService:
                 execution_result,
                 warnings,
             )
-            row_identities = [
-                compute(row, view_config.row_identity_column) for row in execution_result.rows
-            ]
+            row_identities = self._compute_row_identities(view_config, execution_result.rows)
             self._append_duplicate_row_identity_warning(row_identities, warnings)
             suggested_field_renders = suggest(
                 execution_result.columns,
                 self.session,
                 warnings=warnings,
             )
-        except Exception:
+            suggested_trajectory_config = suggest_trajectory_config(
+                execution_result.columns,
+                self.session,
+                warnings=warnings,
+            )
+        except Exception as exc:
             self.session.rollback()
+            logger.warning(
+                "Readonly query execution failed: query_id={} connection_id={} "
+                "sql_fingerprint={} context={}",
+                query.id,
+                query.connection_id,
+                sql_fingerprint,
+                safe_exception_context(exc),
+            )
             raise
 
+        logger.info(
+            "Readonly query executed: query_id={} connection_id={} sql_fingerprint={} "
+            "row_count={} duration_ms={}",
+            query.id,
+            query.connection_id,
+            sql_fingerprint,
+            len(execution_result.rows),
+            execution_result.duration_ms,
+        )
         return ExecutionOutcome(
             execution_result=execution_result,
             suggested_field_renders=suggested_field_renders,
+            suggested_trajectory_config=suggested_trajectory_config,
             row_identities=row_identities,
             executed_at=_utcnow(),
             warnings=warnings,
@@ -194,7 +282,7 @@ class QueryService:
         query = self.session.get(NamedQuery, query_id)
         if query is None:
             raise NotFoundError(
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 message="Named query not found.",
                 detail={"query_id": query_id},
             )
@@ -207,6 +295,7 @@ class QueryService:
         is_named: bool | None = None,
         search: str | None = None,
         include_expired: bool = False,
+        order_by: str = "created_at",
         page: int,
         page_size: int,
     ) -> NamedQueryListResponse:
@@ -234,22 +323,90 @@ class QueryService:
         total_records = self.session.scalar(count_stmt) or 0
         total_pages = max((total_records + page_size - 1) // page_size, 1)
 
-        stmt: Select[tuple[NamedQuery]] = (
-            select(NamedQuery)
-            .where(*filters)
-            .order_by(NamedQuery.created_at.desc(), NamedQuery.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+        label_counts = (
+            select(
+                LabelRecord.query_id.label("query_id"),
+                func.count(LabelRecord.id).label("label_record_count"),
+            )
+            .group_by(LabelRecord.query_id)
+            .subquery()
         )
-        queries = self.session.scalars(stmt).all()
+        label_record_count = func.coalesce(label_counts.c.label_record_count, 0)
+
+        stmt: Select[tuple[NamedQuery, str, int]] = (
+            select(
+                NamedQuery,
+                Connection.name,
+                label_record_count,
+            )
+            .join(Connection, NamedQuery.connection_id == Connection.id)
+            .outerjoin(label_counts, label_counts.c.query_id == NamedQuery.id)
+            .where(*filters)
+        )
+        if order_by == "last_executed_at":
+            stmt = stmt.order_by(NamedQuery.last_executed_at.desc(), NamedQuery.id.desc())
+        else:
+            stmt = stmt.order_by(NamedQuery.created_at.desc(), NamedQuery.id.desc())
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        rows = self.session.execute(stmt).all()
+        logger.info(
+            "Queries listed: page={} page_size={} total={} connection_id={} is_named={}",
+            page,
+            page_size,
+            total_records,
+            connection_id,
+            is_named,
+        )
         return NamedQueryListResponse(
-            items=[NamedQueryRead.model_validate(query) for query in queries],
+            items=[
+                self.build_read(
+                    query,
+                    connection_name=connection_name,
+                    label_record_count=int(label_count),
+                )
+                for query, connection_name, label_count in rows
+            ],
             pagination=Pagination(
                 page=page,
                 page_size=page_size,
                 total=total_records,
                 total_pages=total_pages,
             ),
+        )
+
+    def build_read(
+        self,
+        query: NamedQuery,
+        *,
+        connection_name: str | None = None,
+        label_record_count: int | None = None,
+    ) -> NamedQueryRead:
+        resolved_connection_name = connection_name
+        if resolved_connection_name is None:
+            resolved_connection_name = self._get_connection_or_raise(query.connection_id).name
+
+        resolved_label_record_count = label_record_count
+        if resolved_label_record_count is None:
+            resolved_label_record_count = (
+                self.session.scalar(
+                    select(func.count(LabelRecord.id)).where(LabelRecord.query_id == query.id)
+                )
+                or 0
+            )
+
+        return NamedQueryRead(
+            id=query.id,
+            connection_id=query.connection_id,
+            connection_name=resolved_connection_name,
+            name=query.name,
+            description=query.description,
+            sql_text=query.sql_text,
+            is_named=query.is_named,
+            created_at=query.created_at,
+            updated_at=query.updated_at,
+            last_executed_at=query.last_executed_at,
+            expires_at=query.expires_at,
+            label_record_count=resolved_label_record_count,
         )
 
     def update(self, query_id: int, payload: NamedQueryUpdate) -> NamedQuery:
@@ -270,12 +427,14 @@ class QueryService:
 
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info("Query updated: query_id={}", query_id)
         return query
 
     def delete(self, query_id: int) -> None:
         query = self.get(query_id)
         self.session.delete(query)
         self.session.commit()
+        logger.info("Query deleted: query_id={}", query_id)
 
     def promote(self, query_id: int, payload: NamedQueryPromote) -> NamedQuery:
         query = self.get(query_id)
@@ -302,6 +461,7 @@ class QueryService:
         query.expires_at = self._resolve_promoted_expiration(payload)
         self._commit_or_raise_name_conflict()
         self.session.refresh(query)
+        logger.info("Query promoted: query_id={} name={}", query_id, payload.name)
         return query
 
     def _get_connection_or_raise(self, connection_id: int) -> Connection:
@@ -323,6 +483,26 @@ class QueryService:
         self.session.add(view_config)
         self.session.flush()
         return view_config
+
+    @staticmethod
+    def _compute_row_identities(
+        view_config: ViewConfig,
+        rows: list[dict[str, Any]],
+    ) -> list[str]:
+        identities: list[str] = []
+        for index, row in enumerate(rows):
+            try:
+                identities.append(compute(row, view_config.row_identity_column))
+            except Exception as exc:
+                logger.warning(
+                    "Row identity generation failed; using normalized row JSON hash: "
+                    "query_id={} row_index={} error={}",
+                    view_config.query_id,
+                    index,
+                    exc,
+                )
+                identities.append(_fallback_row_identity(row))
+        return identities
 
     def _record_query_history(
         self,
@@ -361,6 +541,11 @@ class QueryService:
 
         column_names = {column.name for column in execution_result.columns}
         if identity_column not in column_names:
+            logger.warning(
+                "Configured row identity column missing: query_id={} column={}",
+                view_config.query_id,
+                identity_column,
+            )
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_COLUMN_MISSING",
@@ -374,6 +559,11 @@ class QueryService:
             return
 
         if any(row.get(identity_column) is None for row in execution_result.rows):
+            logger.warning(
+                "Configured row identity column contains null: query_id={} column={}",
+                view_config.query_id,
+                identity_column,
+            )
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_COLUMN_NULL",
@@ -397,6 +587,7 @@ class QueryService:
                 duplicates.add(row_identity)
             seen.add(row_identity)
         if duplicates:
+            logger.warning("Duplicate row identities detected: count={}", len(duplicates))
             warnings.append(
                 WarningRead(
                     code="ROW_IDENTITY_DUPLICATE",
@@ -464,6 +655,44 @@ def _error_message(exc: Exception) -> str:
     if isinstance(exc, AppError):
         return exc.message
     return str(exc)
+
+
+def _fallback_row_identity(row: dict[str, Any]) -> str:
+    try:
+        return compute(row, None)
+    except Exception as exc:
+        logger.warning(
+            "Normalized row identity fallback failed; using repr hash: error={}",
+            exc,
+        )
+        return hashlib.sha1(repr(row).encode("utf-8")).hexdigest()
+
+
+def _safe_sql_fingerprint(sql_text: str) -> str:
+    try:
+        return compute_sql_fingerprint(sql_text)
+    except Exception as exc:
+        logger.warning("SQL fingerprint calculation failed: error={}", exc)
+        return "unavailable"
+
+
+def _log_debug_sql_snippet(
+    *,
+    query_id: int,
+    connection_id: int,
+    sql_text: str,
+    sql_fingerprint: str,
+) -> None:
+    if not get_settings().debug:
+        return
+    truncated_sql = sanitize_log_message(sql_text[:500])
+    logger.debug(
+        "SQL debug snippet: query_id={} connection_id={} sql_fingerprint={} sql={}",
+        query_id,
+        connection_id,
+        sql_fingerprint,
+        truncated_sql,
+    )
 
 
 def _is_named_query_name_conflict(exc: IntegrityError) -> bool:

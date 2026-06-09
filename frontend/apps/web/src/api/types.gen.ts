@@ -38,6 +38,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Annotations */
+        get: operations["list_annotations_api_v1_queries__query_id__annotations_get"];
+        put?: never;
+        /** Create Annotation */
+        post: operations["create_annotation_api_v1_queries__query_id__annotations_post"];
+        /** Delete Annotations */
+        delete: operations["delete_annotations_api_v1_queries__query_id__annotations_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/annotations/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Annotations Batch */
+        post: operations["create_annotations_batch_api_v1_queries__query_id__annotations_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/annotations/{annotation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Annotation */
+        delete: operations["delete_annotation_api_v1_queries__query_id__annotations__annotation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connections": {
         parameters: {
             query?: never;
@@ -109,6 +162,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/{query_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Query */
+        post: operations["export_query_api_v1_queries__query_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -119,6 +189,93 @@ export interface paths {
         /** Health Check */
         get: operations["health_check_api_v1_health_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Labels */
+        get: operations["get_labels_api_v1_queries__query_id__labels_get"];
+        put?: never;
+        /** Upsert Label */
+        post: operations["upsert_label_api_v1_queries__query_id__labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Labels */
+        post: operations["query_labels_api_v1_queries__query_id__labels_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Upsert Labels */
+        post: operations["batch_upsert_labels_api_v1_queries__query_id__labels_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/labels/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Label */
+        delete: operations["delete_label_api_v1_queries__query_id__labels__record_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queries/{query_id}/label-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Label Schema */
+        get: operations["get_label_schema_api_v1_queries__query_id__label_schema_get"];
+        /** Put Label Schema */
+        put: operations["put_label_schema_api_v1_queries__query_id__label_schema_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -214,6 +371,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/render-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Render Rules */
+        get: operations["list_render_rules_api_v1_render_rules_get"];
+        put?: never;
+        /** Create Render Rule */
+        post: operations["create_render_rule_api_v1_render_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/render-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Render Rule */
+        get: operations["get_render_rule_api_v1_render_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Render Rule */
+        delete: operations["delete_render_rule_api_v1_render_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Render Rule */
+        patch: operations["update_render_rule_api_v1_render_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/queries/{query_id}/selection-snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Selection Snapshot */
+        post: operations["create_selection_snapshot_api_v1_queries__query_id__selection_snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selections/{selection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Selection Snapshot */
+        get: operations["get_selection_snapshot_api_v1_selections__selection_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Selection Snapshot */
+        delete: operations["delete_selection_snapshot_api_v1_selections__selection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/trajectories": {
         parameters: {
             query?: never;
@@ -270,6 +499,83 @@ export interface components {
             /** Named Queries Count */
             named_queries_count: number;
         };
+        /** AnnotationBatchCreate */
+        AnnotationBatchCreate: {
+            /** Annotations */
+            annotations: components["schemas"]["AnnotationCreate"][];
+        };
+        /**
+         * AnnotationColor
+         * @enum {string}
+         */
+        AnnotationColor: "red" | "yellow" | "green" | "blue" | "gray";
+        /** AnnotationCreate */
+        AnnotationCreate: {
+            /** Row Identity */
+            row_identity: string;
+            /** Column Key */
+            column_key?: string | null;
+            /** Author */
+            author: string;
+            color: components["schemas"]["AnnotationColor"];
+            /** Title */
+            title?: string | null;
+            /** Text */
+            text?: string | null;
+            severity?: components["schemas"]["AnnotationSeverity"] | null;
+            /** Annotation Set */
+            annotation_set?: string | null;
+            /** Sql Fingerprint */
+            sql_fingerprint?: string | null;
+            /** Schema Fingerprint */
+            schema_fingerprint?: string | null;
+            /** Result Fingerprint */
+            result_fingerprint?: string | null;
+        };
+        /** AnnotationDeleteResponse */
+        AnnotationDeleteResponse: {
+            /** Deleted Count */
+            deleted_count: number;
+        };
+        /** AnnotationOut */
+        AnnotationOut: {
+            /** Id */
+            id: number;
+            /** Query Id */
+            query_id: number;
+            /** Row Identity */
+            row_identity: string;
+            /** Column Key */
+            column_key: string | null;
+            /** Author */
+            author: string;
+            color: components["schemas"]["AnnotationColor"];
+            /** Title */
+            title: string | null;
+            /** Text */
+            text: string | null;
+            severity: components["schemas"]["AnnotationSeverity"] | null;
+            /** Annotation Set */
+            annotation_set: string | null;
+            /** Sql Fingerprint */
+            sql_fingerprint: string | null;
+            /** Schema Fingerprint */
+            schema_fingerprint: string | null;
+            /** Result Fingerprint */
+            result_fingerprint: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+        };
+        /**
+         * AnnotationSeverity
+         * @enum {string}
+         */
+        AnnotationSeverity: "info" | "warning" | "error";
         /** CleanupReport */
         CleanupReport: {
             /** Expired Queries Deleted */
@@ -278,8 +584,6 @@ export interface components {
             history_records_deleted: number;
             /** Cascade Label Records Deleted */
             cascade_label_records_deleted: number;
-            /** Cascade Analyses Deleted */
-            cascade_analyses_deleted: number;
             /** Dry Run */
             dry_run: boolean;
         };
@@ -325,9 +629,9 @@ export interface components {
             /**
              * Db Type
              * @default mysql
-             * @constant
+             * @enum {string}
              */
-            db_type: "mysql";
+            db_type: "mysql" | "odps";
             /** Host */
             host?: string | null;
             /**
@@ -422,7 +726,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Db Type */
-            db_type?: "mysql" | null;
+            db_type?: ("mysql" | "odps") | null;
             /** Host */
             host?: string | null;
             /** Port */
@@ -442,6 +746,20 @@ export interface components {
             /** Default Row Limit */
             default_row_limit?: number | null;
         };
+        /** EnumRender */
+        EnumRender: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "enum";
+            /** Colors */
+            colors?: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /** ExecuteRequest */
         ExecuteRequest: {
             /** Connection Id */
@@ -457,6 +775,15 @@ export interface components {
             timeout?: number | null;
             /** Row Limit */
             row_limit?: number | null;
+        };
+        /** ExecutionFingerprints */
+        ExecutionFingerprints: {
+            /** Sql */
+            sql: string;
+            /** Schema */
+            schema: string;
+            /** Result */
+            result: string;
         };
         /** ExecutionInfo */
         ExecutionInfo: {
@@ -479,6 +806,7 @@ export interface components {
             /** Is Temporary */
             is_temporary: boolean;
             execution: components["schemas"]["ExecutionInfo"];
+            fingerprints: components["schemas"]["ExecutionFingerprints"];
             /** Columns */
             columns: components["schemas"]["ColumnRead"][];
             /** Rows */
@@ -487,10 +815,30 @@ export interface components {
             }[];
             /** Suggested Field Renders */
             suggested_field_renders: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
+            suggested_trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
             /** Warnings */
             warnings: components["schemas"]["WarningRead"][];
+        };
+        /** ExportRequest */
+        ExportRequest: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "csv" | "xlsx";
+            /**
+             * Include Labels
+             * @default true
+             */
+            include_labels: boolean;
+            /**
+             * Json Serialization
+             * @default string
+             * @constant
+             */
+            json_serialization: "string";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -523,6 +871,109 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** LabelBatchError */
+        LabelBatchError: {
+            /** Row Identity */
+            row_identity: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** LabelBatchResult */
+        LabelBatchResult: {
+            /** Affected */
+            affected: number;
+            /** Skipped */
+            skipped: number;
+            /** Errors */
+            errors?: components["schemas"]["LabelBatchError"][];
+        };
+        /** LabelBatchUpsert */
+        LabelBatchUpsert: {
+            /** Row Identities */
+            row_identities?: string[];
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown | null;
+        };
+        /** LabelOption */
+        LabelOption: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** LabelRecordRead */
+        LabelRecordRead: {
+            /** Record Id */
+            record_id: number;
+            /** Query Id */
+            query_id: number;
+            /** Row Identity */
+            row_identity: string;
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LabelRecordUpsert */
+        LabelRecordUpsert: {
+            /** Row Identity */
+            row_identity: string;
+            /** Field Key */
+            field_key: string;
+            /** Value */
+            value: unknown | null;
+        };
+        /** LabelRowsQuery */
+        LabelRowsQuery: {
+            /** Row Identities */
+            row_identities?: string[];
+        };
+        /** LabelSchemaPayload */
+        LabelSchemaPayload: {
+            /** Fields */
+            fields?: (components["schemas"]["SingleSelectField"] | components["schemas"]["MultiSelectField"] | components["schemas"]["TextField"])[];
+        };
+        /** LabelSchemaRead */
+        LabelSchemaRead: {
+            /** Query Id */
+            query_id: number;
+            /** Fields */
+            fields: (components["schemas"]["SingleSelectField"] | components["schemas"]["MultiSelectField"] | components["schemas"]["TextField"])[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Cascade Deleted Records
+             * @default 0
+             */
+            cascade_deleted_records: number;
+        };
+        /** LabelsByRowResponse */
+        LabelsByRowResponse: {
+            /** Labels By Row */
+            labels_by_row: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
         /** MarkdownRender */
         MarkdownRender: {
             /**
@@ -532,6 +983,20 @@ export interface components {
             type: "markdown";
         } & {
             [key: string]: unknown;
+        };
+        /** MultiSelectField */
+        MultiSelectField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multi_select";
+            /** Options */
+            options?: components["schemas"]["LabelOption"][];
         };
         /** NamedQueryCreate */
         NamedQueryCreate: {
@@ -567,6 +1032,8 @@ export interface components {
             id: number;
             /** Connection Id */
             connection_id: number;
+            /** Connection Name */
+            connection_name: string;
             /** Name */
             name: string | null;
             /** Description */
@@ -589,6 +1056,8 @@ export interface components {
             last_executed_at: string | null;
             /** Expires At */
             expires_at: string | null;
+            /** Label Record Count */
+            label_record_count: number;
         };
         /** NamedQueryUpdate */
         NamedQueryUpdate: {
@@ -647,6 +1116,77 @@ export interface components {
             /** Query Id */
             query_id: number | null;
         };
+        /** RenderRuleCreate */
+        RenderRuleCreate: {
+            /** Match Pattern */
+            match_pattern: string;
+            /**
+             * Match Type
+             * @default exact
+             * @enum {string}
+             */
+            match_type: "exact" | "prefix" | "suffix" | "regex";
+            /** Render Config */
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"];
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** RenderRuleRead */
+        RenderRuleRead: {
+            /** Match Pattern */
+            match_pattern: string;
+            /**
+             * Match Type
+             * @default exact
+             * @enum {string}
+             */
+            match_type: "exact" | "prefix" | "suffix" | "regex";
+            /** Render Config */
+            render_config: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"];
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RenderRuleUpdate */
+        RenderRuleUpdate: {
+            /** Match Pattern */
+            match_pattern?: string | null;
+            /** Match Type */
+            match_type?: ("exact" | "prefix" | "suffix" | "regex") | null;
+            /** Render Config */
+            render_config?: (components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"] | components["schemas"]["TrajectoryConfigRule"]) | null;
+            /** Priority */
+            priority?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
         /** SchedulerJobRead */
         SchedulerJobRead: {
             /** Id */
@@ -657,6 +1197,50 @@ export interface components {
             trigger: string;
             /** Next Run */
             next_run: string | null;
+        };
+        /** SelectionSnapshotCreate */
+        SelectionSnapshotCreate: {
+            /** Row Identities */
+            row_identities: string[];
+            /** Source */
+            source?: string | null;
+        };
+        /** SelectionSnapshotOut */
+        SelectionSnapshotOut: {
+            /** Id */
+            id: string;
+            /** Query Id */
+            query_id: number;
+            /** Row Identities */
+            row_identities: string[];
+            /** Count */
+            count: number;
+            /** Source */
+            source: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** SingleSelectField */
+        SingleSelectField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "single_select";
+            /** Options */
+            options?: components["schemas"]["LabelOption"][];
         };
         /** SortConfig */
         SortConfig: {
@@ -693,6 +1277,18 @@ export interface components {
             type: "tag";
         } & {
             [key: string]: unknown;
+        };
+        /** TextField */
+        TextField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
         };
         /** TextRender */
         TextRender: {
@@ -767,6 +1363,21 @@ export interface components {
              */
             order_direction: "asc" | "desc";
         };
+        /** TrajectoryConfigRule */
+        TrajectoryConfigRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "trajectory_config";
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "group_by" | "role_column" | "content_column" | "tool_calls_column" | "order_by";
+            /** Order Direction */
+            order_direction?: ("asc" | "desc") | null;
+        };
         /** TrajectoryMessage */
         TrajectoryMessage: {
             /** Row Identity */
@@ -799,10 +1410,12 @@ export interface components {
         ViewConfigPayload: {
             /** Field Renders */
             field_renders?: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Trajectory Config Source */
+            trajectory_config_source?: ("manual" | "suggested") | null;
             /** Row Identity Column */
             row_identity_column?: string | null;
         };
@@ -810,10 +1423,12 @@ export interface components {
         ViewConfigRead: {
             /** Field Renders */
             field_renders?: {
-                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"];
+                [key: string]: components["schemas"]["TextRender"] | components["schemas"]["MarkdownRender"] | components["schemas"]["JsonRender"] | components["schemas"]["CodeRender"] | components["schemas"]["TimestampRender"] | components["schemas"]["TagRender"] | components["schemas"]["EnumRender"];
             };
             table_config?: components["schemas"]["TableConfig"];
             trajectory_config?: components["schemas"]["TrajectoryConfig"] | null;
+            /** Trajectory Config Source */
+            trajectory_config_source?: ("manual" | "suggested") | null;
             /** Row Identity Column */
             row_identity_column?: string | null;
             /** Query Id */
@@ -893,6 +1508,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminInfoResponse"];
+                };
+            };
+        };
+    };
+    list_annotations_api_v1_queries__query_id__annotations_get: {
+        parameters: {
+            query?: {
+                author?: string | null;
+                author_prefix?: string | null;
+                color?: components["schemas"]["AnnotationColor"] | null;
+                row_identity?: string | null;
+                column_key?: string | null;
+                annotation_set?: string | null;
+                include_expired?: boolean;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_annotation_api_v1_queries__query_id__annotations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_annotations_api_v1_queries__query_id__annotations_delete: {
+        parameters: {
+            query?: {
+                author?: string | null;
+                author_prefix?: string | null;
+                color?: components["schemas"]["AnnotationColor"] | null;
+                annotation_set?: string | null;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_annotations_batch_api_v1_queries__query_id__annotations_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_annotation_api_v1_queries__query_id__annotations__annotation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+                annotation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1121,6 +1911,42 @@ export interface operations {
             };
         };
     };
+    export_query_api_v1_queries__query_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Exported query result file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_check_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -1141,6 +1967,241 @@ export interface operations {
             };
         };
     };
+    get_labels_api_v1_queries__query_id__labels_get: {
+        parameters: {
+            query?: {
+                row_identities?: string | null;
+                row_identity?: string[] | null;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsByRowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_label_api_v1_queries__query_id__labels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelRecordUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRecordRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_labels_api_v1_queries__query_id__labels_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelRowsQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsByRowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_upsert_labels_api_v1_queries__query_id__labels_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelBatchUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelBatchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_label_api_v1_queries__query_id__labels__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_label_schema_api_v1_queries__query_id__label_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelSchemaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_label_schema_api_v1_queries__query_id__label_schema_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelSchemaPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelSchemaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_queries_api_v1_queries_get: {
         parameters: {
             query?: {
@@ -1148,6 +2209,7 @@ export interface operations {
                 is_named?: boolean | null;
                 search?: string | null;
                 include_expired?: boolean;
+                order_by?: "created_at" | "last_executed_at";
                 page?: number;
                 page_size?: number;
             };
@@ -1397,6 +2459,249 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["QueryHistoryListResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_render_rules_api_v1_render_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"][];
+                };
+            };
+        };
+    };
+    create_render_rule_api_v1_render_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_render_rule_api_v1_render_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_render_rule_api_v1_render_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_render_rule_api_v1_render_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_selection_snapshot_api_v1_queries__query_id__selection_snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionSnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionSnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_selection_snapshot_api_v1_selections__selection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionSnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_selection_snapshot_api_v1_selections__selection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

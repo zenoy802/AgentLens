@@ -1,24 +1,83 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Database, HomeIcon, ListChecks, Moon, SettingsIcon } from "lucide-react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Database, HomeIcon, Languages, ListChecks, Moon, SettingsIcon } from "lucide-react";
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
+import { queryClient } from "@/api/queryClient";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { NetworkBanner } from "@/components/common/NetworkBanner";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { isProductLanguage, type ProductLanguage } from "@/lib/productLanguage";
 import { cn } from "@/lib/utils";
 import { Connections } from "@/pages/Connections";
 import { Home } from "@/pages/Home";
 import { Query } from "@/pages/Query";
 import { Queries } from "@/pages/Queries";
 import { Settings } from "@/pages/Settings";
+import { useProductLanguageStore } from "@/stores/productLanguageStore";
 
-const queryClient = new QueryClient();
+const APP_COPY: Record<
+  ProductLanguage,
+  {
+    nav: {
+      home: string;
+      connections: string;
+      queries: string;
+      settings: string;
+    };
+    tagline: string;
+    theme: string;
+    language: string;
+    languageOptions: Record<ProductLanguage, string>;
+  }
+> = {
+  "zh-CN": {
+    nav: {
+      home: "首页",
+      connections: "连接管理",
+      queries: "查询",
+      settings: "设置",
+    },
+    tagline: "Trajectory 分析",
+    theme: "主题",
+    language: "语言",
+    languageOptions: {
+      "zh-CN": "中文",
+      "en-US": "English",
+    },
+  },
+  "en-US": {
+    nav: {
+      home: "Home",
+      connections: "Connections",
+      queries: "Queries",
+      settings: "Settings",
+    },
+    tagline: "Trajectory Analysis",
+    theme: "Theme",
+    language: "Language",
+    languageOptions: {
+      "zh-CN": "中文",
+      "en-US": "English",
+    },
+  },
+};
 
 function Sidebar() {
+  const language = useProductLanguageStore((state) => state.language);
+  const copy = APP_COPY[language];
   const items = [
-    { to: "/", label: "Home", icon: HomeIcon },
-    { to: "/connections", label: "连接管理", icon: Database },
-    { to: "/queries", label: "Queries", icon: ListChecks },
-    { to: "/settings", label: "Settings", icon: SettingsIcon },
+    { to: "/", label: copy.nav.home, icon: HomeIcon },
+    { to: "/connections", label: copy.nav.connections, icon: Database },
+    { to: "/queries", label: copy.nav.queries, icon: ListChecks },
+    { to: "/settings", label: copy.nav.settings, icon: SettingsIcon },
   ];
 
   return (
@@ -54,17 +113,50 @@ function Sidebar() {
 }
 
 function Header() {
+  const language = useProductLanguageStore((state) => state.language);
+  const copy = APP_COPY[language];
+
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4 md:px-6">
       <div>
         <div className="font-semibold tracking-tight">AgentLens</div>
-        <div className="hidden text-xs text-muted-foreground md:block">Trajectory Analysis</div>
+        <div className="hidden text-xs text-muted-foreground md:block">{copy.tagline}</div>
       </div>
-      <Button variant="outline" size="sm" className="gap-2" disabled>
-        <Moon className="h-4 w-4" aria-hidden="true" />
-        主题
-      </Button>
+      <div className="flex items-center gap-2">
+        <ProductLanguageSelect />
+        <Button variant="outline" size="sm" className="gap-2" disabled>
+          <Moon className="h-4 w-4" aria-hidden="true" />
+          {copy.theme}
+        </Button>
+      </div>
     </header>
+  );
+}
+
+function ProductLanguageSelect() {
+  const language = useProductLanguageStore((state) => state.language);
+  const setLanguage = useProductLanguageStore((state) => state.setLanguage);
+  const copy = APP_COPY[language];
+
+  function handleChange(value: string) {
+    if (isProductLanguage(value)) {
+      setLanguage(value);
+    }
+  }
+
+  return (
+    <Select value={language} onValueChange={handleChange}>
+      <SelectTrigger className="h-9 w-32" aria-label={copy.language}>
+        <div className="flex min-w-0 items-center gap-2">
+          <Languages className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <SelectValue placeholder={copy.language} />
+        </div>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="zh-CN">{copy.languageOptions["zh-CN"]}</SelectItem>
+        <SelectItem value="en-US">{copy.languageOptions["en-US"]}</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -73,6 +165,7 @@ function AppShell() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+        <NetworkBanner />
         <Header />
         <main className="flex-1 px-4 py-6 md:px-8">
           <Routes>
@@ -92,10 +185,12 @@ function AppShell() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppShell />
-        <Toaster richColors />
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AppShell />
+          <Toaster richColors />
+        </BrowserRouter>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

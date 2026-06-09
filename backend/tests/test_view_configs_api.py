@@ -72,6 +72,10 @@ def _roundtrip_payload(row_identity_column: str = "id") -> dict[str, object]:
                 "type": "timestamp",
                 "format": "YYYY-MM-DD HH:mm:ss",
             },
+            "status": {
+                "type": "enum",
+                "colors": {"ok": "#10b981", "failed": "#ef4444"},
+            },
         },
         "table_config": {
             "column_widths": {"content": 600},
@@ -87,6 +91,7 @@ def _roundtrip_payload(row_identity_column: str = "id") -> dict[str, object]:
             "order_by": "created_at",
             "order_direction": "asc",
         },
+        "trajectory_config_source": "manual",
         "row_identity_column": row_identity_column,
     }
 
@@ -98,6 +103,9 @@ def _assert_view_config_matches_payload(
     assert response_payload["field_renders"] == expected_payload["field_renders"]
     assert response_payload["table_config"] == expected_payload["table_config"]
     assert response_payload["trajectory_config"] == expected_payload["trajectory_config"]
+    assert (
+        response_payload["trajectory_config_source"] == expected_payload["trajectory_config_source"]
+    )
     assert response_payload["row_identity_column"] == expected_payload["row_identity_column"]
 
 
@@ -134,6 +142,7 @@ async def test_get_default_empty_view_config() -> None:
         "sort": [],
     }
     assert payload["trajectory_config"] is None
+    assert payload["trajectory_config_source"] is None
     assert payload["row_identity_column"] is None
     assert isinstance(payload["updated_at"], str)
 
@@ -166,7 +175,7 @@ async def test_get_query_not_found() -> None:
         response = await client.get("/api/v1/queries/99999/view-config")
 
     assert response.status_code == HTTP_NOT_FOUND
-    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert response.json()["error"]["code"] == "QUERY_NOT_FOUND"
 
 
 @pytest.mark.asyncio
@@ -200,6 +209,7 @@ async def test_put_discriminator_validation() -> None:
                 "field_renders": {"content": {"type": "invalid"}},
                 "table_config": {},
                 "trajectory_config": None,
+                "trajectory_config_source": None,
                 "row_identity_column": None,
             },
         )
@@ -238,12 +248,14 @@ async def test_put_overwrites_not_merges() -> None:
         },
         "table_config": {},
         "trajectory_config": None,
+        "trajectory_config_source": None,
         "row_identity_column": None,
     }
     payload_b: dict[str, object] = {
         "field_renders": {"c": {"type": "text"}},
         "table_config": {},
         "trajectory_config": None,
+        "trajectory_config_source": None,
         "row_identity_column": None,
     }
 
@@ -277,6 +289,7 @@ async def test_put_trajectory_config_null() -> None:
             json=payload,
         )
         payload["trajectory_config"] = None
+        payload["trajectory_config_source"] = "manual"
         second_response = await client.put(
             f"/api/v1/queries/{query_id}/view-config",
             json=payload,
@@ -287,6 +300,44 @@ async def test_put_trajectory_config_null() -> None:
     assert second_response.status_code == HTTP_OK
     assert get_response.status_code == HTTP_OK
     assert get_response.json()["trajectory_config"] is None
+    assert get_response.json()["trajectory_config_source"] == "manual"
+
+
+@pytest.mark.asyncio
+async def test_put_trajectory_config_source_suggested_roundtrip() -> None:
+    query_id = _prepare_query()
+    payload = _roundtrip_payload()
+    payload["trajectory_config_source"] = "suggested"
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        put_response = await client.put(
+            f"/api/v1/queries/{query_id}/view-config",
+            json=payload,
+        )
+        get_response = await client.get(f"/api/v1/queries/{query_id}/view-config")
+
+    assert put_response.status_code == HTTP_OK
+    assert get_response.status_code == HTTP_OK
+    assert put_response.json()["trajectory_config_source"] == "suggested"
+    assert get_response.json()["trajectory_config_source"] == "suggested"
+
+
+@pytest.mark.asyncio
+async def test_put_trajectory_config_source_validation() -> None:
+    query_id = _prepare_query()
+    payload = _roundtrip_payload()
+    payload["trajectory_config_source"] = "auto"
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.put(
+            f"/api/v1/queries/{query_id}/view-config",
+            json=payload,
+        )
+
+    assert response.status_code == HTTP_UNPROCESSABLE_ENTITY
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 @pytest.mark.asyncio

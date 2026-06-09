@@ -16,13 +16,26 @@ export interface Trajectory {
   messages: TrajectoryMessage[];
 }
 
+export type MessageCollapseResolver = boolean | ((msg: TrajectoryMessage) => boolean);
+export type MessageClassNameResolver =
+  | string
+  | ((msg: TrajectoryMessage, originalIndex: number) => string | undefined);
+export type MessageActionRenderer = (msg: TrajectoryMessage, originalIndex: number) => ReactNode;
+
 export interface TrajectoryViewerProps {
   trajectory: Trajectory;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
   renderToolCalls?: (msg: TrajectoryMessage) => ReactNode;
   filterRoles?: string[];
   className?: string;
-  messageClassName?: string;
+  messageClassName?: MessageClassNameResolver;
+  renderMessageActions?: MessageActionRenderer;
+  showHeader?: boolean;
   showMetaLine?: boolean;
   metaFields?: string[];
+  collapsibleMessages?: boolean;
+  defaultMessageCollapsed?: MessageCollapseResolver;
+  collapsedContentHeight?: number;
+  expandLabel?: string;
+  collapseLabel?: string;
 }

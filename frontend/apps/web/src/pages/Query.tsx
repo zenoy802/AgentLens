@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp, DatabaseZap, GripHorizontal } from "lucide-react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  DatabaseZap,
+  GripHorizontal,
+} from "lucide-react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useExecute, useExecuteQuery } from "@/api/hooks/useExecute";
@@ -8,10 +15,24 @@ import { useQueryById } from "@/api/hooks/useQueries";
 import { useTrajectories } from "@/api/hooks/useTrajectories";
 import { useSaveViewConfig, useViewConfig } from "@/api/hooks/useViewConfig";
 import type { Row, Trajectory, Warning } from "@/api/types";
+import { CopyAgentPromptButton } from "@/components/agent/CopyAgentPromptButton";
+import { AnnotationBanner } from "@/components/annotation/AnnotationBanner";
+import { useAnnotationIndex } from "@/components/annotation/useAnnotationIndex";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
+import { ComparisonView } from "@/features/comparison-view/ComparisonView";
+import { ExportDialog } from "@/features/export/ExportDialog";
+import { LabelingPanel } from "@/features/labeling/LabelingPanel";
 import { QueryToolbar } from "@/features/query-editor/QueryToolbar";
 import {
   clampEditorHeight,
@@ -26,8 +47,12 @@ import {
 import { RowDetailSheet } from "@/features/row-view/RowDetailSheet";
 import { RowTable } from "@/features/row-view/RowTable";
 import { SingleTrajectoryView } from "@/features/trajectory-view/SingleTrajectoryView";
+import { getTrajectoryOptions } from "@/features/trajectory-view/trajectoryOptions";
+import { useAnnotationStream } from "@/hooks/useAnnotationStream";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
+import { getApiError } from "@/lib/formatApiError";
 import { cn } from "@/lib/utils";
+import { useLabelsStore } from "@/stores/labelsStore";
 import {
   getViewConfigPayloadFromState,
   initialTableConfig,
@@ -41,11 +66,19 @@ type ActiveQuery = PromotableQuery & {
 };
 
 type ResultView = "row" | "trajectory";
+type TrajectoryDetailMode = "comparison" | "single";
 
 type DragState = {
   pointerId: number;
   startY: number;
   startHeight: number;
+};
+
+type ResultSnapshot = {
+  connectionId: number;
+  sql: string;
+  queryId: number;
+  executedAt: string;
 };
 
 type ExecutionGuard = {
@@ -56,6 +89,7 @@ type ExecutionGuard = {
 };
 
 const SQL_EDITOR_COLLAPSED_KEY = "agentlens.query.sqlEditorCollapsed";
+const MAX_COMPARISON_TRAJECTORIES = 10;
 const QUERY_TEMPLATE_SQL = `-- 从这里开始：按 session_id 和时间顺序查询一条或多条 trajectory
 -- SELECT session_id, role, content, created_at
 -- FROM agent_messages
@@ -65,6 +99,7 @@ const QUERY_TEMPLATE_SQL = `-- 从这里开始：按 session_id 和时间顺序�
 export function Query() {
   const { queryId: queryIdParam } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const routeQueryId = parsePositiveInt(queryIdParam);
   const connectionIdParam = searchParams.get("connection_id");
@@ -77,24 +112,35 @@ export function Query() {
   const columns = useQueryStore((state) => state.columns);
   const rows = useQueryStore((state) => state.rows);
   const execution = useQueryStore((state) => state.execution);
+  const fingerprints = useQueryStore((state) => state.fingerprints);
   const trajectoryConfig = useQueryStore((state) => state.trajectoryConfig);
   const isExecuting = useQueryStore((state) => state.isExecuting);
   const isDirty = useQueryStore((state) => state.isDirty);
+  const viewDirty = useQueryStore((state) => state.viewDirty);
   const setConnectionId = useQueryStore((state) => state.setConnectionId);
   const setSql = useQueryStore((state) => state.setSql);
   const setResult = useQueryStore((state) => state.setResult);
   const applyViewConfig = useQueryStore((state) => state.applyViewConfig);
   const mergeSuggestedRenders = useQueryStore((state) => state.mergeSuggestedRenders);
+  const applySuggestedTrajectoryConfig = useQueryStore(
+    (state) => state.applySuggestedTrajectoryConfig,
+  );
   const reset = useQueryStore((state) => state.reset);
+  const clearSelection = useQueryStore((state) => state.clearSelection);
 
   const [activeQuery, setActiveQuery] = useState<ActiveQuery | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<PromotableQuery | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportIncludeLabelsDefault, setExportIncludeLabelsDefault] = useState(true);
+  const [labelingPanelOpen, setLabelingPanelOpen] = useState(false);
   const [lastError, setLastError] = useState<unknown>(null);
   const [activeResultView, setActiveResultView] = useState<ResultView>("row");
   const [editorCollapsed, setEditorCollapsed] = useState(readEditorCollapsedPreference);
   const [autoEditorHeight, setAutoEditorHeight] = useState(MIN_EDITOR_HEIGHT);
   const [manualEditorHeight, setManualEditorHeight] = useState<number | null>(null);
+  const [resultSnapshot, setResultSnapshot] = useState<ResultSnapshot | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [detailRowId, setDetailRowId] = useState<string | null>(null);
   const [detailRowNumber, setDetailRowNumber] = useState<number | null>(null);
   const [trajectoryLoadedKey, setTrajectoryLoadedKey] = useState<string | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
@@ -103,6 +149,8 @@ export function Query() {
   const trajectoryRequestedKeyRef = useRef<string | null>(null);
   const previousRouteQueryIdRef = useRef<number | null | undefined>(undefined);
   const routeQueryIdRef = useRef<number | null>(routeQueryId);
+  const preservedRouteQueryIdRef = useRef<number | null>(null);
+  const skipNextViewConfigApplyForQueryIdRef = useRef<number | null>(null);
   routeQueryIdRef.current = routeQueryId;
 
   const queryDetail = useQueryById(routeQueryId ?? 0);
@@ -115,6 +163,8 @@ export function Query() {
   const executeQuery = useExecuteQuery();
   const saveViewConfig = useSaveViewConfig();
   const aggregateTrajectories = useTrajectories(queryId ?? 0);
+  const annotationStream = useAnnotationStream(queryId);
+  const annotationIndex = useAnnotationIndex(queryId, rows, fingerprints, columns);
   const runBlockedByViewConfigLoad = routeQueryId !== null && viewConfigLoading;
   const trajectoryConfigComplete = isTrajectoryConfigComplete(trajectoryConfig);
   const trajectoryTabDisabled = !trajectoryConfigComplete || rows.length === 0 || queryId === null;
@@ -131,6 +181,12 @@ export function Query() {
   const trajectoryRequestIsCurrent =
     trajectoryRequestKey !== null &&
     trajectoryRequestedKeyRef.current === trajectoryRequestKey;
+  const resultIsStale =
+    execution !== null &&
+    resultSnapshot !== null &&
+    queryId === resultSnapshot.queryId &&
+    execution.executed_at === resultSnapshot.executedAt &&
+    (connectionId !== resultSnapshot.connectionId || sql !== resultSnapshot.sql);
 
   useBeforeUnloadGuard(isDirty);
 
@@ -157,15 +213,30 @@ export function Query() {
       }
 
       if (event.key === "Escape") {
-        setPromoteTarget(null);
-        setDetailRow(null);
-        setDetailRowNumber(null);
+        const closesOverlay = promoteTarget !== null || detailRow !== null;
+        if (promoteTarget !== null) {
+          setPromoteTarget(null);
+        }
+        if (detailRow !== null) {
+          setDetailRow(null);
+          setDetailRowId(null);
+          setDetailRowNumber(null);
+        }
+        if (!closesOverlay) {
+          useQueryStore.getState().clearSelection();
+        }
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
+
+  useEffect(() => {
+    clearSelection();
+  }, [activeResultView, clearSelection, routeQueryId]);
+
+  useEffect(() => () => clearSelection(), [clearSelection]);
 
   useEffect(() => {
     if (activeResultView !== "trajectory") {
@@ -225,7 +296,18 @@ export function Query() {
     previousRouteQueryIdRef.current = routeQueryId;
 
     if (previousRouteQueryId !== undefined && previousRouteQueryId !== routeQueryId) {
-      useQueryStore.getState().reset();
+      const currentQueryId = useQueryStore.getState().queryId;
+      const shouldPreserveCurrentResult =
+        routeQueryId !== null &&
+        preservedRouteQueryIdRef.current === routeQueryId &&
+        currentQueryId === routeQueryId;
+
+      if (!shouldPreserveCurrentResult) {
+        preservedRouteQueryIdRef.current = null;
+        skipNextViewConfigApplyForQueryIdRef.current = null;
+        useQueryStore.getState().reset();
+        useLabelsStore.getState().setActiveQuery(null);
+      }
     }
   }, [routeQueryId]);
 
@@ -244,6 +326,12 @@ export function Query() {
       return;
     }
 
+    if (skipNextViewConfigApplyForQueryIdRef.current === routeQueryId) {
+      skipNextViewConfigApplyForQueryIdRef.current = null;
+      appliedForQueryIdRef.current = routeQueryId;
+      return;
+    }
+
     applyViewConfig(viewConfig);
     appliedForQueryIdRef.current = routeQueryId;
   }, [applyViewConfig, queryId, routeQueryId, viewConfig, viewConfigLoaded]);
@@ -253,13 +341,17 @@ export function Query() {
       return;
     }
 
+    preservedRouteQueryIdRef.current = null;
+    skipNextViewConfigApplyForQueryIdRef.current = null;
     reset();
     hydratedQueryIdRef.current = null;
     setActiveQuery(null);
     setLastError(null);
     setManualEditorHeight(null);
     setDetailRow(null);
+    setDetailRowId(null);
     setDetailRowNumber(null);
+    useLabelsStore.getState().setActiveQuery(null);
 
     if (initialConnectionId !== null) {
       setConnectionId(initialConnectionId);
@@ -279,11 +371,22 @@ export function Query() {
       return;
     }
 
-    reset();
+    const currentState = useQueryStore.getState();
+    const shouldPreserveCurrentResult =
+      preservedRouteQueryIdRef.current === queryDetail.data.id &&
+      currentState.queryId === queryDetail.data.id &&
+      currentState.connectionId === queryDetail.data.connection_id &&
+      currentState.sql === queryDetail.data.sql_text;
+
+    if (!shouldPreserveCurrentResult) {
+      reset();
+    }
+    preservedRouteQueryIdRef.current = null;
     hydratedQueryIdRef.current = queryDetail.data.id;
     setConnectionId(queryDetail.data.connection_id);
     setSql(queryDetail.data.sql_text);
     useQueryStore.setState({ queryId: queryDetail.data.id });
+    useLabelsStore.getState().setActiveQuery(queryDetail.data.id, "no-execution");
     setActiveQuery({
       id: queryDetail.data.id,
       name: queryDetail.data.name,
@@ -291,10 +394,13 @@ export function Query() {
       expires_at: queryDetail.data.expires_at,
       is_named: queryDetail.data.is_named,
     });
-    setLastError(null);
-    setManualEditorHeight(null);
-    setDetailRow(null);
-    setDetailRowNumber(null);
+    if (!shouldPreserveCurrentResult) {
+      setLastError(null);
+      setManualEditorHeight(null);
+      setDetailRow(null);
+      setDetailRowId(null);
+      setDetailRowNumber(null);
+    }
   }, [queryDetail.data, reset, routeQueryId, setConnectionId, setSql]);
 
   async function handleRun() {
@@ -342,15 +448,37 @@ export function Query() {
       }
 
       setResult(result);
+      setResultSnapshot({
+        connectionId: executionConnectionId,
+        sql: executionSql,
+        queryId: result.query_id,
+        executedAt: result.execution.executed_at,
+      });
+      useLabelsStore
+        .getState()
+        .setActiveQuery(result.query_id, result.execution.executed_at);
       mergeSuggestedRenders(result.suggested_field_renders);
+      const previousTrajectoryConfigSource =
+        useQueryStore.getState().trajectoryConfigSource;
+      const trajectorySuggestionApplied = applySuggestedTrajectoryConfig(
+        result.suggested_trajectory_config,
+      );
+      const hasAppliedSuggestions =
+        Object.keys(result.suggested_field_renders).length > 0 ||
+        trajectorySuggestionApplied;
+      const shouldSaveAppliedSuggestions =
+        (persistedViewConfigWasEmpty && hasAppliedSuggestions) ||
+        (previousTrajectoryConfigSource === "suggested" &&
+          trajectorySuggestionApplied);
       if (
         !wasDirtyBeforeRun &&
         persistedViewConfigUnknown &&
-        Object.keys(result.suggested_field_renders).length > 0
+        hasAppliedSuggestions
       ) {
         useQueryStore.getState().markDirty();
       }
       setDetailRow(null);
+      setDetailRowId(null);
       setDetailRowNumber(null);
       if (executeSavedQuery && activeQuery !== null) {
         setActiveQuery({
@@ -369,8 +497,7 @@ export function Query() {
 
       if (
         !wasDirtyBeforeRun &&
-        persistedViewConfigWasEmpty &&
-        Object.keys(result.suggested_field_renders).length > 0 &&
+        shouldSaveAppliedSuggestions &&
         result.query_id > 0
       ) {
         const payload = getViewConfigPayloadFromState(useQueryStore.getState());
@@ -394,6 +521,14 @@ export function Query() {
           }
         }
       }
+
+      if (
+        !executeSavedQuery &&
+        result.query_id > 0 &&
+        executionStillMatchesAfterResult(executionGuard, result.query_id)
+      ) {
+        replaceRouteWithQueryId(result.query_id);
+      }
     } catch (error) {
       if (!executionStillMatches(executionGuard)) {
         useQueryStore.setState({ isExecuting: false });
@@ -405,25 +540,75 @@ export function Query() {
     }
   }
 
+  function replaceRouteWithQueryId(nextQueryId: number) {
+    preservedRouteQueryIdRef.current = nextQueryId;
+    skipNextViewConfigApplyForQueryIdRef.current = nextQueryId;
+    navigate(`/query/${nextQueryId}`, { replace: true });
+  }
+
   async function handleSaveViewConfig() {
-    if (queryId === null || !isDirty || saveViewConfig.isPending) {
+    if (queryId === null || !viewDirty || saveViewConfig.isPending) {
       return;
+    }
+
+    await saveCurrentViewConfig({ showSuccessToast: true });
+  }
+
+  async function saveCurrentViewConfig({
+    showSuccessToast,
+  }: {
+    showSuccessToast: boolean;
+  }): Promise<boolean> {
+    const activeQueryId = useQueryStore.getState().queryId;
+    if (activeQueryId === null) {
+      return false;
+    }
+    if (!useQueryStore.getState().viewDirty) {
+      return true;
     }
 
     const payload = getViewConfigPayloadFromState(useQueryStore.getState());
     try {
       const saved = await saveViewConfig.mutateAsync({
-        queryId,
+        queryId: activeQueryId,
         payload,
       });
       const currentState = useQueryStore.getState();
-      if (currentState.queryId === queryId && viewConfigPayloadMatchesState(payload, currentState)) {
+      const stillCurrent =
+        currentState.queryId === activeQueryId &&
+        viewConfigPayloadMatchesState(payload, currentState);
+      if (stillCurrent) {
         applyViewConfig(saved);
       }
-      toast.success("视图已保存");
+      if (showSuccessToast && stillCurrent) {
+        toast.success("视图已保存");
+      }
+      return stillCurrent;
     } catch {
       // useSaveViewConfig reports API errors with the shared toast formatter.
+      return false;
     }
+  }
+
+  async function handleBeforeExport() {
+    const currentState = useQueryStore.getState();
+    if (currentState.sqlDirty) {
+      toast.error("请先运行当前 SQL 后再导出");
+      return false;
+    }
+    if (currentState.labelSchemaDirty) {
+      toast.error("请先在打标字段管理中保存 Schema 后再导出");
+      return false;
+    }
+    if (!currentState.viewDirty) {
+      return true;
+    }
+
+    const saved = await saveCurrentViewConfig({ showSuccessToast: false });
+    if (!saved) {
+      toast.error("请先保存当前视图配置后再导出");
+    }
+    return saved;
   }
 
   function handleConnectionChange(id: number | null) {
@@ -441,7 +626,21 @@ export function Query() {
     }
 
     setSql(nextSql);
-    clearCurrentQueryIdentity();
+    setLastError(null);
+    if (!hasResultToPreserve()) {
+      clearCurrentQueryIdentity();
+    }
+    useQueryStore.getState().markSqlDirty();
+  }
+
+  function hasResultToPreserve(): boolean {
+    const currentState = useQueryStore.getState();
+    return (
+      currentState.execution !== null &&
+      resultSnapshot !== null &&
+      currentState.queryId === resultSnapshot.queryId &&
+      currentState.execution.executed_at === resultSnapshot.executedAt
+    );
   }
 
   function shouldExecuteSavedQuery(): boolean {
@@ -462,19 +661,26 @@ export function Query() {
     trajectoryRequestedKeyRef.current = null;
     setTrajectoryLoadedKey(null);
     setDetailRow(null);
+    setDetailRowId(null);
     setDetailRowNumber(null);
+    setResultSnapshot(null);
+    useLabelsStore.getState().setActiveQuery(null);
     const nextState: Partial<ReturnType<typeof useQueryStore.getState>> = {
       columns: [],
       rows: [],
       execution: null,
       suggestedRenders: {},
       warnings: [],
+      fingerprints: null,
+      filters: {},
+      selectedRowIds: new Set<string>(),
     };
 
     if (options?.preserveQueryIdentity !== true) {
       nextState.queryId = null;
       setActiveQuery(null);
       setPromoteTarget(null);
+      setLabelingPanelOpen(false);
     }
 
     if (options?.preserveViewConfig !== true) {
@@ -482,8 +688,12 @@ export function Query() {
       nextState.manualFieldRenderColumns = [];
       nextState.tableConfig = initialTableConfig;
       nextState.trajectoryConfig = null;
+      nextState.trajectoryConfigSource = null;
       nextState.rowIdentityColumn = null;
       nextState.isDirty = false;
+      nextState.sqlDirty = false;
+      nextState.viewDirty = false;
+      nextState.labelSchemaDirty = false;
     }
 
     useQueryStore.setState(nextState);
@@ -526,14 +736,28 @@ export function Query() {
       currentSql.trim().length === 0 ? QUERY_TEMPLATE_SQL : `${currentSql}\n${QUERY_TEMPLATE_SQL}`;
     setSql(nextSql);
     clearCurrentQueryIdentity();
+    useQueryStore.getState().markSqlDirty();
   }
 
-  function handleRowClick(row: Row, rowNumber: number) {
+  function handleOpenExport(includeLabelsDefault: boolean) {
+    setExportIncludeLabelsDefault(includeLabelsDefault);
+    setExportDialogOpen(true);
+  }
+
+  function handleExportLabels() {
+    setLabelingPanelOpen(false);
+    handleOpenExport(true);
+    toast.info("已打开导出对话框，并预选包含打标数据。");
+  }
+
+  function handleRowClick(row: Row, rowNumber: number, rowId: string) {
     setDetailRow(row);
+    setDetailRowId(rowId);
     setDetailRowNumber(rowNumber);
   }
 
   function handleDividerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
       pointerId: event.pointerId,
@@ -548,7 +772,10 @@ export function Query() {
       return;
     }
 
-    setManualEditorHeight(clampEditorHeight(dragState.startHeight + event.clientY - dragState.startY));
+    event.preventDefault();
+    setManualEditorHeight(
+      clampEditorHeight(dragState.startHeight + event.clientY - dragState.startY),
+    );
   }
 
   function handleDividerPointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -563,13 +790,18 @@ export function Query() {
   }
 
   if (routeQueryId !== null && queryDetail.isError) {
+    const apiError = getApiError(queryDetail.error);
+    const isQueryNotFound = apiError?.error.code === "QUERY_NOT_FOUND";
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <Link to="/queries" className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           返回查询列表
         </Link>
-        <ErrorState error={queryDetail.error} />
+        <ErrorState
+          error={queryDetail.error}
+          title={isQueryNotFound ? "查询不存在" : "查询加载失败"}
+        />
       </div>
     );
   }
@@ -608,6 +840,11 @@ export function Query() {
           onConnectionChange={handleConnectionChange}
           onRun={() => void handleRun()}
           onSaveAs={handleSaveAs}
+          onExport={() => handleOpenExport(true)}
+          onLabeling={() => setLabelingPanelOpen(true)}
+          agentPromptAction={
+            <CopyAgentPromptButton queryId={queryId} disabled={isExecuting} />
+          }
           resultTabs={
             <ResultViewTabs
               activeView={activeResultView}
@@ -654,11 +891,14 @@ export function Query() {
                   role="separator"
                   aria-orientation="horizontal"
                   aria-label="调整 SQL 编辑器高度"
-                  className="flex h-4 cursor-row-resize items-center justify-center text-muted-foreground hover:bg-accent"
+                  className="flex h-4 cursor-row-resize touch-none select-none items-center justify-center text-muted-foreground hover:bg-accent"
                   onPointerDown={handleDividerPointerDown}
                   onPointerMove={handleDividerPointerMove}
                   onPointerUp={handleDividerPointerUp}
                   onPointerCancel={handleDividerPointerUp}
+                  onLostPointerCapture={() => {
+                    dragStateRef.current = null;
+                  }}
                   onDoubleClick={() => setManualEditorHeight(null)}
                 >
                   <GripHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -670,7 +910,26 @@ export function Query() {
 
         <ViewConfigBar queryId={queryId} />
 
+        <AnnotationBanner
+          queryId={queryId}
+          annotationIndex={annotationIndex}
+          streamStatus={annotationStream.status}
+          fingerprints={fingerprints}
+          view={activeResultView}
+          onRetryStream={annotationStream.reconnect}
+          onSwitchToRowView={() => setActiveResultView("row")}
+        />
+
         <div className="min-h-[260px] border-t bg-muted/20 p-4">
+          {resultIsStale ? (
+            <Alert className="mb-3 border-amber-200 bg-amber-50 text-amber-900">
+              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+              <AlertTitle>SQL 已修改</AlertTitle>
+              <AlertDescription>
+                下方仍显示上次运行结果。重新运行 SQL 后会刷新结果。
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <ResultPlaceholder
             error={lastError}
             isExecuting={isExecuting}
@@ -695,15 +954,26 @@ export function Query() {
 
       <RowDetailSheet
         open={detailRow !== null}
+        queryId={queryId}
+        resultKey={execution?.executed_at ?? "no-execution"}
         row={detailRow}
+        rowId={detailRowId}
         columns={columns}
         rowNumber={detailRowNumber}
         onOpenChange={(open) => {
           if (!open) {
             setDetailRow(null);
+            setDetailRowId(null);
             setDetailRowNumber(null);
           }
         }}
+      />
+
+      <LabelingPanel
+        open={labelingPanelOpen}
+        queryId={queryId}
+        onExportLabels={handleExportLabels}
+        onOpenChange={setLabelingPanelOpen}
       />
 
       <PromoteQueryDialog
@@ -725,6 +995,14 @@ export function Query() {
           }
         }}
       />
+
+      <ExportDialog
+        open={exportDialogOpen}
+        queryId={queryId}
+        defaultIncludeLabels={exportIncludeLabelsDefault}
+        onBeforeExport={handleBeforeExport}
+        onOpenChange={setExportDialogOpen}
+      />
     </div>
   );
 }
@@ -741,7 +1019,7 @@ type ResultPlaceholderProps = {
   trajectoryLoading: boolean;
   trajectories: Trajectory[] | undefined;
   trajectoryWarnings: Warning[] | undefined;
-  onRowClick: (row: Row, rowNumber: number) => void;
+  onRowClick: (row: Row, rowNumber: number, rowId: string) => void;
   onUseSqlTemplate: () => void;
 };
 
@@ -866,6 +1144,34 @@ function TrajectoryResult({
   trajectories,
   warnings,
 }: TrajectoryResultProps) {
+  const trajectoryOptions = useMemo(
+    () => (trajectories === undefined ? [] : getTrajectoryOptions(trajectories)),
+    [trajectories],
+  );
+  const allTrajectoryKeys = useMemo(
+    () => trajectoryOptions.map((option) => option.key),
+    [trajectoryOptions],
+  );
+  const [trajectoryMode, setTrajectoryMode] = useState<TrajectoryDetailMode>("comparison");
+  const [comparisonSelectedKeys, setComparisonSelectedKeys] = useState<string[]>([]);
+  const [comparisonSyncScroll, setComparisonSyncScroll] = useState(false);
+  const [singleTrajectoryIndex, setSingleTrajectoryIndex] = useState(0);
+
+  useEffect(() => {
+    if (trajectories === undefined) {
+      return;
+    }
+
+    setComparisonSelectedKeys(
+      allTrajectoryKeys.slice(
+        0,
+        trajectories.length > 6 ? MAX_COMPARISON_TRAJECTORIES : trajectories.length,
+      ),
+    );
+    setSingleTrajectoryIndex(0);
+    setTrajectoryMode(trajectories.length > 1 ? "comparison" : "single");
+  }, [allTrajectoryKeys, trajectories]);
+
   if (isLoading) {
     return <LoadingState label="正在聚合 Trajectory..." rows={5} />;
   }
@@ -880,27 +1186,145 @@ function TrajectoryResult({
     );
   }
 
+  if (trajectories.length === 0) {
+    return (
+      <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+        <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+        <AlertTitle>未聚合到 Trajectory</AlertTitle>
+        <AlertDescription>
+          当前结果没有可展示的 trajectory。请检查 group_by、role、content 配置是否匹配 SQL 返回列。
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const selectedSingleTrajectory = trajectories[singleTrajectoryIndex] ?? trajectories[0];
+
   return (
     <div className="space-y-3">
       {warnings !== undefined && warnings.length > 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <div className="font-medium">聚合 warning</div>
-          <ul className="mt-1 space-y-1">
-            {warnings.map((warning, index) => (
-              <li key={`${warning.code}:${index}`}>
-                {warning.code}: {warning.message}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          <AlertTitle>Trajectory 聚合 warnings</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-1">
+              {warnings.map((warning, index) => (
+                <li key={`${warning.code}:${index}`}>
+                  {warning.code}: {warning.message}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
       ) : null}
       {trajectories.length === 1 ? (
         <SingleTrajectoryView trajectory={trajectories[0]} />
+      ) : trajectoryMode === "comparison" ? (
+        <>
+          <TrajectoryModeTabs
+            mode={trajectoryMode}
+            trajectories={trajectories}
+            trajectoryOptions={trajectoryOptions}
+            singleTrajectoryIndex={singleTrajectoryIndex}
+            onModeChange={setTrajectoryMode}
+            onSingleTrajectoryIndexChange={setSingleTrajectoryIndex}
+          />
+          <ComparisonView
+            trajectories={trajectories}
+            selectedKeys={comparisonSelectedKeys}
+            onSelectionChange={setComparisonSelectedKeys}
+            syncScroll={comparisonSyncScroll}
+            onSyncScrollChange={setComparisonSyncScroll}
+          />
+        </>
       ) : (
-        <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-          检测到 {trajectories.length} 条 trajectories
-        </div>
+        <>
+          <TrajectoryModeTabs
+            mode={trajectoryMode}
+            trajectories={trajectories}
+            trajectoryOptions={trajectoryOptions}
+            singleTrajectoryIndex={singleTrajectoryIndex}
+            onModeChange={setTrajectoryMode}
+            onSingleTrajectoryIndexChange={setSingleTrajectoryIndex}
+          />
+          <SingleTrajectoryView trajectory={selectedSingleTrajectory} />
+        </>
       )}
+    </div>
+  );
+}
+
+function TrajectoryModeTabs({
+  mode,
+  trajectories,
+  trajectoryOptions,
+  singleTrajectoryIndex,
+  onModeChange,
+  onSingleTrajectoryIndexChange,
+}: {
+  mode: TrajectoryDetailMode;
+  trajectories: Trajectory[];
+  trajectoryOptions: ReturnType<typeof getTrajectoryOptions>;
+  singleTrajectoryIndex: number;
+  onModeChange: (mode: TrajectoryDetailMode) => void;
+  onSingleTrajectoryIndexChange: (index: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+      <div
+        className="inline-flex h-9 items-center rounded-md bg-muted p-1 text-muted-foreground"
+        role="tablist"
+        aria-label="Trajectory 视图切换"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "comparison"}
+          className={cn(
+            "inline-flex h-7 items-center justify-center rounded px-3 text-sm font-medium transition-colors",
+            mode === "comparison"
+              ? "bg-background text-foreground shadow-sm"
+              : "hover:text-foreground",
+          )}
+          onClick={() => onModeChange("comparison")}
+        >
+          对比
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "single"}
+          className={cn(
+            "inline-flex h-7 items-center justify-center rounded px-3 text-sm font-medium transition-colors",
+            mode === "single"
+              ? "bg-background text-foreground shadow-sm"
+              : "hover:text-foreground",
+          )}
+          onClick={() => onModeChange("single")}
+        >
+          单个
+        </button>
+      </div>
+      {mode === "single" ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-sm text-muted-foreground">当前</span>
+          <Select
+            value={String(singleTrajectoryIndex)}
+            onValueChange={(value) => onSingleTrajectoryIndexChange(Number(value))}
+          >
+            <SelectTrigger className="w-[260px]">
+              <SelectValue placeholder="选择 group_key" />
+            </SelectTrigger>
+            <SelectContent>
+              {trajectories.map((trajectory, index) => (
+                <SelectItem key={`${trajectory.group_key}:${index}`} value={String(index)}>
+                  {trajectoryOptions[index]?.label ?? trajectory.group_key}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
     </div>
   );
 }

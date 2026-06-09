@@ -1,6 +1,4 @@
-import { JsonRenderer } from "@agentlens/json-renderer";
-import { MarkdownRenderer } from "@agentlens/markdown-renderer";
-import type { ReactNode } from "react";
+import { Suspense, lazy, useId, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { TrajectoryMessage } from "./types";
 
@@ -8,24 +6,52 @@ interface MessageBubbleProps {
   message: TrajectoryMessage;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
   renderToolCalls?: (msg: TrajectoryMessage) => ReactNode;
+  actions?: ReactNode;
   showMetaLine?: boolean;
   metaFields?: string[];
   className?: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  collapsedContentHeight?: number;
+  expandLabel?: string;
+  collapseLabel?: string;
 }
 
 const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms"];
+const DEFAULT_COLLAPSED_CONTENT_HEIGHT = 280;
+const DEFAULT_EXPAND_LABEL = "Expand";
+const DEFAULT_COLLAPSE_LABEL = "Collapse";
+const MarkdownRenderer = lazy(async () => {
+  const module = await import("@agentlens/markdown-renderer");
+  return { default: module.MarkdownRenderer };
+});
+const JsonRenderer = lazy(async () => {
+  const module = await import("@agentlens/json-renderer");
+  return { default: module.JsonRenderer };
+});
 
 export function MessageBubble({
   message,
   renderContent,
   renderToolCalls,
+  actions,
   showMetaLine = false,
   metaFields = DEFAULT_META_FIELDS,
   className,
+  collapsible = false,
+  defaultCollapsed = false,
+  collapsedContentHeight = DEFAULT_COLLAPSED_CONTENT_HEIGHT,
+  expandLabel = DEFAULT_EXPAND_LABEL,
+  collapseLabel = DEFAULT_COLLAPSE_LABEL,
 }: MessageBubbleProps) {
   const roleKind = getRoleKind(message.role);
   const metaItems = showMetaLine ? getMetaItems(message, metaFields) : [];
   const hasToolCalls = message.tool_calls !== undefined && message.tool_calls !== null;
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const bodyStyle = {
+    "--trajectory-collapsed-content-height": `${collapsedContentHeight}px`,
+  } as CSSProperties;
 
   return (
     <article
@@ -37,22 +63,51 @@ export function MessageBubble({
     >
       <div className="agentlens-trajectory-bubble">
         <header className="agentlens-trajectory-message-header">
-          <span className="agentlens-trajectory-role-label">{getRoleLabel(message.role)}</span>
-          {metaItems.length > 0 ? (
-            <span className="agentlens-trajectory-meta-line">{metaItems.join(" · ")}</span>
+          <div className="agentlens-trajectory-message-header-main">
+            <span className="agentlens-trajectory-role-label">{getRoleLabel(message.role)}</span>
+            {metaItems.length > 0 ? (
+              <span className="agentlens-trajectory-meta-line">{metaItems.join(" · ")}</span>
+            ) : null}
+          </div>
+          {actions !== undefined || collapsible ? (
+            <div className="agentlens-trajectory-message-header-actions">
+              {actions}
+              {collapsible ? (
+                <button
+                  type="button"
+                  className="agentlens-trajectory-collapse-button"
+                  aria-controls={contentId}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? collapseLabel : expandLabel}
+                  onClick={() => setExpanded((current) => !current)}
+                >
+                  {expanded ? collapseLabel : expandLabel}
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </header>
-        <div className="agentlens-trajectory-content">
-          {renderContent ? renderContent(message) : renderDefaultContent(message.content)}
+        <div
+          id={contentId}
+          role="region"
+          className={joinClassNames(
+            "agentlens-trajectory-bubble-body",
+            collapsible && !expanded && "agentlens-trajectory-bubble-body--collapsed",
+          )}
+          style={bodyStyle}
+        >
+          <div className="agentlens-trajectory-content">
+            {renderContent ? renderContent(message) : renderDefaultContent(message.content)}
+          </div>
+          {hasToolCalls ? (
+            <details className="agentlens-trajectory-tool-calls">
+              <summary>Tool calls</summary>
+              <div className="agentlens-trajectory-tool-calls-body">
+                {renderToolCalls ? renderToolCalls(message) : renderDefaultToolCalls(message)}
+              </div>
+            </details>
+          ) : null}
         </div>
-        {hasToolCalls ? (
-          <details className="agentlens-trajectory-tool-calls">
-            <summary>Tool calls</summary>
-            <div className="agentlens-trajectory-tool-calls-body">
-              {renderToolCalls ? renderToolCalls(message) : renderDefaultToolCalls(message)}
-            </div>
-          </details>
-        ) : null}
       </div>
     </article>
   );
@@ -60,14 +115,45 @@ export function MessageBubble({
 
 function renderDefaultContent(content: unknown) {
   if (typeof content === "string") {
-    return <MarkdownRenderer content={content} />;
+    return (
+      <Suspense fallback={<TextFallback value={content} />}>
+        <MarkdownRenderer content={content} />
+      </Suspense>
+    );
   }
 
-  return <JsonRenderer value={content} collapsed={false} />;
+  return (
+    <Suspense fallback={<TextFallback value={content} />}>
+      <JsonRenderer value={content} collapsed={false} />
+    </Suspense>
+  );
 }
 
 function renderDefaultToolCalls(message: TrajectoryMessage) {
-  return <JsonRenderer value={message.tool_calls} collapsed={false} />;
+  return (
+    <Suspense fallback={<TextFallback value={message.tool_calls} />}>
+      <JsonRenderer value={message.tool_calls} collapsed={false} />
+    </Suspense>
+  );
+}
+
+function TextFallback({ value }: { value: unknown }) {
+  return (
+    <pre className="whitespace-pre-wrap break-words rounded-md border border-black/10 bg-white/60 p-3 text-sm">
+      {formatFallbackValue(value)}
+    </pre>
+  );
+}
+
+function formatFallbackValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function getRoleKind(role: string): "system" | "user" | "assistant" | "tool" | "unknown" | "other" {

@@ -1,4 +1,4 @@
-import { CodeRenderer } from "@agentlens/code-renderer";
+import { Suspense, lazy, memo, useState } from "react";
 
 import {
   Dialog,
@@ -26,7 +26,12 @@ interface CodeCellProps {
   richPreview?: boolean;
 }
 
-export function CodeCell({
+const CodeRenderer = lazy(async () => {
+  const module = await import("@agentlens/code-renderer");
+  return { default: module.CodeRenderer };
+});
+
+function CodeCellComponent({
   value,
   language,
   maxHeight,
@@ -35,6 +40,7 @@ export function CodeCell({
   previewLines = 1,
   richPreview = false,
 }: CodeCellProps) {
+  const [open, setOpen] = useState(false);
   const code = toCellText(value);
 
   if (value == null) {
@@ -43,25 +49,24 @@ export function CodeCell({
 
   if (presentation === "detail") {
     return (
-      <CodeRenderer
-        code={code}
-        language={language}
-        maxHeight={maxHeight}
-        showLineNumbers={showLineNumbers}
-      />
+      <Suspense fallback={<CodeRendererFallback code={code} maxHeight={maxHeight} />}>
+        <CodeRenderer
+          code={code}
+          language={language}
+          maxHeight={maxHeight}
+          showLineNumbers={showLineNumbers}
+        />
+      </Suspense>
     );
   }
 
-  if (richPreview) {
-    return (
-      <div data-row-click-stop className="h-full min-w-0 overflow-auto rounded-md">
-        <CodeRenderer code={code} language={language} showLineNumbers={showLineNumbers} />
-      </div>
-    );
-  }
+  const preview =
+    previewLines === 1 && !richPreview
+      ? truncatePreview(code)
+      : truncateMultilinePreview(code, richPreview ? 1200 : 800);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -69,7 +74,7 @@ export function CodeCell({
           style={getLineClampStyle(previewLines)}
           onClick={(event) => event.stopPropagation()}
         >
-          {previewLines === 1 ? truncatePreview(code) : truncateMultilinePreview(code)}
+          {preview}
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-6xl">
@@ -77,13 +82,48 @@ export function CodeCell({
           <DialogTitle>Code</DialogTitle>
           <DialogDescription className="sr-only">完整代码内容。</DialogDescription>
         </DialogHeader>
-        <CodeRenderer
-          code={code}
-          language={language}
-          maxHeight={maxHeight ?? 640}
-          showLineNumbers={showLineNumbers}
-        />
+        {open ? (
+          <Suspense
+            fallback={<CodeRendererFallback code={code} maxHeight={maxHeight ?? 640} />}
+          >
+            <CodeRenderer
+              code={code}
+              language={language}
+              maxHeight={maxHeight ?? 640}
+              showLineNumbers={showLineNumbers}
+            />
+          </Suspense>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
+
+function CodeRendererFallback({
+  code,
+  maxHeight,
+}: {
+  code: string;
+  maxHeight?: number;
+}) {
+  return (
+    <pre
+      className="overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-4 font-mono text-xs"
+      style={maxHeight === undefined ? undefined : { maxHeight }}
+    >
+      {code}
+    </pre>
+  );
+}
+
+export const CodeCell = memo(
+  CodeCellComponent,
+  (prev, next) =>
+    Object.is(prev.value, next.value) &&
+    prev.language === next.language &&
+    prev.maxHeight === next.maxHeight &&
+    prev.showLineNumbers === next.showLineNumbers &&
+    prev.presentation === next.presentation &&
+    prev.previewLines === next.previewLines &&
+    prev.richPreview === next.richPreview,
+);

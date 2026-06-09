@@ -94,6 +94,21 @@ MYSQL_TYPE_MAPPING: dict[int | str, InferredType] = {
     "TIMESTAMP": "timestamp",
     "JSON": "json",
     "BIT": "binary",
+    "BIGINT": "integer",
+    "INT": "integer",
+    "INTEGER": "integer",
+    "SMALLINT": "integer",
+    "TINYINT": "integer",
+    "BOOLEAN": "boolean",
+    "BOOL": "boolean",
+    "CHAR": "text",
+    "TIMESTAMP_NTZ": "timestamp",
+    "TIMESTAMP_LTZ": "timestamp",
+    "TIMESTAMP_TZ": "timestamp",
+    "BINARY": "binary",
+    "ARRAY": "json",
+    "MAP": "json",
+    "STRUCT": "json",
 }
 
 
@@ -107,10 +122,15 @@ def from_cursor_description(desc_item: Sequence[Any]) -> tuple[str, InferredType
     if sql_type_name == "BIT":
         return sql_type_name, "boolean" if internal_size == 1 else "binary"
 
-    inferred = MYSQL_TYPE_MAPPING.get(type_code)
+    inferred = MYSQL_TYPE_MAPPING.get(type_code) if isinstance(type_code, int | str) else None
     if inferred is None:
         inferred = MYSQL_TYPE_MAPPING.get(sql_type_name, "unknown")
     return sql_type_name, inferred
+
+
+def from_sql_type_name(type_name: object) -> tuple[str, InferredType]:
+    sql_type_name = _normalize_sql_type_name(type_name)
+    return sql_type_name, MYSQL_TYPE_MAPPING.get(sql_type_name, "unknown")
 
 
 def infer_from_value(value: Any) -> InferredType:
@@ -145,5 +165,13 @@ def _sql_type_name(type_code: object) -> str:
     if isinstance(type_code, int):
         return _TYPE_CODE_NAMES.get(type_code, str(type_code))
     if isinstance(type_code, str):
-        return type_code.upper()
+        return _normalize_sql_type_name(type_code)
     return "UNKNOWN"
+
+
+def _normalize_sql_type_name(type_name: object) -> str:
+    normalized = str(type_name).upper()
+    for separator in ("(", "<"):
+        if separator in normalized:
+            normalized = normalized.split(separator, 1)[0]
+    return normalized.strip()

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from loguru import logger
 
 from app.api.execute import get_query_service
 from app.core.errors import AppError
@@ -43,17 +44,19 @@ def aggregate_query_trajectories(
         ),
     )
     row_identity_key = _select_row_identity_key(outcome.execution_result.rows)
-    rows = _attach_row_identities(
-        outcome.execution_result.rows,
-        outcome.row_identities,
-        row_identity_key=row_identity_key,
-    )
     trajectories, aggregate_warnings = aggregate(
-        rows,
+        outcome.execution_result.rows,
         trajectory_config,
         row_identity_key=row_identity_key,
+        row_identities=outcome.row_identities,
     )
     warnings = _build_execution_warnings(outcome, row_identity_key) + aggregate_warnings
+    logger.info(
+        "Trajectory aggregation API completed: query_id={} trajectories={} warnings={}",
+        query_id,
+        len(trajectories),
+        len(warnings),
+    )
     return TrajectoryAggregateResponse(trajectories=trajectories, warnings=warnings)
 
 
@@ -81,18 +84,6 @@ def _resolve_trajectory_config(
             detail={"query_id": query_id},
         )
     return payload.trajectory_config
-
-
-def _attach_row_identities(
-    rows: list[dict[str, Any]],
-    row_identities: list[str],
-    *,
-    row_identity_key: str,
-) -> list[dict[str, Any]]:
-    return [
-        {**row, row_identity_key: row_identity}
-        for row, row_identity in zip(rows, row_identities, strict=True)
-    ]
 
 
 def _build_execution_warnings(
@@ -125,16 +116,18 @@ def _build_execution_warnings(
     return warnings
 
 
-def _select_row_identity_key(rows: list[dict[str, Any]]) -> str:
-    used_keys = {key for row in rows for key in row}
-    if _PRIMARY_ROW_IDENTITY_KEY not in used_keys:
+def _select_row_identity_key(rows: list[dict[str, object]]) -> str:
+    if not any(_PRIMARY_ROW_IDENTITY_KEY in row for row in rows):
         return _PRIMARY_ROW_IDENTITY_KEY
-    if _FALLBACK_ROW_IDENTITY_KEY not in used_keys:
+    if not any(_FALLBACK_ROW_IDENTITY_KEY in row for row in rows):
         return _FALLBACK_ROW_IDENTITY_KEY
 
+    used_fallback_suffixes = {
+        key for row in rows for key in row if key.startswith(f"{_FALLBACK_ROW_IDENTITY_KEY}_")
+    }
     suffix = 2
     while True:
         candidate = f"{_FALLBACK_ROW_IDENTITY_KEY}_{suffix}"
-        if candidate not in used_keys:
+        if candidate not in used_fallback_suffixes:
             return candidate
         suffix += 1

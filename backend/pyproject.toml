@@ -19,6 +19,7 @@ dependencies = [
   "cryptography",
   "httpx",
   "pymysql",
+  "pyodps",
   "python-multipart",
   "loguru",
   "apscheduler",
@@ -35,9 +36,6 @@ dev = [
   "ruff",
   "mypy",
 ]
-
-[project.scripts]
-agentlens = "app.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

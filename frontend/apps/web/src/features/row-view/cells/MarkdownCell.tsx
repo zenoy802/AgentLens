@@ -1,4 +1,4 @@
-import { MarkdownRenderer } from "@agentlens/markdown-renderer";
+import { Suspense, lazy, memo, useState } from "react";
 import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,12 +26,18 @@ interface MarkdownCellProps {
   richPreview?: boolean;
 }
 
-export function MarkdownCell({
+const MarkdownRenderer = lazy(async () => {
+  const module = await import("@agentlens/markdown-renderer");
+  return { default: module.MarkdownRenderer };
+});
+
+function MarkdownCellComponent({
   value,
   presentation = "table",
   previewLines = 1,
   richPreview = false,
 }: MarkdownCellProps) {
+  const [open, setOpen] = useState(false);
   const content = toCellText(value);
 
   if (value == null) {
@@ -40,29 +46,22 @@ export function MarkdownCell({
 
   if (presentation === "detail") {
     return (
-      <MarkdownRenderer
-        content={content}
-        className="rounded-md border bg-background p-3 text-sm"
-      />
-    );
-  }
-
-  if (richPreview) {
-    return (
-      <div
-        data-row-click-stop
-        className="h-full min-w-0 overflow-auto rounded border bg-background p-2 text-xs"
-      >
-        <MarkdownRenderer content={content} />
-      </div>
+      <Suspense fallback={<RendererFallback content={content} className="p-3" />}>
+        <MarkdownRenderer
+          content={content}
+          className="rounded-md border bg-background p-3 text-sm"
+        />
+      </Suspense>
     );
   }
 
   const preview =
-    previewLines === 1 ? truncatePreview(content) : truncateMultilinePreview(content);
+    previewLines === 1 && !richPreview
+      ? truncatePreview(content)
+      : truncateMultilinePreview(content, richPreview ? 1200 : 800);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -89,12 +88,39 @@ export function MarkdownCell({
             复制
           </Button>
         </div>
-        <MarkdownRenderer
-          content={content}
-          className="rounded-md border bg-background p-4 text-sm"
-          maxHeight={640}
-        />
+        {open ? (
+          <Suspense fallback={<RendererFallback content={content} className="p-4" />}>
+            <MarkdownRenderer
+              content={content}
+              className="rounded-md border bg-background p-4 text-sm"
+              maxHeight={640}
+            />
+          </Suspense>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
+
+function RendererFallback({
+  content,
+  className,
+}: {
+  content: string;
+  className: string;
+}) {
+  return (
+    <pre className={`overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background text-sm ${className}`}>
+      {content}
+    </pre>
+  );
+}
+
+export const MarkdownCell = memo(
+  MarkdownCellComponent,
+  (prev, next) =>
+    Object.is(prev.value, next.value) &&
+    prev.presentation === next.presentation &&
+    prev.previewLines === next.previewLines &&
+    prev.richPreview === next.richPreview,
+);

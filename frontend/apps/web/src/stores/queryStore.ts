@@ -5,6 +5,7 @@ import type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -16,6 +17,7 @@ export type {
   ExecutionInfo,
   ExecutionResult,
   FieldRender,
+  QueryFingerprints,
   Row,
   ViewConfigPayload,
   ViewConfigRead,
@@ -25,6 +27,12 @@ export type {
 export type SortDirection = "asc" | "desc";
 export type ColumnPinDirection = "left" | "right";
 export type RowHeightMode = "compact" | "medium" | "large" | "tall";
+export type LabelFilters = Record<string, string[]>;
+export type PersistedTrajectoryConfigSource = Exclude<
+  ViewConfigPayload["trajectory_config_source"],
+  undefined
+>;
+export type TrajectoryConfigSource = PersistedTrajectoryConfigSource | "legacy";
 
 export interface SortConfig {
   column: string;
@@ -58,19 +66,29 @@ export interface QueryState {
   columns: Column[];
   rows: Row[];
   execution: ExecutionInfo | null;
+  fingerprints: QueryFingerprints | null;
   suggestedRenders: Record<string, FieldRender>;
   fieldRenders: Record<string, FieldRender>;
   manualFieldRenderColumns: string[];
   tableConfig: TableConfig;
   trajectoryConfig: TrajectoryConfig | null;
+  trajectoryConfigSource: TrajectoryConfigSource;
   rowIdentityColumn: string | null;
+  filters: LabelFilters;
   warnings: Warning[];
+  selectedRowIds: Set<string>;
   isExecuting: boolean;
   isDirty: boolean;
+  sqlDirty: boolean;
+  viewDirty: boolean;
+  labelSchemaDirty: boolean;
   setConnectionId(id: number | null): void;
   setSql(sql: string): void;
   setResult(result: ExecutionResult): void;
   markDirty(): void;
+  markSqlDirty(): void;
+  markLabelSchemaDirty(): void;
+  markLabelSchemaClean(): void;
   markClean(): void;
   setFieldRender(col: string, render: FieldRender): void;
   removeFieldRender(col: string): void;
@@ -83,8 +101,16 @@ export interface QueryState {
   setSort(col: string, dir: SortDirection | null): void;
   setTrajectoryConfig(cfg: TrajectoryConfig | null): void;
   setRowIdentityColumn(col: string | null): void;
+  setLabelFilter(fieldKey: string, values: string[]): void;
+  toggleLabelFilterValue(fieldKey: string, value: string): void;
+  clearLabelFilter(fieldKey: string): void;
+  clearLabelFilters(): void;
+  setSelectedRowIds(rowIds: Iterable<string>): void;
+  setRowsSelected(rowIds: Iterable<string>, selected: boolean): void;
+  clearSelection(): void;
   applyViewConfig(vc: ViewConfigRead): void;
   mergeSuggestedRenders(suggested: Record<string, FieldRender>): void;
+  applySuggestedTrajectoryConfig(suggested: TrajectoryConfig | null | undefined): boolean;
   reset(): void;
 }
 
@@ -103,14 +129,21 @@ const initialResultState = {
   columns: [] as Column[],
   rows: [] as Row[],
   execution: null,
+  fingerprints: null as QueryFingerprints | null,
   suggestedRenders: {} as Record<string, FieldRender>,
   fieldRenders: {} as Record<string, FieldRender>,
   manualFieldRenderColumns: [] as string[],
   tableConfig: initialTableConfig,
   trajectoryConfig: null as TrajectoryConfig | null,
+  trajectoryConfigSource: null as TrajectoryConfigSource,
   rowIdentityColumn: null as string | null,
+  filters: {} as LabelFilters,
   warnings: [] as Warning[],
+  selectedRowIds: new Set<string>(),
   isDirty: false,
+  sqlDirty: false,
+  viewDirty: false,
+  labelSchemaDirty: false,
 };
 
 export const useQueryStore = create<QueryState>((set, get) => ({
@@ -131,6 +164,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         columns: result.columns,
         rows: result.rows,
         execution: result.execution,
+        fingerprints: result.fingerprints,
         suggestedRenders: result.suggested_field_renders,
         fieldRenders: filterFieldRenders(state.fieldRenders, result.columns),
         manualFieldRenderColumns: filterColumnNames(
@@ -139,11 +173,25 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         ),
         tableConfig: filterTableConfig(state.tableConfig, result.columns),
         warnings: result.warnings,
+        filters: {},
+        selectedRowIds: new Set(),
         isExecuting: false,
+        ...getDirtyState(state, { sqlDirty: false }),
       };
     }),
-  markDirty: () => set({ isDirty: true }),
-  markClean: () => set({ isDirty: false }),
+  markDirty: () => set((state) => getDirtyState(state, { viewDirty: true })),
+  markSqlDirty: () => set((state) => getDirtyState(state, { sqlDirty: true })),
+  markLabelSchemaDirty: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: true })),
+  markLabelSchemaClean: () =>
+    set((state) => getDirtyState(state, { labelSchemaDirty: false })),
+  markClean: () =>
+    set({
+      isDirty: false,
+      sqlDirty: false,
+      viewDirty: false,
+      labelSchemaDirty: false,
+    }),
   setFieldRender: (col, render) => {
     set((state) => ({
       fieldRenders: {
@@ -278,23 +326,95 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     get().markDirty();
   },
   setTrajectoryConfig: (cfg) => {
-    set({ trajectoryConfig: cfg });
+    set({ trajectoryConfig: cfg, trajectoryConfigSource: "manual" });
     get().markDirty();
   },
   setRowIdentityColumn: (col) => {
     set({ rowIdentityColumn: col });
     get().markDirty();
   },
+  setLabelFilter: (fieldKey, values) =>
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        [fieldKey]: normalizeLabelFilterValues(values),
+      },
+    })),
+  toggleLabelFilterValue: (fieldKey, value) =>
+    set((state) => {
+      const currentValues = state.filters[fieldKey] ?? [];
+      const nextValues = currentValues.includes(value)
+        ? currentValues.filter((item) => item !== value)
+        : [...currentValues, value];
+
+      return {
+        filters: {
+          ...state.filters,
+          [fieldKey]: normalizeLabelFilterValues(nextValues),
+        },
+      };
+    }),
+  clearLabelFilter: (fieldKey) =>
+    set((state) =>
+      state.filters[fieldKey]?.length === 0
+        ? {}
+        : {
+            filters: {
+              ...state.filters,
+              [fieldKey]: [],
+            },
+          },
+    ),
+  clearLabelFilters: () =>
+    set((state) =>
+      Object.values(state.filters).every((values) => values.length === 0)
+        ? {}
+        : { filters: {} },
+    ),
+  setSelectedRowIds: (rowIds) =>
+    set({ selectedRowIds: createSelectedRowIdsSet(rowIds) }),
+  setRowsSelected: (rowIds, selected) =>
+    set((state) => {
+      const nextSelectedRowIds = new Set(state.selectedRowIds);
+      let changed = false;
+
+      for (const rowId of rowIds) {
+        if (rowId.length === 0) {
+          continue;
+        }
+        if (selected) {
+          if (!nextSelectedRowIds.has(rowId)) {
+            nextSelectedRowIds.add(rowId);
+            changed = true;
+          }
+          continue;
+        }
+        if (nextSelectedRowIds.delete(rowId)) {
+          changed = true;
+        }
+      }
+
+      return changed ? { selectedRowIds: nextSelectedRowIds } : {};
+    }),
+  clearSelection: () =>
+    set((state) =>
+      state.selectedRowIds.size === 0 ? {} : { selectedRowIds: new Set<string>() },
+    ),
   applyViewConfig: (vc) => {
     const fieldRenders = vc.field_renders ?? {};
-    set({
+    const trajectoryConfig = vc.trajectory_config ?? null;
+    set((state) => ({
       fieldRenders,
       manualFieldRenderColumns: Object.keys(fieldRenders),
       tableConfig: normalizeTableConfig(vc.table_config),
-      trajectoryConfig: vc.trajectory_config ?? null,
+      trajectoryConfig,
+      trajectoryConfigSource: normalizeAppliedTrajectoryConfigSource(
+        trajectoryConfig,
+        vc.trajectory_config_source,
+      ),
       rowIdentityColumn: vc.row_identity_column ?? null,
-    });
-    get().markClean();
+      ...getDirtyState(state, { viewDirty: false }),
+    }));
   },
   mergeSuggestedRenders: (suggested) =>
     set((state) => {
@@ -310,14 +430,91 @@ export const useQueryStore = create<QueryState>((set, get) => ({
 
       return changed ? { fieldRenders } : {};
     }),
+  applySuggestedTrajectoryConfig: (suggested) => {
+    let changed = false;
+    set((state) => {
+      const legacyConfigIsUnknown =
+        state.trajectoryConfigSource === "legacy" &&
+        state.trajectoryConfig !== null;
+      if (state.trajectoryConfigSource === "manual" || legacyConfigIsUnknown) {
+        return {};
+      }
+
+      const nextConfig = suggested ?? null;
+      const nextSource: TrajectoryConfigSource = nextConfig === null ? null : "suggested";
+      if (
+        trajectoryConfigsEqual(state.trajectoryConfig, nextConfig) &&
+        state.trajectoryConfigSource === nextSource
+      ) {
+        return {};
+      }
+
+      changed = true;
+      return {
+        trajectoryConfig: nextConfig,
+        trajectoryConfigSource: nextSource,
+      };
+    });
+    return changed;
+  },
   reset: () =>
     set({
       connectionId: null,
       sql: "",
       ...initialResultState,
+      selectedRowIds: new Set(),
       isExecuting: false,
     }),
 }));
+
+function createSelectedRowIdsSet(rowIds: Iterable<string>): Set<string> {
+  const selectedRowIds = new Set<string>();
+  for (const rowId of rowIds) {
+    if (rowId.length > 0) {
+      selectedRowIds.add(rowId);
+    }
+  }
+  return selectedRowIds;
+}
+
+function normalizeLabelFilterValues(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => typeof value === "string")));
+}
+
+function getDirtyState(
+  state: Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">,
+  patch: Partial<Pick<QueryState, "sqlDirty" | "viewDirty" | "labelSchemaDirty">>,
+) {
+  const sqlDirty = patch.sqlDirty ?? state.sqlDirty;
+  const viewDirty = patch.viewDirty ?? state.viewDirty;
+  const labelSchemaDirty = patch.labelSchemaDirty ?? state.labelSchemaDirty;
+  return {
+    sqlDirty,
+    viewDirty,
+    labelSchemaDirty,
+    isDirty: sqlDirty || viewDirty || labelSchemaDirty,
+  };
+}
+
+function trajectoryConfigsEqual(
+  left: TrajectoryConfig | null,
+  right: TrajectoryConfig | null,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function normalizeAppliedTrajectoryConfigSource(
+  trajectoryConfig: TrajectoryConfig | null,
+  source: PersistedTrajectoryConfigSource | undefined,
+): TrajectoryConfigSource {
+  if (source === "manual") {
+    return "manual";
+  }
+  if (source === "suggested" && trajectoryConfig !== null) {
+    return "suggested";
+  }
+  return trajectoryConfig === null ? null : "legacy";
+}
 
 function isSameResult(state: QueryState, result: ExecutionResult): boolean {
   const execution = state.execution;
@@ -326,6 +523,7 @@ function isSameResult(state: QueryState, result: ExecutionResult): boolean {
     state.queryId === result.query_id &&
     state.columns === result.columns &&
     state.rows === result.rows &&
+    state.fingerprints === result.fingerprints &&
     state.suggestedRenders === result.suggested_field_renders &&
     state.warnings === result.warnings &&
     execution !== null &&
@@ -469,8 +667,15 @@ export function getViewConfigPayloadFromState(state: QueryState): ViewConfigPayl
     field_renders: state.fieldRenders,
     table_config: state.tableConfig,
     trajectory_config: state.trajectoryConfig,
+    trajectory_config_source: getPersistedTrajectoryConfigSource(state.trajectoryConfigSource),
     row_identity_column: state.rowIdentityColumn,
   };
+}
+
+function getPersistedTrajectoryConfigSource(
+  source: TrajectoryConfigSource,
+): PersistedTrajectoryConfigSource {
+  return source === "legacy" ? null : source;
 }
 
 export function viewConfigPayloadMatchesState(
@@ -485,6 +690,7 @@ export function viewConfigIsEmpty(viewConfig: ViewConfigRead): boolean {
     Object.keys(viewConfig.field_renders ?? {}).length === 0 &&
     tableConfigIsEmpty(viewConfig.table_config) &&
     viewConfig.trajectory_config == null &&
+    viewConfig.trajectory_config_source == null &&
     viewConfig.row_identity_column == null
   );
 }

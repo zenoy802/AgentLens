@@ -1,87 +1,196 @@
 # AgentLens
 
-## LLM Trajectory Analyzer
+> 面向 Agent 开发者的 SQL-first LLM trajectory 可视化、打标与 agent-assisted 分析工作台。
+> 不侵入 Agent 代码，直连你的 SQL 数据库，并把分析自由交给你自己的 CLI agent。
 
-AgentLens is a local-first SQL query and visualization tool for Agent developers. It connects to an existing MySQL database with read-only access, runs SELECT-only SQL, and renders the result as a row table or a trajectory view without requiring any Agent code changes.
+[![Docker](https://img.shields.io/badge/docker-ready-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-orange)]()
 
-## 核心特性
+## ✨ 核心特性
 
-- 只读连接已有 MySQL 数据库，不侵入 Agent 运行时代码。
-- SQL 查询任意 trajectory schema，并自动保存临时查询历史。
-- 行级表格支持 text、markdown、JSON、code、timestamp 等字段渲染。
-- ViewConfig 可保存列渲染、表格配置和 Trajectory 聚合配置。
-- Trajectory 视图按 group/role/content/order 字段聚合并渲染对话流。
+- 🔌 直连 SQL 数据库：无需修改 Agent 代码，MySQL 只读账号即可接入
+- 🔍 SQL-first 查询：任意 schema 返回结果都能渲染与分析
+- 📊 Trajectory 专用视图：行级表格、单 trajectory 气泡视图、多 trajectory 对比
+- 🧩 专业化渲染：Markdown / JSON / 代码 / timestamp / tool calls
+- 🏷️ 灵活打标：支持单选、多选、文本字段与批量打标
+- 🤖 Agent Bridge：通过 CLI/MCP 连接 Claude Code、Codex、aider、Cursor 等外部 agent
+- 🎯 反向可视化：外部 agent 可把发现写回为行/单元格 annotation
+- 📦 Context Export：大数据分析时导出 rows.jsonl / labels.jsonl / annotations.jsonl 给本地 agent 使用
+- 📤 导出无忧：CSV/Excel 导出含打标结果
+- 🐳 本地优先：localhost-only，Docker + pipx 双分发
 
-## 截图
+## 📸 截图
 
-> TODO: 添加连接管理页面截图。
+### SQL 查询与行级表格
+<!-- TODO: add screenshot: docs/screenshots/sql-table.png -->
 
-> TODO: 添加 SQL 查询 + 表格视图截图。
+### Trajectory 气泡视图
+<!-- TODO: add screenshot: docs/screenshots/trajectory-view.png -->
 
-> TODO: 添加 Trajectory 单视图截图。
+### 打标与批量打标
+<!-- TODO: add screenshot: docs/screenshots/labeling.png -->
 
-## 快速开始
+### Agent annotation 反向可视化
+<!-- TODO: add screenshot: docs/screenshots/agent-annotations.png -->
 
-### Docker 方式
+### Copy Agent Prompt
+<!-- TODO: add screenshot: docs/screenshots/copy-agent-prompt.png -->
+
+## 🚀 快速开始
+
+### Docker
+
+从源码目录构建本地镜像：
 
 ```bash
-docker compose up -d
+docker build -t agentlens:0.1.0 .
 ```
 
-打开 http://localhost:8000。
-
-数据会保存在 Docker volume `agentlens-data` 中，容器内路径为 `/data`。
-
-### 本地开发方式
-
-后端：
+启动 AgentLens：
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-AGENTLENS_DATA_DIR="$HOME/.agentlens" python -m uvicorn app.main:app --reload
+docker run -d \
+  -p 127.0.0.1:8000:8000 \
+  -v agentlens-data:/data \
+  --name agentlens \
+  agentlens:0.1.0
 ```
 
-前端：
+浏览器访问 http://127.0.0.1:8000。
+
+如果你使用的是已发布到 registry 的镜像，请把 `agentlens:0.1.0` 替换为实际发布镜像名。Docker 适合快速体验和本地 viewer mode。高级 Agent Bridge 工作流建议使用 pipx 本机安装，因为 CLI/MCP 需要作为本机进程被 Claude Code、Codex、aider 或 Cursor 调用。
+
+### pipx 安装
 
 ```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/zenoy802/AgentLens.git
+cd AgentLens
+pipx run --spec build pyproject-build
+pipx install dist/agentlens-0.1.0-py3-none-any.whl
+agentlens run
+```
+
+浏览器访问 http://127.0.0.1:8000。
+
+注意：PyPI 上的 `agentlens` 包名已被其他项目占用，当前不要使用 `pipx install agentlens`。公开发布到新的 PyPI 包名后，再把上面的 wheel 路径替换为实际包名。
+
+### MCP Server 安装
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/zenoy802/AgentLens.git
+cd AgentLens
+pipx run --spec build pyproject-build --outdir dist mcp_server
+pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
+agentlens-mcp --help
+```
+
+### 本地开发
+
+```bash
+# 后端 + CLI
+pip install -e "backend[dev]"
+pip install -e .
+```
+
+```bash
+# 前端
 cd frontend
 pnpm install
 pnpm dev
 ```
 
-本地开发时后端默认 http://127.0.0.1:8000，前端默认 http://localhost:5173。
+## 🤖 Agent Bridge 快速示例
 
-## 数据源准备
+1. 在 AgentLens 中运行 SQL。
+2. 选中几行 bad cases。
+3. 点击 Copy Agent Prompt。
+4. 粘贴到 Claude Code / Codex / aider。
+5. Agent 使用 MCP/CLI 读取数据并写回 annotations。
+6. 在 AgentLens 表格中查看高亮和解释。
 
-建议为 AgentLens 单独创建只读 MySQL 账号：
+CLI 示例：
 
-```sql
-CREATE USER 'agentlens_ro'@'%' IDENTIFIED BY 'change-me';
-GRANT SELECT ON your_database.* TO 'agentlens_ro'@'%';
-FLUSH PRIVILEGES;
+```bash
+agentlens data rows --query 42 --limit 100
+agentlens context export --query 42
+agentlens annotate --query 42 --row <row_identity> --color yellow --text "Suspicious reasoning step"
 ```
 
-不要使用有写权限的生产账号。AgentLens 后端也会拦截非 SELECT/WITH SQL，但数据库账号仍应遵循最小权限原则。
+MCP 示例：
 
-Windows 用户本地数据目录可使用 `%USERPROFILE%\.agentlens`；macOS/Linux 可使用 `$HOME/.agentlens`。
+```json
+{
+  "mcpServers": {
+    "agentlens": {
+      "command": "agentlens-mcp",
+      "args": [
+        "--backend-url", "http://127.0.0.1:8000",
+        "--author", "agent:claude-code"
+      ]
+    }
+  }
+}
+```
 
-## FAQ
+## 🏗️ 架构概览
 
-**AgentLens 会修改我的业务数据库吗？**
-不会。它只保存连接、查询、视图配置等 metadata 到本地 SQLite；对业务数据库只执行 SELECT-only 查询。
+```text
+┌────────────┐
+│  Browser   │
+│  React UI  │
+└─────┬──────┘
+      │ HTTP / WebSocket
+      ▼
+┌──────────────┐       SQL        ┌────────────┐
+│ FastAPI      │ ───────────────> │ 用户 MySQL │
+│ Metadata DB  │   read-only      └────────────┘
+│ SQLite       │
+└─────┬────────┘
+      │
+      │ Local HTTP
+      ▼
+┌──────────────┐
+│ agentlens CLI│
+└─────┬────────┘
+      │
+      │ MCP stdio
+      ▼
+┌──────────────┐
+│ agentlens-mcp│
+└─────┬────────┘
+      │
+      ▼
+┌──────────────────────────────┐
+│ Claude Code / Codex / aider  │
+│ 用户自己的 CLI agent         │
+└──────────────────────────────┘
+```
 
-**目前支持哪些数据库？**
-MVP 只支持 MySQL。PostgreSQL、SQLite、ClickHouse 属于后续扩展。
+## 📖 文档
 
-**为什么 Trajectory 视图需要配置字段？**
-Agent trajectory 的 schema 不固定，需要指定 `group_by`、`role_column`、`content_column` 和可选排序字段，AgentLens 才能把 SQL 行聚合成对话流。
+- 快速上手教程：[docs/getting-started.md](docs/getting-started.md)
+- SQL 编写最佳实践：[docs/sql-tips.md](docs/sql-tips.md)
+- 打标使用指南：[docs/labeling-guide.md](docs/labeling-guide.md)
+- Agent Bridge 使用指南：[docs/agent-bridge.md](docs/agent-bridge.md)
+- CLI 使用指南：[docs/cli.md](docs/cli.md)
+- MCP 配置指南：[docs/mcp.md](docs/mcp.md)
+- Annotation 与反向可视化：[docs/annotations.md](docs/annotations.md)
+- API 参考：[docs/api-reference.md](docs/api-reference.md)
+- 性能基准：[docs/performance-benchmark.md](docs/performance-benchmark.md)
+- 常见问题：[docs/faq.md](docs/faq.md)
 
-## 更多文档
+## 🛠️ 技术栈
 
-- [Getting Started](docs/getting-started.md)
-- [SQL Tips](docs/sql-tips.md)
-- [MVP Manual Checklist](docs/mvp-checklist.md)
-- [贡献指南](docs/contributing.md)
+- Backend: Python 3.11 · FastAPI · SQLAlchemy 2.0 · Pydantic v2
+- Frontend: React 18 · Vite · TypeScript · shadcn/ui · TanStack Table · TanStack Query
+- Storage: SQLite metadata · 用户 MySQL trajectory data
+- Agent Bridge: CLI · MCP · JSONL Context Export · WebSocket annotation updates
+
+## 🤝 贡献
+
+欢迎提 Issue 和 PR。贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 📄 License
+
+MIT

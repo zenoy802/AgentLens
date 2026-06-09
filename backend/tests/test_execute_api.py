@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 from starlette import status
 
+from app.api.execute import _safe_fingerprint
 from app.core.sql_guard import validate_sql
 from app.db.session import get_session_factory, initialize_metadata_database
 from app.main import app
@@ -16,11 +17,13 @@ from app.models.label import LabelSchema
 from app.models.misc import GlobalRenderRule, QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
+from app.services.fingerprint_service import compute_sql_fingerprint
 from app.services.query_executor import Column, ExecutorResult, ExecutorService
 from app.services.row_identity_service import compute
 
 HTTP_OK = status.HTTP_200_OK
 HTTP_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
+MAX_ANNOTATION_FINGERPRINT_LENGTH = 80
 
 
 def _is_utc_iso(value: str) -> bool:
@@ -43,6 +46,20 @@ def _create_connection(session: Session) -> int:
     return connection.id
 
 
+def test_fingerprint_fallback_fits_annotation_validation_limit() -> None:
+    def broken_compute(_: dict[str, str]) -> str:
+        raise RuntimeError("fingerprint boom")
+
+    fingerprint = _safe_fingerprint(
+        kind="schema",
+        compute_fn=broken_compute,
+        payload={"column": "value"},
+    )
+
+    assert fingerprint.startswith("sha256:")
+    assert len(fingerprint) <= MAX_ANNOTATION_FINGERPRINT_LENGTH
+
+
 def _patch_executor(
     monkeypatch: pytest.MonkeyPatch,
     result: ExecutorResult,
@@ -54,11 +71,15 @@ def _patch_executor(
         *,
         timeout: int,
         row_limit: int,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
     ) -> ExecutorResult:
         assert isinstance(self, ExecutorService)
         assert connection.id > 0
         assert timeout > 0
         assert row_limit > 0
+        assert query_id is None or query_id > 0
+        assert sql_fingerprint is None or sql_fingerprint.startswith("sha256:")
         validate_sql(sql)
         return result
 
@@ -96,6 +117,9 @@ async def test_execute_creates_temporary_query(monkeypatch: pytest.MonkeyPatch) 
     assert payload["is_temporary"] is True
     assert payload["query_id"] > 0
     assert _is_utc_iso(payload["execution"]["executed_at"])
+    assert payload["fingerprints"]["sql"] == compute_sql_fingerprint("SELECT 1 AS a")
+    assert payload["fingerprints"]["schema"].startswith("sha256:")
+    assert payload["fingerprints"]["result"].startswith("sha256:")
     assert payload["rows"][0]["a"] == 1
     assert "_row_identity" in payload["rows"][0]
 
@@ -339,6 +363,98 @@ async def test_execute_applies_suggested_renders(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+async def test_execute_applies_suggested_trajectory_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_metadata_database()
+    session = get_session_factory()()
+    try:
+        connection_id = _create_connection(session)
+        session.add_all(
+            [
+                GlobalRenderRule(
+                    match_pattern="session_id",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "trajectory_config", "field": "group_by"}),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="role",
+                    match_type="exact",
+                    render_config=json.dumps({"type": "trajectory_config", "field": "role_column"}),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="content",
+                    match_type="exact",
+                    render_config=json.dumps(
+                        {"type": "trajectory_config", "field": "content_column"}
+                    ),
+                    priority=100,
+                    enabled=True,
+                ),
+                GlobalRenderRule(
+                    match_pattern="created_at",
+                    match_type="exact",
+                    render_config=json.dumps(
+                        {
+                            "type": "trajectory_config",
+                            "field": "order_by",
+                            "order_direction": "desc",
+                        }
+                    ),
+                    priority=90,
+                    enabled=True,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    _patch_executor(
+        monkeypatch,
+        ExecutorResult(
+            columns=[
+                Column(name="session_id", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="role", sql_type="VAR_STRING", inferred_type="text"),
+                Column(name="content", sql_type="TEXT", inferred_type="text"),
+                Column(name="created_at", sql_type="DATETIME", inferred_type="timestamp"),
+            ],
+            rows=[
+                {
+                    "session_id": "s1",
+                    "role": "user",
+                    "content": "hello",
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            ],
+            duration_ms=5,
+            truncated=False,
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=cast(Any, app))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/v1/execute",
+            json={"connection_id": connection_id, "sql": "SELECT session_id, role, content FROM t"},
+        )
+
+    assert response.status_code == HTTP_OK
+    assert response.json()["suggested_trajectory_config"] == {
+        "group_by": "session_id",
+        "role_column": "role",
+        "content_column": "content",
+        "tool_calls_column": None,
+        "order_by": "created_at",
+        "order_direction": "desc",
+    }
+
+
+@pytest.mark.asyncio
 async def test_execute_truncation_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     initialize_metadata_database()
     session = get_session_factory()()
@@ -395,7 +511,7 @@ async def test_execute_forbidden_sql(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert response.status_code == HTTP_BAD_REQUEST
-    assert response.json()["error"]["code"] == "SQL_FORBIDDEN_STATEMENT"
+    assert response.json()["error"]["code"] == "SQL_NOT_ALLOWED"
 
     session = get_session_factory()()
     try:

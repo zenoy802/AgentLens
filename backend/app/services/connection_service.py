@@ -4,12 +4,14 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import import_module
 from json import JSONDecodeError
 from time import perf_counter
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import pymysql  # type: ignore[import-untyped]
 from cryptography.fernet import InvalidToken
+from loguru import logger
 from pymysql import MySQLError
 from sqlalchemy import URL, Select, func, select
 from sqlalchemy.exc import IntegrityError
@@ -30,20 +32,28 @@ from app.schemas.connection import (
 if TYPE_CHECKING:
     from app.services.query_executor import ExecutorService
 
+_DB_TYPE_MYSQL = "mysql"
+_DB_TYPE_ODPS = "odps"
+_SUPPORTED_DB_TYPES = frozenset({_DB_TYPE_MYSQL, _DB_TYPE_ODPS})
 _PROTECTED_EXTRA_PARAM_KEYS = frozenset(
     {
+        "access_id",
+        "access_key",
         "connect_timeout",
         "database",
         "db",
+        "endpoint",
         "host",
         "passwd",
         "password",
         "port",
+        "project",
+        "secret_access_key",
         "user",
         "username",
     }
 )
-_ALLOWED_EXTRA_PARAM_KEYS = frozenset(
+_MYSQL_ALLOWED_EXTRA_PARAM_KEYS = frozenset(
     {
         "charset",
         "read_timeout",
@@ -55,7 +65,16 @@ _ALLOWED_EXTRA_PARAM_KEYS = frozenset(
         "write_timeout",
     }
 )
+_ODPS_ALLOWED_EXTRA_PARAM_KEYS = frozenset(
+    {
+        "limit",
+        "quota_name",
+        "tunnel",
+        "tunnel_endpoint",
+    }
+)
 _PASSWORD_DECRYPT_ERROR = "Unable to decrypt connection password. Please update the saved password."
+_PYODPS_MISSING_ERROR = "PyODPS is not installed. Install the backend dependency 'pyodps'."
 
 
 class SecretDecryptor(Protocol):
@@ -92,6 +111,12 @@ class ConnectionService:
             .limit(page_size)
         )
         items = self.session.scalars(stmt).all()
+        logger.info(
+            "Connections listed: page={} page_size={} total={}",
+            page,
+            page_size,
+            total_records,
+        )
         return ConnectionListResponse(
             items=[self._to_read_model(connection) for connection in items],
             pagination=Pagination(
@@ -103,6 +128,14 @@ class ConnectionService:
         )
 
     def create_connection(self, payload: ConnectionCreate) -> ConnectionRead:
+        password_enc = encrypt_secret(payload.password) if payload.password else None
+        self._validate_connection_fields(
+            db_type=payload.db_type,
+            host=payload.host,
+            database=payload.database,
+            username=payload.username,
+            password_enc=password_enc,
+        )
         connection = Connection(
             name=payload.name,
             db_type=payload.db_type,
@@ -110,23 +143,41 @@ class ConnectionService:
             port=payload.port,
             database=payload.database,
             username=payload.username,
-            password_enc=encrypt_secret(payload.password) if payload.password else None,
-            extra_params=self._dump_extra_params(payload.extra_params),
+            password_enc=password_enc,
+            extra_params=self._dump_extra_params(payload.extra_params, db_type=payload.db_type),
             default_timeout=payload.default_timeout,
             default_row_limit=payload.default_row_limit,
         )
         self.session.add(connection)
         self._commit_or_raise_conflict()
         self.session.refresh(connection)
+        logger.info("Connection created: connection_id={} name={}", connection.id, connection.name)
         return self._to_read_model(connection)
 
     def get_connection(self, connection_id: int) -> ConnectionRead:
         connection = self._get_connection_or_raise(connection_id)
+        logger.info("Connection loaded: connection_id={}", connection_id)
         return self._to_read_model(connection)
 
     def update_connection(self, connection_id: int, payload: ConnectionUpdate) -> ConnectionRead:
         connection = self._get_connection_or_raise(connection_id)
         updates = payload.model_dump(exclude_unset=True)
+        new_db_type_raw = updates.get("db_type", connection.db_type)
+        if not isinstance(new_db_type_raw, str):
+            raise ValidationError(
+                code="CONN_UNSUPPORTED_DB_TYPE",
+                message="Unsupported database type.",
+                detail={"db_type": new_db_type_raw},
+            )
+        new_db_type = new_db_type_raw
+        if connection.db_type != new_db_type:
+            new_password = updates.get("password")
+            if not isinstance(new_password, str) or not new_password:
+                raise ValidationError(
+                    code="CONN_REQUIRED_FIELD_MISSING",
+                    message="Changing database type requires a new password or secret.",
+                    detail={"fields": ["password"]},
+                )
 
         for field_name in (
             "name",
@@ -146,11 +197,25 @@ class ConnectionService:
             connection.password_enc = encrypt_secret(password) if password else None
 
         if "extra_params" in updates:
-            connection.extra_params = self._dump_extra_params(updates["extra_params"])
+            connection.extra_params = self._dump_extra_params(
+                updates["extra_params"],
+                db_type=new_db_type,
+            )
+        elif "db_type" in updates:
+            self._load_extra_params(connection.extra_params, db_type=new_db_type)
+
+        self._validate_connection_fields(
+            db_type=new_db_type,
+            host=connection.host,
+            database=connection.database,
+            username=connection.username,
+            password_enc=connection.password_enc,
+        )
 
         self._commit_or_raise_conflict()
         self.session.refresh(connection)
         self._invalidate_executor_engine(connection_id)
+        logger.info("Connection updated: connection_id={}", connection_id)
         return self._to_read_model(connection)
 
     def delete_connection(self, connection_id: int) -> None:
@@ -158,6 +223,7 @@ class ConnectionService:
         self.session.delete(connection)
         self.session.commit()
         self._invalidate_executor_engine(connection_id)
+        logger.info("Connection deleted: connection_id={}", connection_id)
 
     def test_connection(self, connection_id: int) -> ConnectionTestResponse:
         connection = self._get_connection_or_raise(connection_id)
@@ -166,6 +232,18 @@ class ConnectionService:
         connection.last_test_ok = result.ok
         self.session.commit()
         self.session.refresh(connection)
+        if result.ok:
+            logger.info(
+                "Connection test succeeded: connection_id={} latency_ms={}",
+                connection_id,
+                result.latency_ms,
+            )
+        else:
+            logger.warning(
+                "Connection test failed: connection_id={} error={}",
+                connection_id,
+                result.error,
+            )
         return ConnectionTestResponse(
             ok=result.ok,
             latency_ms=result.latency_ms,
@@ -185,10 +263,26 @@ class ConnectionService:
         return connection
 
     def _execute_connection_test(self, connection: Connection) -> ConnectionTestResult:
+        if connection.db_type == _DB_TYPE_ODPS:
+            return self._execute_odps_connection_test(connection)
+        if connection.db_type != _DB_TYPE_MYSQL:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=datetime.now(UTC),
+                error=f"Unsupported database type: {connection.db_type}",
+            )
+        return self._execute_mysql_connection_test(connection)
+
+    def _execute_mysql_connection_test(self, connection: Connection) -> ConnectionTestResult:
         tested_at = datetime.now(UTC)
         start = perf_counter()
         try:
-            extra_params = self._load_extra_params(connection.extra_params)
+            extra_params = self._load_extra_params(
+                connection.extra_params,
+                db_type=connection.db_type,
+            )
             try:
                 password = decrypt_secret(connection.password_enc)
             except InvalidToken:
@@ -232,6 +326,9 @@ class ConnectionService:
                 tested_at=tested_at,
             )
         except MySQLError as exc:
+            logger.warning(
+                "MySQL connection test failed: connection_id={} error={}", connection.id, exc
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,
@@ -240,6 +337,11 @@ class ConnectionService:
                 error=str(exc),
             )
         except OSError as exc:
+            logger.warning(
+                "Connection test invalid parameters: connection_id={} error={}",
+                connection.id,
+                exc,
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,
@@ -248,12 +350,75 @@ class ConnectionService:
                 error=f"Invalid MySQL connection parameters: {exc}",
             )
         except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Connection test invalid parameters: connection_id={} error={}",
+                connection.id,
+                exc,
+            )
             return ConnectionTestResult(
                 ok=False,
                 latency_ms=None,
                 server_version=None,
                 tested_at=tested_at,
                 error=f"Invalid MySQL connection parameters: {exc}",
+            )
+
+    def _execute_odps_connection_test(self, connection: Connection) -> ConnectionTestResult:
+        tested_at = datetime.now(UTC)
+        start = perf_counter()
+        try:
+            extra_params = self._load_extra_params(
+                connection.extra_params,
+                db_type=connection.db_type,
+            )
+            odps_client = _build_odps_client(connection)
+            instance = odps_client.run_sql("SELECT 1", **_build_odps_run_kwargs(extra_params))
+            try:
+                instance.wait_for_success(timeout=connection.default_timeout)
+            except Exception as exc:
+                if _is_odps_timeout_error(exc):
+                    _stop_odps_instance(instance)
+                raise
+            with instance.open_reader(**_build_odps_reader_kwargs(extra_params)) as reader:
+                _read_single_odps_row(reader)
+            latency_ms = int((perf_counter() - start) * 1000)
+            return ConnectionTestResult(
+                ok=True,
+                latency_ms=latency_ms,
+                server_version="MaxCompute/ODPS",
+                tested_at=tested_at,
+            )
+        except InvalidToken:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=_PASSWORD_DECRYPT_ERROR,
+            )
+        except ModuleNotFoundError:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=_PYODPS_MISSING_ERROR,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=f"Invalid MaxCompute connection parameters: {exc}",
+            )
+        except Exception as exc:
+            return ConnectionTestResult(
+                ok=False,
+                latency_ms=None,
+                server_version=None,
+                tested_at=tested_at,
+                error=str(exc),
             )
 
     def _commit_or_raise_conflict(self) -> None:
@@ -280,11 +445,18 @@ class ConnectionService:
         return None
 
     @staticmethod
-    def _dump_extra_params(extra_params: Mapping[str, object] | None) -> str | None:
+    def _dump_extra_params(
+        extra_params: Mapping[str, object] | None,
+        *,
+        db_type: str,
+    ) -> str | None:
         if extra_params is None:
             return None
         normalized_extra_params = dict(extra_params)
-        protected_keys = ConnectionService._find_forbidden_extra_param_keys(normalized_extra_params)
+        protected_keys = ConnectionService._find_forbidden_extra_param_keys(
+            normalized_extra_params,
+            db_type=db_type,
+        )
         if protected_keys:
             raise ValidationError(
                 code="CONN_EXTRA_PARAMS_FORBIDDEN",
@@ -292,7 +464,8 @@ class ConnectionService:
                 detail={"keys": protected_keys},
             )
         invalid_keys = ConnectionService._find_invalid_extra_param_value_keys(
-            normalized_extra_params
+            normalized_extra_params,
+            db_type=db_type,
         )
         if invalid_keys:
             raise ValidationError(
@@ -303,7 +476,7 @@ class ConnectionService:
         return json.dumps(normalized_extra_params)
 
     @staticmethod
-    def _load_extra_params(raw_extra_params: str | None) -> dict[str, object]:
+    def _load_extra_params(raw_extra_params: str | None, *, db_type: str) -> dict[str, object]:
         if raw_extra_params is None:
             return {}
         try:
@@ -314,14 +487,20 @@ class ConnectionService:
                 message="extra_params must be a valid JSON object.",
             ) from exc
         if isinstance(loaded, dict):
-            protected_keys = ConnectionService._find_forbidden_extra_param_keys(loaded)
+            protected_keys = ConnectionService._find_forbidden_extra_param_keys(
+                loaded,
+                db_type=db_type,
+            )
             if protected_keys:
                 raise ValidationError(
                     code="CONN_EXTRA_PARAMS_FORBIDDEN",
                     message="extra_params contains unsupported or unsafe keys.",
                     detail={"keys": protected_keys},
                 )
-            invalid_keys = ConnectionService._find_invalid_extra_param_value_keys(loaded)
+            invalid_keys = ConnectionService._find_invalid_extra_param_value_keys(
+                loaded,
+                db_type=db_type,
+            )
             if invalid_keys:
                 raise ValidationError(
                     code="CONN_EXTRA_PARAMS_INVALID",
@@ -332,15 +511,27 @@ class ConnectionService:
         return {}
 
     @staticmethod
-    def _find_forbidden_extra_param_keys(extra_params: Mapping[str, object]) -> list[str]:
+    def _find_forbidden_extra_param_keys(
+        extra_params: Mapping[str, object],
+        *,
+        db_type: str,
+    ) -> list[str]:
+        allowed_keys = ConnectionService._allowed_extra_param_keys(db_type)
         return sorted(
             key
             for key in extra_params
-            if key.lower() in _PROTECTED_EXTRA_PARAM_KEYS or key not in _ALLOWED_EXTRA_PARAM_KEYS
+            if key.lower() in _PROTECTED_EXTRA_PARAM_KEYS or key not in allowed_keys
         )
 
     @staticmethod
-    def _find_invalid_extra_param_value_keys(extra_params: Mapping[str, object]) -> list[str]:
+    def _find_invalid_extra_param_value_keys(
+        extra_params: Mapping[str, object],
+        *,
+        db_type: str,
+    ) -> list[str]:
+        if db_type == _DB_TYPE_ODPS:
+            return ConnectionService._find_invalid_odps_extra_param_value_keys(extra_params)
+
         invalid_keys: list[str] = []
         for key, value in extra_params.items():
             invalid_string_value = key in {
@@ -361,6 +552,63 @@ class ConnectionService:
         return sorted(invalid_keys)
 
     @staticmethod
+    def _find_invalid_odps_extra_param_value_keys(
+        extra_params: Mapping[str, object],
+    ) -> list[str]:
+        invalid_keys: list[str] = []
+        for key, value in extra_params.items():
+            invalid_string_value = key in {"quota_name", "tunnel_endpoint"} and not isinstance(
+                value,
+                str,
+            )
+            invalid_boolean_value = key in {"limit", "tunnel"} and not isinstance(value, bool)
+            if invalid_string_value or invalid_boolean_value:
+                invalid_keys.append(key)
+        return sorted(invalid_keys)
+
+    @staticmethod
+    def _allowed_extra_param_keys(db_type: str) -> frozenset[str]:
+        if db_type == _DB_TYPE_ODPS:
+            return _ODPS_ALLOWED_EXTRA_PARAM_KEYS
+        return _MYSQL_ALLOWED_EXTRA_PARAM_KEYS
+
+    @staticmethod
+    def _validate_connection_fields(
+        *,
+        db_type: str,
+        host: str | None,
+        database: str | None,
+        username: str | None,
+        password_enc: bytes | None,
+    ) -> None:
+        if db_type not in _SUPPORTED_DB_TYPES:
+            raise ValidationError(
+                code="CONN_UNSUPPORTED_DB_TYPE",
+                message="Unsupported database type.",
+                detail={"db_type": db_type},
+            )
+        if db_type != _DB_TYPE_ODPS:
+            return
+
+        missing_fields: list[str] = []
+        if not host:
+            missing_fields.append("host")
+        if not database:
+            missing_fields.append("database")
+        if not username:
+            missing_fields.append("username")
+        if password_enc is None:
+            missing_fields.append("password")
+        if missing_fields:
+            raise ValidationError(
+                code="CONN_REQUIRED_FIELD_MISSING",
+                message=(
+                    "MaxCompute connections require endpoint, project, AccessKey ID and secret."
+                ),
+                detail={"fields": missing_fields},
+            )
+
+    @staticmethod
     def _is_connection_name_conflict(exc: IntegrityError) -> bool:
         return "connections.name" in str(exc.orig)
 
@@ -378,7 +626,10 @@ class ConnectionService:
                 "port": connection.port,
                 "database": connection.database,
                 "username": connection.username,
-                "extra_params": self._load_extra_params(connection.extra_params),
+                "extra_params": self._load_extra_params(
+                    connection.extra_params,
+                    db_type=connection.db_type,
+                ),
                 "default_timeout": connection.default_timeout,
                 "default_row_limit": connection.default_row_limit,
                 "created_at": connection.created_at,
@@ -393,6 +644,12 @@ def _build_sqlalchemy_url(
     connection: Connection,
     crypto_service: SecretDecryptor | None = None,
 ) -> URL:
+    if connection.db_type != _DB_TYPE_MYSQL:
+        raise ValidationError(
+            code="CONN_UNSUPPORTED_DB_TYPE",
+            message="SQLAlchemy execution is only available for MySQL connections.",
+            detail={"db_type": connection.db_type},
+        )
     password = (
         crypto_service.decrypt_secret(connection.password_enc)
         if crypto_service is not None
@@ -411,6 +668,95 @@ def _build_sqlalchemy_url(
 def _build_sqlalchemy_connect_args(connection: Connection) -> dict[str, object]:
     return {
         key: value
-        for key, value in ConnectionService._load_extra_params(connection.extra_params).items()
+        for key, value in ConnectionService._load_extra_params(
+            connection.extra_params,
+            db_type=connection.db_type,
+        ).items()
         if value is not None
     }
+
+
+def _build_odps_client(
+    connection: Connection,
+    crypto_service: SecretDecryptor | None = None,
+) -> Any:
+    if connection.db_type != _DB_TYPE_ODPS:
+        raise ValidationError(
+            code="CONN_UNSUPPORTED_DB_TYPE",
+            message="ODPS execution is only available for MaxCompute connections.",
+            detail={"db_type": connection.db_type},
+        )
+    password = (
+        crypto_service.decrypt_secret(connection.password_enc)
+        if crypto_service is not None
+        else decrypt_secret(connection.password_enc)
+    )
+    ConnectionService._validate_connection_fields(
+        db_type=connection.db_type,
+        host=connection.host,
+        database=connection.database,
+        username=connection.username,
+        password_enc=connection.password_enc,
+    )
+    extra_params = ConnectionService._load_extra_params(
+        connection.extra_params,
+        db_type=connection.db_type,
+    )
+    odps_class = _load_odps_class()
+    odps_kwargs = _build_odps_client_kwargs(extra_params)
+    return odps_class(
+        connection.username,
+        password,
+        connection.database,
+        endpoint=connection.host,
+        **odps_kwargs,
+    )
+
+
+def _build_odps_client_kwargs(extra_params: Mapping[str, object]) -> dict[str, object]:
+    kwargs: dict[str, object] = {}
+    for key in ("quota_name", "tunnel_endpoint"):
+        value = extra_params.get(key)
+        if value is not None:
+            kwargs[key] = value
+    return kwargs
+
+
+def _build_odps_run_kwargs(extra_params: Mapping[str, object]) -> dict[str, object]:
+    quota_name = extra_params.get("quota_name")
+    if quota_name is None:
+        return {}
+    return {"quota_name": quota_name}
+
+
+def _build_odps_reader_kwargs(extra_params: Mapping[str, object]) -> dict[str, object]:
+    kwargs: dict[str, object] = {}
+    for key in ("limit", "tunnel"):
+        value = extra_params.get(key)
+        if value is not None:
+            kwargs[key] = value
+    return kwargs
+
+
+def _read_single_odps_row(reader: Any) -> None:
+    for _row in reader:
+        break
+
+
+def _load_odps_class() -> type[Any]:
+    odps_module = import_module("odps")
+    odps_class = odps_module.ODPS
+    if not isinstance(odps_class, type):
+        raise TypeError("odps.ODPS is not a class")
+    return odps_class
+
+
+def _is_odps_timeout_error(exc: BaseException) -> bool:
+    class_name = exc.__class__.__name__
+    return class_name == "WaitTimeoutError" or "timed out" in str(exc).lower()
+
+
+def _stop_odps_instance(instance: Any) -> None:
+    stop = getattr(instance, "stop", None)
+    if callable(stop):
+        stop()

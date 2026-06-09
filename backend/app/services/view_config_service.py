@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from loguru import logger
 from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
@@ -10,7 +12,13 @@ from app.core.errors import NotFoundError
 from app.models.named_query import NamedQuery
 from app.models.view_config import ViewConfig
 from app.schemas.render import FieldRender
-from app.schemas.view_config import TableConfig, TrajectoryConfig, ViewConfigPayload, ViewConfigRead
+from app.schemas.view_config import (
+    TableConfig,
+    TrajectoryConfig,
+    TrajectoryConfigSource,
+    ViewConfigPayload,
+    ViewConfigRead,
+)
 
 _field_renders_adapter: TypeAdapter[dict[str, FieldRender]] = TypeAdapter(dict[str, FieldRender])
 _table_config_adapter: TypeAdapter[TableConfig] = TypeAdapter(TableConfig)
@@ -21,12 +29,14 @@ class ViewConfigService:
     def get(self, db: Session, query_id: int) -> ViewConfigRead:
         query = self._get_query_or_raise(db, query_id)
         view_config = self._get_or_create_view_config(db, query)
+        logger.info("View config read: query_id={}", query_id)
 
         return ViewConfigRead(
             query_id=query_id,
             field_renders=self._load_field_renders(view_config),
             table_config=self._load_table_config(view_config),
             trajectory_config=self._load_trajectory_config(view_config),
+            trajectory_config_source=self._load_trajectory_config_source(view_config),
             row_identity_column=view_config.row_identity_column,
             updated_at=view_config.updated_at,
         )
@@ -57,10 +67,12 @@ class ViewConfigService:
             if payload.trajectory_config is None
             else payload.trajectory_config.model_dump_json()
         )
+        view_config.trajectory_config_source = payload.trajectory_config_source
         view_config.row_identity_column = payload.row_identity_column
 
         db.commit()
         db.refresh(view_config)
+        logger.info("View config saved: query_id={}", query_id)
         return self.get(db, query_id)
 
     @staticmethod
@@ -69,7 +81,7 @@ class ViewConfigService:
         if query is None:
             raise NotFoundError(
                 "query not found",
-                code="NOT_FOUND",
+                code="QUERY_NOT_FOUND",
                 detail={"query_id": query_id},
             )
         return query
@@ -85,6 +97,7 @@ class ViewConfigService:
         db.add(view_config)
         db.commit()
         db.refresh(view_config)
+        logger.info("View config created: query_id={}", query.id)
         return view_config
 
     @staticmethod
@@ -125,6 +138,21 @@ class ViewConfigService:
                 exc,
             )
             return None
+
+    @staticmethod
+    def _load_trajectory_config_source(
+        view_config: ViewConfig,
+    ) -> TrajectoryConfigSource | None:
+        source = view_config.trajectory_config_source
+        if source in ("manual", "suggested"):
+            return cast(TrajectoryConfigSource, source)
+        if source is not None:
+            logger.warning(
+                "Invalid view_config.trajectory_config_source for query {}: {}",
+                view_config.query_id,
+                source,
+            )
+        return None
 
 
 view_config_service = ViewConfigService()

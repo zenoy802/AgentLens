@@ -42,7 +42,10 @@ export function ConnectionSelect({ value, onChange, disabled = false }: Connecti
             <SelectItem value={EMPTY_CONNECTION_VALUE}>{placeholder}</SelectItem>
             {(connections.data?.items ?? []).map((connection) => (
               <SelectItem key={connection.id} value={String(connection.id)}>
-                {connection.name} ({connection.db_type} {connection.host ?? "localhost"})
+                {connection.name} ({connection.db_type}{" "}
+                {connection.db_type === "odps"
+                  ? connection.database
+                  : connection.host ?? "localhost"})
               </SelectItem>
             ))}
           </SelectGroup>

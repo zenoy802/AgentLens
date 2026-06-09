@@ -75,6 +75,36 @@ def test_multiple_groups_keep_first_seen_group_order() -> None:
     assert [trajectory.message_count for trajectory in trajectories] == [2, 1]
 
 
+def test_uses_external_row_identities_without_copying_identity_into_raw() -> None:
+    rows = [
+        {"session_id": "s2", "role": "user", "content": "one", "created_at": 2},
+        {"session_id": "s1", "role": "user", "content": "two", "created_at": 1},
+        {"session_id": "s2", "role": "assistant", "content": "three", "created_at": 1},
+    ]
+
+    trajectories, warnings = aggregate(
+        rows,
+        _config(order_by="created_at"),
+        row_identities=["row-0", "row-1", "row-2"],
+    )
+
+    assert warnings == []
+    assert [message.row_identity for message in trajectories[0].messages] == [
+        "row-2",
+        "row-0",
+    ]
+    assert "_row_identity" not in trajectories[0].messages[0].raw
+
+
+def test_external_row_identity_count_must_match_rows() -> None:
+    rows = [{"session_id": "s1", "role": "user", "content": "one"}]
+
+    with pytest.raises(ValidationError) as exc_info:
+        aggregate(rows, _config(), row_identities=[])
+
+    assert exc_info.value.code == "TRAJECTORY_ROW_IDENTITY_COUNT_MISMATCH"
+
+
 def test_null_group_key_does_not_merge_with_literal_null_sentinel() -> None:
     rows: list[dict[str, Any]] = [
         {"_row_identity": "null", "session_id": None, "role": "user", "content": "null group"},
@@ -167,33 +197,31 @@ def test_tool_calls_json_string_is_parsed() -> None:
     ]
 
 
-def test_missing_group_by_column_raises_validation_error() -> None:
+def test_missing_group_by_column_falls_back() -> None:
     rows = [{"_row_identity": "a", "role": "user", "content": "missing group"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_GROUP_BY_MISSING"
+    assert trajectories[0].group_key == "__missing_group_by__"
+    assert warnings[0].code == "MISSING_GROUP_BY_COLUMN"
 
 
-def test_missing_role_column_raises_validation_error() -> None:
+def test_missing_role_column_falls_back_to_unknown() -> None:
     rows = [{"_row_identity": "a", "session_id": "s1", "content": "missing role"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_REQUIRED_COLUMN_MISSING"
-    assert exc_info.value.detail == {"column": "role", "row_index": 0}
+    assert trajectories[0].messages[0].role == "unknown"
+    assert warnings[0].code == "MISSING_ROLE_COLUMN"
 
 
-def test_missing_content_column_raises_validation_error() -> None:
+def test_missing_content_column_falls_back_to_null() -> None:
     rows = [{"_row_identity": "a", "session_id": "s1", "role": "user"}]
 
-    with pytest.raises(ValidationError) as exc_info:
-        aggregate(rows, _config())
+    trajectories, warnings = aggregate(rows, _config())
 
-    assert exc_info.value.code == "TRAJECTORY_REQUIRED_COLUMN_MISSING"
-    assert exc_info.value.detail == {"column": "content", "row_index": 0}
+    assert trajectories[0].messages[0].content is None
+    assert warnings[0].code == "MISSING_CONTENT_COLUMN"
 
 
 def test_mixed_order_by_types_warns_and_keeps_input_order() -> None:

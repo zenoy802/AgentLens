@@ -1,20 +1,5 @@
 # Contributing
 
-AgentLens is developed as a local-first monorepo. Before opening a PR, read the product context in `.design/PRD_v2.md` and keep changes scoped to the task.
+The canonical contribution guide is [../CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Recommended checks:
-
-```bash
-cd backend
-ruff check .
-ruff format --check .
-mypy .
-pytest
-```
-
-```bash
-cd frontend
-pnpm lint
-pnpm typecheck
-pnpm build
-```
+This file remains only as a compatibility pointer for older documentation links.
