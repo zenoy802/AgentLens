@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import status
 from loguru import logger
 from sqlalchemy import Select, delete, or_, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -163,7 +164,7 @@ class AnnotationService:
         if _has_text(filters.annotation_set):
             stmt = stmt.where(Annotation.annotation_set == filters.annotation_set)
 
-        result = self.session.execute(stmt)
+        result: CursorResult[tuple[()]] = self.session.execute(stmt)
         self.session.commit()
         deleted = int(result.rowcount or 0)
         logger.info("Annotations deleted by filter: query_id={} count={}", query_id, deleted)

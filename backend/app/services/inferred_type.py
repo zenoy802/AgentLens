@@ -122,7 +122,7 @@ def from_cursor_description(desc_item: Sequence[Any]) -> tuple[str, InferredType
     if sql_type_name == "BIT":
         return sql_type_name, "boolean" if internal_size == 1 else "binary"
 
-    inferred = MYSQL_TYPE_MAPPING.get(type_code)
+    inferred = MYSQL_TYPE_MAPPING.get(type_code) if isinstance(type_code, int | str) else None
     if inferred is None:
         inferred = MYSQL_TYPE_MAPPING.get(sql_type_name, "unknown")
     return sql_type_name, inferred
