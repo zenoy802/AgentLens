@@ -54,6 +54,9 @@
 
 ## Packaging
 
+- [x] pipx run --spec build pyproject-build
+- [x] pipx run --spec build pyproject-build --outdir dist mcp_server
+- [x] pipx run --spec build pyproject-build --outdir mcp_server/dist mcp_server
 - [x] pipx install dist/agentlens-0.1.0-py3-none-any.whl
 - [x] agentlens run works
 - [x] agentlens --help works
@@ -78,6 +81,8 @@
 - [x] version in pyproject.toml is 0.1.0
 - [x] version in package.json is 0.1.0 if applicable
 - [ ] git tag v0.1.0
+- [ ] git push origin v0.1.0
+- [ ] verify `v0.1.0` is available on GitHub before publishing release or Docker artifacts
 - [ ] GitHub Release drafted
 - [x] Docker image tagged agentlens:0.1.0 and agentlens:latest
 

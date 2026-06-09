@@ -273,6 +273,10 @@ def test_server_command_reports_unified_package_requirement(
 
     assert result.exit_code != 0
     assert "requires the unified agentlens package" in result.output
+    assert "git clone --branch v0.1.0 --depth 1" in result.output
+    assert "https://github.com/zenoy802/AgentLens.git" in result.output
+    assert "cd AgentLens" in result.output
+    assert "pipx run --spec build pyproject-build" in result.output
     assert "Missing dependency: uvicorn" in result.output
     assert "Traceback" not in result.output
 
