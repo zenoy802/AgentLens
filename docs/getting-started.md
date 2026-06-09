@@ -6,7 +6,7 @@
 
 AgentLens 是一个 SQL-first LLM trajectory 可视化与打标工作台。它只读连接你的 MySQL 数据库，不要求修改 Agent 代码。你用 SQL 取出任意 schema 的 trajectory 数据，再在 UI 中切换行级表格、单 trajectory 视图和多 trajectory 对比视图。
 
-AgentLens v1 不内置 provider 配置、prompt editor 或托管式分析流水线。推理分析通过 Agent Bridge 交给你自己的 CLI agent，例如 Claude Code、Codex、aider 或 Cursor。AgentLens 负责数据展示、context export、selection snapshot 和 annotation 写回。
+AgentLens 0.1.0 不内置 provider 配置、prompt editor 或托管式分析流水线。推理分析通过 Agent Bridge 交给你自己的 CLI agent，例如 Claude Code、Codex、aider 或 Cursor。AgentLens 负责数据展示、context export、selection snapshot 和 annotation 写回。
 
 ## 2. 准备 MySQL 只读账号
 
@@ -35,7 +35,7 @@ FLUSH PRIVILEGES;
 从源码目录构建本地镜像：
 
 ```bash
-docker build -t agentlens:1.0.0 .
+docker build -t agentlens:0.1.0 .
 ```
 
 启动 AgentLens：
@@ -45,17 +45,18 @@ docker run -d \
   -p 127.0.0.1:8000:8000 \
   -v agentlens-data:/data \
   --name agentlens \
-  agentlens:1.0.0
+  agentlens:0.1.0
 ```
 
 打开 http://127.0.0.1:8000。
 
-如果你使用的是已发布到 registry 的镜像，请把 `agentlens:1.0.0` 替换为实际发布镜像名。Docker 适合快速体验、只用浏览器查询和查看数据。高级 Agent Bridge 工作流建议使用 pipx 本机安装 CLI/MCP，因为 Claude Code、Codex、aider 或 Cursor 通常需要直接启动本机 `agentlens` / `agentlens-mcp` 命令。
+如果你使用的是已发布到 registry 的镜像，请把 `agentlens:0.1.0` 替换为实际发布镜像名。Docker 适合快速体验、只用浏览器查询和查看数据。高级 Agent Bridge 工作流建议使用 pipx 本机安装 CLI/MCP，因为 Claude Code、Codex、aider 或 Cursor 通常需要直接启动本机 `agentlens` / `agentlens-mcp` 命令。
 
 ## 4. pipx 启动
 
 ```bash
-pipx install agentlens
+python -m build
+pipx install dist/agentlens-0.1.0-py3-none-any.whl
 agentlens run
 ```
 
@@ -220,8 +221,10 @@ agent 可能使用：
 安装 CLI 和 MCP：
 
 ```bash
-pipx install agentlens
-pipx install agentlens-mcp
+python -m build
+python -m build --outdir dist mcp_server
+pipx install dist/agentlens-0.1.0-py3-none-any.whl
+pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
 ```
 
 Claude Code 项目 `.mcp.json`：

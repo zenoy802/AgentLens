@@ -7,7 +7,7 @@ Environment:
 - macOS, local development workspace
 - Frontend production build: `pnpm build`
 - Python wheel builds: `python -m build --wheel --no-isolation`
-- Docker image: `agentlens:1.0.0`
+- Docker image: `agentlens:0.1.0`
 
 ## UI
 
@@ -51,9 +51,9 @@ Context export verification:
 
 | Scenario | Target | Measured |
 | --- | ---: | ---: |
-| `pipx install dist/agentlens-1.0.0-py3-none-any.whl` | success | Passed |
+| `pipx install dist/agentlens-0.1.0-py3-none-any.whl` | success | Passed |
 | `agentlens run` after pipx install | usable | Passed; `/` and `/api/v1/health` returned 200 |
-| `pipx install dist/agentlens_mcp-1.0.0-py3-none-any.whl` | success | Passed |
+| `pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl` | success | Passed |
 | `agentlens-mcp --help` after pipx install | usable | Passed |
 | `agentlens-mcp --author agent:test` stdout | clean | Passed; no stdout output when stdin closed |
 | Docker image size | < 500MB | 102,831,144 bytes (~98.1 MiB) |

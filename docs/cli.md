@@ -5,9 +5,12 @@
 ## 安装
 
 ```bash
-pipx install agentlens
+python -m build
+pipx install dist/agentlens-0.1.0-py3-none-any.whl
 agentlens --help
 ```
+
+注意：PyPI 上的 `agentlens` 包名已被其他项目占用，当前不要使用 `pipx install agentlens`。公开发布到新的 PyPI 包名后，再把上面的 wheel 路径替换为实际包名。
 
 本地开发：
 
@@ -190,7 +193,7 @@ agentlens cleanup --dry-run
 agentlens export-config --output agentlens-config.json
 ```
 
-`import-config` 在 v1 中是预留命令。
+`import-config` 在当前版本中是预留命令。
 
 ## output formats
 

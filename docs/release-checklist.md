@@ -1,4 +1,4 @@
-# v1.0 Release Checklist
+# v0.1.0 Release Checklist
 
 ## Code quality
 
@@ -54,12 +54,12 @@
 
 ## Packaging
 
-- [x] pipx install agentlens wheel
+- [x] pipx install dist/agentlens-0.1.0-py3-none-any.whl
 - [x] agentlens run works
 - [x] agentlens --help works
-- [x] pipx install agentlens-mcp wheel
+- [x] pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
 - [x] agentlens-mcp --help works
-- [x] docker build agentlens:1.0.0
+- [x] docker build agentlens:0.1.0
 - [x] docker compose up -d works
 
 ## Docs
@@ -75,11 +75,11 @@
 
 ## Release
 
-- [x] version in pyproject.toml is 1.0.0
-- [x] version in package.json is 1.0.0 if applicable
-- [ ] git tag v1.0.0
+- [x] version in pyproject.toml is 0.1.0
+- [x] version in package.json is 0.1.0 if applicable
+- [ ] git tag v0.1.0
 - [ ] GitHub Release drafted
-- [x] Docker image tagged agentlens:1.0.0 and agentlens:latest
+- [x] Docker image tagged agentlens:0.1.0 and agentlens:latest
 
 ## Recorded Data
 
@@ -97,4 +97,4 @@
 - Manual MySQL/UI QA remains unchecked because it requires an external MySQL trajectory dataset and browser walkthrough.
 - Error cases remain unchecked because the full manual error script was not rerun in this pass.
 - UI FPS metrics remain unchecked because browser performance recording was not rerun in this pass.
-- `git tag v1.0.0` and GitHub Release draft remain unchecked pending code review and final release approval.
+- `git tag v0.1.0` and GitHub Release draft remain unchecked pending code review and final release approval.
