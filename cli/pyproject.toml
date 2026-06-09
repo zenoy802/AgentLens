@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentlens-cli"
-version = "1.0.0"
+version = "0.1.0"
 description = "AgentLens command line interface."
 requires-python = ">=3.11"
 dependencies = [

@@ -434,7 +434,7 @@ def get_tool_definitions() -> list[ToolDefinition]:
         ToolDefinition(
             name="get_labels",
             description=(
-                "Get human-defined labels for a query. Labels are read-only for agents in v1."
+                "Get human-defined labels for a query. Labels are read-only for agents in this release."
             ),
             input_schema=_schema({"query_id": _integer("Query id.")}, required=["query_id"]),
         ),

@@ -36,12 +36,12 @@ async def test_health_endpoint() -> None:
 def test_get_app_version_prefers_unified_package(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_version(package_name: str) -> str:
         if package_name == "agentlens":
-            return "1.0.0"
+            return "0.1.0"
         raise PackageNotFoundError(package_name)
 
     monkeypatch.setattr(version_module, "version", fake_version)
 
-    assert get_app_version() == "1.0.0"
+    assert get_app_version() == "0.1.0"
 
 
 def test_get_app_version_falls_back_to_legacy_backend_package(

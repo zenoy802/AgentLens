@@ -1,10 +1,10 @@
 # Agent Bridge
 
-Agent Bridge 是 AgentLens v1 的 agent-assisted 分析方式。AgentLens 提供可视化、selection snapshot、CLI/MCP live access、context export 和 annotation write-back；推理与分析交给你自己的 CLI agent。
+Agent Bridge 是 AgentLens 0.1.0 的 agent-assisted 分析方式。AgentLens 提供可视化、selection snapshot、CLI/MCP live access、context export 和 annotation write-back；推理与分析交给你自己的 CLI agent。
 
 ## 为什么没有内置 LLM 分析？
 
-AgentLens v1 的选择是：
+AgentLens 0.1.0 的选择是：
 
 - 不绑架用户 LLM provider。
 - 不绑架分析方式。

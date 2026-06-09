@@ -5,7 +5,7 @@
 
 [![Docker](https://img.shields.io/badge/docker-ready-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Version](https://img.shields.io/badge/version-1.0.0-orange)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-orange)]()
 
 ## ✨ 核心特性
 
@@ -44,7 +44,7 @@
 从源码目录构建本地镜像：
 
 ```bash
-docker build -t agentlens:1.0.0 .
+docker build -t agentlens:0.1.0 .
 ```
 
 启动 AgentLens：
@@ -54,26 +54,30 @@ docker run -d \
   -p 127.0.0.1:8000:8000 \
   -v agentlens-data:/data \
   --name agentlens \
-  agentlens:1.0.0
+  agentlens:0.1.0
 ```
 
 浏览器访问 http://127.0.0.1:8000。
 
-如果你使用的是已发布到 registry 的镜像，请把 `agentlens:1.0.0` 替换为实际发布镜像名。Docker 适合快速体验和本地 viewer mode。高级 Agent Bridge 工作流建议使用 pipx 本机安装，因为 CLI/MCP 需要作为本机进程被 Claude Code、Codex、aider 或 Cursor 调用。
+如果你使用的是已发布到 registry 的镜像，请把 `agentlens:0.1.0` 替换为实际发布镜像名。Docker 适合快速体验和本地 viewer mode。高级 Agent Bridge 工作流建议使用 pipx 本机安装，因为 CLI/MCP 需要作为本机进程被 Claude Code、Codex、aider 或 Cursor 调用。
 
 ### pipx 安装
 
 ```bash
-pipx install agentlens
+python -m build
+pipx install dist/agentlens-0.1.0-py3-none-any.whl
 agentlens run
 ```
 
 浏览器访问 http://127.0.0.1:8000。
 
+注意：PyPI 上的 `agentlens` 包名已被其他项目占用，当前不要使用 `pipx install agentlens`。公开发布到新的 PyPI 包名后，再把上面的 wheel 路径替换为实际包名。
+
 ### MCP Server 安装
 
 ```bash
-pipx install agentlens-mcp
+python -m build --outdir dist mcp_server
+pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
 agentlens-mcp --help
 ```
 

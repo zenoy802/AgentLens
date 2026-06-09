@@ -7,7 +7,8 @@ AgentLens backend over HTTP.
 ## Install
 
 ```bash
-pipx install dist/agentlens_mcp-1.0.0-py3-none-any.whl
+python -m build --outdir dist mcp_server
+pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
 ```
 
 Development mode:
