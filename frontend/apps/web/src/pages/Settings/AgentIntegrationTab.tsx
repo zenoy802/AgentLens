@@ -6,14 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const CLI_INSTALL = `python -m build
+const SOURCE_SETUP = `git clone --branch v0.1.0 --depth 1 https://github.com/zenoy802/AgentLens.git
+cd AgentLens`;
+const CLI_INSTALL = `${SOURCE_SETUP}
+pipx run --spec build pyproject-build
 pipx install dist/agentlens-0.1.0-py3-none-any.whl`;
 const CLI_VERIFY = "agentlens schema info";
 const CLI_EXAMPLES = `agentlens data rows --query 42 --limit 100
 agentlens context export --query 42
 agentlens annotate --query 42 --row <row_identity> --color yellow --text "Suspicious pattern"`;
 
-const MCP_INSTALL = `python -m build --outdir dist mcp_server
+const MCP_INSTALL = `${SOURCE_SETUP}
+pipx run --spec build pyproject-build --outdir dist mcp_server
 pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl`;
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
 
