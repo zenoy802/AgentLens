@@ -1,6 +1,6 @@
 from importlib.metadata import PackageNotFoundError, version
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 PACKAGE_VERSION_NAMES = ("agentlens", "AgentLens-backend", "agentlens-backend")
 
 

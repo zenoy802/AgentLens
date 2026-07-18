@@ -97,10 +97,10 @@ def _server_command_error(command_name: str, exc: ModuleNotFoundError) -> NoRetu
         f"The 'agentlens {command_name.replace('_', '-')}' command requires the unified "
         "agentlens package with backend server dependencies. Install the unified package "
         "from the AgentLens repository, for example "
-        "'git clone --branch v0.1.0 --depth 1 "
+        "'git clone --branch v0.1.1 --depth 1 "
         "https://github.com/zenoy802/AgentLens.git && cd AgentLens && "
         "pipx run --spec build pyproject-build && "
-        "pipx install dist/agentlens-0.1.0-py3-none-any.whl', "
+        "pipx install dist/agentlens-0.1.1-py3-none-any.whl', "
         "or run it from an AgentLens server environment. "
         f"Missing dependency: {missing_name}."
     ) from exc

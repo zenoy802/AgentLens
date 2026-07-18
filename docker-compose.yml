@@ -1,6 +1,6 @@
 services:
   agentlens:
-    image: agentlens:0.1.0
+    image: agentlens:0.1.1
     build: .
     ports:
       - "127.0.0.1:${AGENTLENS_PUBLISHED_PORT:-8000}:8000"
@@ -23,7 +23,7 @@ services:
       timeout: 5s
       retries: 3
     labels:
-      - "com.agentlens.version=0.1.0"
+      - "com.agentlens.version=0.1.1"
 
 volumes:
   agentlens-data:

@@ -38,7 +38,7 @@ ENV AGENTLENS_DATA_DIR=/data
 WORKDIR /app
 
 COPY --from=python-builder /wheels /wheels
-RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels agentlens==0.1.0 \
+RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels agentlens==0.1.1 \
     && rm -rf /wheels \
     && useradd -m -u 1000 agentlens \
     && mkdir -p /data \
