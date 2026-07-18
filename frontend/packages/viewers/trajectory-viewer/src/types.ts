@@ -25,6 +25,7 @@ export type MessageActionRenderer = (msg: TrajectoryMessage, originalIndex: numb
 export interface TrajectoryViewerProps {
   trajectory: Trajectory;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
+  renderCollapsedContent?: (msg: TrajectoryMessage) => ReactNode;
   renderToolCalls?: (msg: TrajectoryMessage) => ReactNode;
   filterRoles?: string[];
   className?: string;

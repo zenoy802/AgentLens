@@ -11,10 +11,12 @@ import type {
 import "./styles.css";
 
 const DEFAULT_AUTO_COLLAPSE_CHAR_LIMIT = 900;
+const LENGTH_ESTIMATE_MAX_DEPTH = 8;
 
 export function TrajectoryViewer({
   trajectory,
   renderContent,
+  renderCollapsedContent,
   renderToolCalls,
   filterRoles,
   className,
@@ -55,6 +57,7 @@ export function TrajectoryViewer({
             key={`${message.row_identity}:${originalIndex}`}
             message={message}
             renderContent={renderContent}
+            renderCollapsedContent={renderCollapsedContent}
             renderToolCalls={renderToolCalls}
             actions={renderMessageActions?.(message, originalIndex)}
             showMetaLine={showMetaLine}
@@ -105,7 +108,7 @@ function resolveDefaultCollapsed(
   if (typeof resolver === "boolean") {
     return resolver;
   }
-  return estimateMessageLength(message) > DEFAULT_AUTO_COLLAPSE_CHAR_LIMIT;
+  return messageExceedsLength(message, DEFAULT_AUTO_COLLAPSE_CHAR_LIMIT);
 }
 
 function resolveMessageClassName(
@@ -119,23 +122,104 @@ function resolveMessageClassName(
   return resolver;
 }
 
-function estimateMessageLength(message: TrajectoryMessage): number {
-  return estimateValueLength(message.content) + estimateValueLength(message.tool_calls);
+function messageExceedsLength(message: TrajectoryMessage, limit: number): boolean {
+  const contentLength = estimateValueLengthUpTo(
+    message.content,
+    limit,
+    new WeakSet<object>(),
+    0,
+  );
+  if (contentLength > limit) {
+    return true;
+  }
+  return (
+    contentLength +
+      estimateValueLengthUpTo(
+        message.tool_calls,
+        limit - contentLength,
+        new WeakSet<object>(),
+        0,
+      ) >
+    limit
+  );
 }
 
-function estimateValueLength(value: unknown): number {
+function estimateValueLengthUpTo(
+  value: unknown,
+  limit: number,
+  seen: WeakSet<object>,
+  depth: number,
+): number {
   if (value === undefined || value === null) {
     return 0;
   }
   if (typeof value === "string") {
-    return value.length;
+    return depth === 0
+      ? Math.min(value.length, limit + 1)
+      : estimateJsonStringLengthUpTo(value, limit);
+  }
+  if (typeof value !== "object") {
+    return Math.min(String(value).length, limit + 1);
+  }
+  if (seen.has(value) || depth >= LENGTH_ESTIMATE_MAX_DEPTH) {
+    return limit + 1;
   }
 
+  seen.add(value);
+  let total = 2;
   try {
-    return JSON.stringify(value).length;
-  } catch {
-    return String(value).length;
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index += 1) {
+        total += index > 0 ? 1 : 0;
+        if (total > limit) {
+          return limit + 1;
+        }
+        total += estimateValueLengthUpTo(value[index], limit - total, seen, depth + 1);
+        if (total > limit) {
+          return limit + 1;
+        }
+      }
+      return total;
+    }
+
+    let hasPreviousEntry = false;
+    const record = value as Record<string, unknown>;
+    for (const key in record) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) {
+        continue;
+      }
+      total += hasPreviousEntry ? 1 : 0;
+      hasPreviousEntry = true;
+      if (total > limit) {
+        return limit + 1;
+      }
+      total += estimateJsonStringLengthUpTo(key, limit - total) + 1;
+      if (total > limit) {
+        return limit + 1;
+      }
+      total += estimateValueLengthUpTo(record[key], limit - total, seen, depth + 1);
+      if (total > limit) {
+        return limit + 1;
+      }
+    }
+    return total;
+  } finally {
+    seen.delete(value);
   }
+}
+
+function estimateJsonStringLengthUpTo(value: string, limit: number): number {
+  let total = 2;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] ?? "";
+    const code = character.charCodeAt(0);
+    total +=
+      code < 0x20 ? 6 : character === '"' || character === "\\" ? 2 : 1;
+    if (total > limit) {
+      return limit + 1;
+    }
+  }
+  return total;
 }
 
 function joinClassNames(...names: Array<string | undefined | false>): string {

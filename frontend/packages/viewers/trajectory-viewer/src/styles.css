@@ -94,6 +94,13 @@
   width: 100%;
 }
 
+@supports (content-visibility: auto) {
+  .agentlens-trajectory-message {
+    contain-intrinsic-block-size: auto 340px;
+    content-visibility: auto;
+  }
+}
+
 .agentlens-trajectory-message--user {
   justify-content: flex-end;
 }
@@ -255,6 +262,18 @@
 
 .agentlens-trajectory-content {
   overflow-wrap: anywhere;
+}
+
+.agentlens-trajectory-content-preview {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0;
+  white-space: pre-wrap;
 }
 
 .agentlens-trajectory-content > .agentlens-json-renderer,
