@@ -27,6 +27,7 @@ from app.db.session import dispose_engine, initialize_metadata_database
 
 API_PREFIX = "/api/v1"
 API_PATH_PREFIX = API_PREFIX.lstrip("/")
+SPA_INDEX_CACHE_CONTROL = "no-cache, no-store, must-revalidate"
 
 
 def _path_is_relative_to(path: Path, parent: Path) -> bool:
@@ -74,6 +75,13 @@ def _has_frontend_build(static_dir: Path) -> bool:
     return (static_dir / "index.html").is_file()
 
 
+def _serve_spa_index(index_path: Path) -> FileResponse:
+    return FileResponse(
+        index_path,
+        headers={"Cache-Control": SPA_INDEX_CACHE_CONTROL},
+    )
+
+
 def mount_static_frontend(app: FastAPI, static_dir: Path | None = None) -> None:
     resolved_static_dir = (static_dir or _default_static_dir()).resolve()
     index_path = resolved_static_dir / "index.html"
@@ -86,7 +94,7 @@ def mount_static_frontend(app: FastAPI, static_dir: Path | None = None) -> None:
 
     @app.get("/", include_in_schema=False)
     def serve_index() -> FileResponse:
-        return FileResponse(index_path)
+        return _serve_spa_index(index_path)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def serve_spa_or_static_file(full_path: str) -> FileResponse:
@@ -95,8 +103,10 @@ def mount_static_frontend(app: FastAPI, static_dir: Path | None = None) -> None:
 
         requested_path = (resolved_static_dir / full_path).resolve()
         if _path_is_relative_to(requested_path, resolved_static_dir) and requested_path.is_file():
+            if requested_path == index_path:
+                return _serve_spa_index(index_path)
             return FileResponse(requested_path)
-        return FileResponse(index_path)
+        return _serve_spa_index(index_path)
 
 
 def create_app() -> FastAPI:

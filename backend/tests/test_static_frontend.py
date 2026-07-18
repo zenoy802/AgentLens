@@ -28,15 +28,22 @@ async def test_static_frontend_serves_index_asset_and_spa_fallback(
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         index_response = await client.get("/")
+        explicit_index_response = await client.get("/index.html")
         asset_response = await client.get("/assets/app.js")
         fallback_response = await client.get("/trajectory/123")
 
     assert index_response.status_code == status.HTTP_200_OK
     assert index_response.text == "<html>AgentLens</html>"
+    assert index_response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
+    assert explicit_index_response.status_code == status.HTTP_200_OK
+    assert explicit_index_response.headers["cache-control"] == (
+        "no-cache, no-store, must-revalidate"
+    )
     assert asset_response.status_code == status.HTTP_200_OK
     assert asset_response.text == "console.log('agentlens');"
     assert fallback_response.status_code == status.HTTP_200_OK
     assert fallback_response.text == "<html>AgentLens</html>"
+    assert fallback_response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
 
 
 @pytest.mark.asyncio
