@@ -25,6 +25,47 @@ Notes:
 - Markdown, JSON, and Code cells no longer mount `MarkdownRenderer`, `JsonRenderer`, or `CodeRenderer` in table preview mode.
 - Annotation lookup is indexed by `row_identity` and `row_identity + column_key`; cells do not filter the full annotations list.
 
+### Large trajectory fixture
+
+Generate a physical JSONL fixture and import it into the MySQL connection configured in the
+local AgentLens metadata database:
+
+```bash
+cd backend
+python scripts/seed_trajectory_performance.py --connection-name local-mysql-playwright
+```
+
+The defaults create 10 trajectories with 21 messages each. Every message contains exactly
+10,000 `cl100k_base` tokens. The JSONL file is written to
+`.agentlens-test-data/trajectory-performance/trajectories.jsonl`, and the rows are upserted into
+`agentlens_trajectory_performance_mock` without deleting unrelated data.
+
+Use this query in AgentLens:
+
+```sql
+SELECT
+  message_id,
+  session_id,
+  message_index,
+  role,
+  content,
+  tool_calls,
+  metadata,
+  created_at
+FROM agentlens_trajectory_performance_mock
+WHERE dataset_id = 'trajectory-performance-v1'
+ORDER BY session_id, message_index
+```
+
+Configure the trajectory fields as follows:
+
+- Group by: `session_id`
+- Role: `role`
+- Content: `content`
+- Tool calls: `tool_calls`
+- Order by: `message_index` (ascending)
+- Row identity: `message_id`
+
 ## Agent Bridge
 
 | Scenario | Target | Measured |
