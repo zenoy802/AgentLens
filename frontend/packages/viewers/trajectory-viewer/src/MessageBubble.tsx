@@ -5,6 +5,7 @@ import type { TrajectoryMessage } from "./types";
 interface MessageBubbleProps {
   message: TrajectoryMessage;
   renderContent?: (msg: TrajectoryMessage) => ReactNode;
+  renderCollapsedContent?: (msg: TrajectoryMessage) => ReactNode;
   renderToolCalls?: (msg: TrajectoryMessage) => ReactNode;
   actions?: ReactNode;
   showMetaLine?: boolean;
@@ -21,6 +22,9 @@ const DEFAULT_META_FIELDS = ["created_at", "latency", "latency_ms", "duration_ms
 const DEFAULT_COLLAPSED_CONTENT_HEIGHT = 280;
 const DEFAULT_EXPAND_LABEL = "Expand";
 const DEFAULT_COLLAPSE_LABEL = "Collapse";
+const PREVIEW_CHAR_LIMIT = 1_200;
+const PREVIEW_MAX_DEPTH = 8;
+const PREVIEW_STRING_CHUNK_SIZE = 128;
 const MarkdownRenderer = lazy(async () => {
   const module = await import("@agentlens/markdown-renderer");
   return { default: module.MarkdownRenderer };
@@ -33,6 +37,7 @@ const JsonRenderer = lazy(async () => {
 export function MessageBubble({
   message,
   renderContent,
+  renderCollapsedContent,
   renderToolCalls,
   actions,
   showMetaLine = false,
@@ -49,6 +54,7 @@ export function MessageBubble({
   const hasToolCalls = message.tool_calls !== undefined && message.tool_calls !== null;
   const contentId = useId();
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const renderRichBody = !collapsible || expanded;
   const bodyStyle = {
     "--trajectory-collapsed-content-height": `${collapsedContentHeight}px`,
   } as CSSProperties;
@@ -97,9 +103,17 @@ export function MessageBubble({
           style={bodyStyle}
         >
           <div className="agentlens-trajectory-content">
-            {renderContent ? renderContent(message) : renderDefaultContent(message.content)}
+            {renderRichBody ? (
+              renderContent ? renderContent(message) : renderDefaultContent(message.content)
+            ) : renderCollapsedContent ? (
+              renderCollapsedContent(message)
+            ) : renderContent ? (
+              renderContent(message)
+            ) : (
+              <ContentPreview value={message.content} />
+            )}
           </div>
-          {hasToolCalls ? (
+          {renderRichBody && hasToolCalls ? (
             <details className="agentlens-trajectory-tool-calls">
               <summary>Tool calls</summary>
               <div className="agentlens-trajectory-tool-calls-body">
@@ -138,22 +152,133 @@ function renderDefaultToolCalls(message: TrajectoryMessage) {
 }
 
 function TextFallback({ value }: { value: unknown }) {
+  return <ContentPreview value={value} loading />;
+}
+
+function ContentPreview({ value, loading = false }: { value: unknown; loading?: boolean }) {
   return (
-    <pre className="whitespace-pre-wrap break-words rounded-md border border-black/10 bg-white/60 p-3 text-sm">
-      {formatFallbackValue(value)}
+    <pre
+      className="agentlens-trajectory-content-preview"
+      data-render-state={loading ? "loading" : "collapsed"}
+    >
+      {formatPreviewValue(value)}
     </pre>
   );
 }
 
-function formatFallbackValue(value: unknown): string {
+function formatPreviewValue(value: unknown): string {
+  let preview = "";
+  for (const token of iteratePreviewTokens(value, new WeakSet<object>(), 0)) {
+    const remaining = PREVIEW_CHAR_LIMIT - preview.length;
+    if (token.length > remaining) {
+      return `${preview}${token.slice(0, remaining).trimEnd()}\u2026`;
+    }
+    preview += token;
+  }
+  return preview;
+}
+
+function* iteratePreviewTokens(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): Generator<string> {
   if (typeof value === "string") {
-    return value;
+    if (depth === 0) {
+      yield value;
+    } else {
+      yield* iterateQuotedStringTokens(value);
+    }
+    return;
   }
+  if (value === null || typeof value !== "object") {
+    yield String(value);
+    return;
+  }
+  if (seen.has(value)) {
+    yield '"[Circular]"';
+    return;
+  }
+  if (depth >= PREVIEW_MAX_DEPTH) {
+    yield '"[Max depth]"';
+    return;
+  }
+
+  seen.add(value);
   try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
+    if (Array.isArray(value)) {
+      yield "[";
+      for (let index = 0; index < value.length; index += 1) {
+        if (index > 0) {
+          yield ", ";
+        }
+        yield* iteratePreviewTokens(value[index], seen, depth + 1);
+      }
+      yield "]";
+      return;
+    }
+
+    yield "{";
+    let hasPreviousEntry = false;
+    const record = value as Record<string, unknown>;
+    for (const key in record) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) {
+        continue;
+      }
+      if (hasPreviousEntry) {
+        yield ", ";
+      }
+      hasPreviousEntry = true;
+      yield* iterateQuotedStringTokens(key);
+      yield ": ";
+      yield* iteratePreviewTokens(record[key], seen, depth + 1);
+    }
+    yield "}";
+  } finally {
+    seen.delete(value);
   }
+}
+
+function* iterateQuotedStringTokens(value: string): Generator<string> {
+  yield '"';
+  let chunk = "";
+  for (let index = 0; index < value.length; index += 1) {
+    chunk += escapeJsonCharacter(value[index] ?? "");
+    if (chunk.length >= PREVIEW_STRING_CHUNK_SIZE) {
+      yield chunk;
+      chunk = "";
+    }
+  }
+  if (chunk.length > 0) {
+    yield chunk;
+  }
+  yield '"';
+}
+
+function escapeJsonCharacter(character: string): string {
+  if (character === '"') {
+    return '\\"';
+  }
+  if (character === "\\") {
+    return "\\\\";
+  }
+  if (character === "\b") {
+    return "\\b";
+  }
+  if (character === "\f") {
+    return "\\f";
+  }
+  if (character === "\n") {
+    return "\\n";
+  }
+  if (character === "\r") {
+    return "\\r";
+  }
+  if (character === "\t") {
+    return "\\t";
+  }
+  const code = character.charCodeAt(0);
+  return code < 0x20 ? `\\u${code.toString(16).padStart(4, "0")}` : character;
 }
 
 function getRoleKind(role: string): "system" | "user" | "assistant" | "tool" | "unknown" | "other" {
