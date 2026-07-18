@@ -5,10 +5,10 @@
 ## 安装
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/zenoy802/AgentLens.git
+git clone --branch v0.1.1 --depth 1 https://github.com/zenoy802/AgentLens.git
 cd AgentLens
 pipx run --spec build pyproject-build --outdir dist mcp_server
-pipx install dist/agentlens_mcp-0.1.0-py3-none-any.whl
+pipx install dist/agentlens_mcp-0.1.1-py3-none-any.whl
 agentlens-mcp --help
 ```
 

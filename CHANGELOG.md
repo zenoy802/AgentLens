@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [0.1.1] - 2026-07-18
+
+### Added
+
+- Reproducible local MySQL fixture for benchmarking 10 long trajectories with 210 messages.
+- Development record covering the long-trajectory performance investigation and results.
+
+### Changed
+
+- Long collapsed trajectory messages now use bounded previews and defer rich Markdown, JSON, and tool-call rendering until expansion.
+- Off-screen trajectory messages can skip layout and paint work through `content-visibility`.
+
+### Fixed
+
+- Trajectory selection, inversion, fullscreen, and scrolling no longer stall for multiple seconds on long-message comparisons.
+- SPA entry HTML no longer reuses stale cached asset hashes after a frontend deployment.
+- Annotation delete result typing remains stable across frontend builds.
+
 ## [0.1.0] - 2026-06-01
 
 ### Added

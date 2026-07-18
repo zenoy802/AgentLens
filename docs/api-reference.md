@@ -1,6 +1,6 @@
 # API Reference
 
-运行时完整 OpenAPI 可见于 `/docs`。AgentLens 0.1.0 无鉴权，设计为 localhost-only 使用。所有 API Base URL 为 `/api/v1`，错误响应统一为：
+运行时完整 OpenAPI 可见于 `/docs`。AgentLens 0.1.1 无鉴权，设计为 localhost-only 使用。所有 API Base URL 为 `/api/v1`，错误响应统一为：
 
 ```json
 {
