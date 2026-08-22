@@ -215,6 +215,7 @@ __marimo__/
 
 # design
 .design/
+/docs/design_0821/
 
 # Codex
 AGENTS.md
@@ -225,3 +226,5 @@ docs/testing-playwright-mcp.md
 # Claude Code
 .claude/
 CLAUDE.md
+
+.DS_Store
