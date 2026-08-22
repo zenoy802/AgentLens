@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -30,7 +32,7 @@ from app.schemas.query import (
 from app.schemas.render import FieldRender
 from app.schemas.view_config import TrajectoryConfig
 from app.services.fingerprint_service import compute_sql_fingerprint
-from app.services.query_executor import ExecutorResult, ExecutorService
+from app.services.query_executor import Column, ExecutorResult, ExecutorService, ExecutorStream
 from app.services.render_suggestion_service import suggest, suggest_trajectory_config
 from app.services.row_identity_service import compute
 
@@ -46,6 +48,35 @@ class ExecutionOutcome:
     row_identities: list[str]
     executed_at: datetime
     warnings: list[WarningRead]
+
+
+@dataclass(slots=True)
+class ReadonlyQueryBatch:
+    rows: list[dict[str, Any]]
+    row_identities: list[str]
+    start_index: int
+
+
+@dataclass(slots=True)
+class ReadonlyQueryStream:
+    columns: list[Column]
+    batches: Iterator[ReadonlyQueryBatch]
+    source: ExecutorStream
+
+    def __iter__(self) -> Iterator[ReadonlyQueryBatch]:
+        return self.batches
+
+    @property
+    def duration_ms(self) -> int:
+        return self.source.duration_ms
+
+    @property
+    def row_count(self) -> int:
+        return self.source.row_count
+
+    @property
+    def truncated(self) -> bool:
+        return self.source.truncated
 
 
 class QueryService:
@@ -277,6 +308,55 @@ class QueryService:
             executed_at=_utcnow(),
             warnings=warnings,
         )
+
+    @contextmanager
+    def iter_readonly(
+        self,
+        query: NamedQuery,
+        *,
+        timeout: int,
+        row_limit: int,
+        batch_size: int = 500,
+    ) -> Iterator[ReadonlyQueryStream]:
+        """Stream one readonly execution without mutating query history or last-executed state."""
+        connection = self._get_connection_or_raise(query.connection_id)
+        view_config = self._get_or_create_view_config(query)
+        sql_fingerprint = _safe_sql_fingerprint(query.sql_text)
+        with self._executor_service.iter_execute(
+            connection,
+            query.sql_text,
+            timeout=timeout,
+            row_limit=row_limit,
+            batch_size=batch_size,
+            query_id=query.id,
+            sql_fingerprint=sql_fingerprint,
+        ) as source:
+            batches = (
+                ReadonlyQueryBatch(
+                    rows=batch.rows,
+                    row_identities=self._compute_row_identities(view_config, batch.rows),
+                    start_index=batch.start_index,
+                )
+                for batch in source
+            )
+            stream = ReadonlyQueryStream(
+                columns=source.columns,
+                batches=batches,
+                source=source,
+            )
+            try:
+                yield stream
+            except Exception as exc:
+                self.session.rollback()
+                logger.warning(
+                    "Streaming readonly query failed: query_id={} connection_id={} "
+                    "sql_fingerprint={} context={}",
+                    query.id,
+                    query.connection_id,
+                    sql_fingerprint,
+                    safe_exception_context(exc),
+                )
+                raise
 
     def get(self, query_id: int) -> NamedQuery:
         query = self.session.get(NamedQuery, query_id)

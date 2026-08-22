@@ -1,5 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Database, HomeIcon, Languages, ListChecks, Moon, SettingsIcon } from "lucide-react";
+import {
+  Archive,
+  Braces,
+  Database,
+  HomeIcon,
+  Languages,
+  ListChecks,
+  Moon,
+  SettingsIcon,
+} from "lucide-react";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
@@ -30,6 +40,8 @@ const APP_COPY: Record<
       home: string;
       connections: string;
       queries: string;
+      traceContracts: string;
+      snapshots: string;
       settings: string;
     };
     tagline: string;
@@ -43,6 +55,8 @@ const APP_COPY: Record<
       home: "首页",
       connections: "连接管理",
       queries: "查询",
+      traceContracts: "轨迹映射",
+      snapshots: "运行快照",
       settings: "设置",
     },
     tagline: "Trajectory 分析",
@@ -58,6 +72,8 @@ const APP_COPY: Record<
       home: "Home",
       connections: "Connections",
       queries: "Queries",
+      traceContracts: "Trace Contracts",
+      snapshots: "Snapshots",
       settings: "Settings",
     },
     tagline: "Trajectory Analysis",
@@ -77,6 +93,8 @@ function Sidebar() {
     { to: "/", label: copy.nav.home, icon: HomeIcon },
     { to: "/connections", label: copy.nav.connections, icon: Database },
     { to: "/queries", label: copy.nav.queries, icon: ListChecks },
+    { to: "/trace-contracts", label: copy.nav.traceContracts, icon: Braces },
+    { to: "/snapshots", label: copy.nav.snapshots, icon: Archive },
     { to: "/settings", label: copy.nav.settings, icon: SettingsIcon },
   ];
 
@@ -168,19 +186,39 @@ function AppShell() {
         <NetworkBanner />
         <Header />
         <main className="flex-1 px-4 py-6 md:px-8">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/connections" element={<Connections />} />
-            <Route path="/queries" element={<Queries />} />
-            <Route path="/query" element={<Query />} />
-            <Route path="/query/:queryId" element={<Query />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          <Suspense fallback={<div role="status" className="text-sm text-muted-foreground">正在加载页面…</div>}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/connections" element={<Connections />} />
+              <Route path="/queries" element={<Queries />} />
+              <Route path="/query" element={<Query />} />
+              <Route path="/query/:queryId" element={<Query />} />
+              <Route path="/trace-contracts" element={<TraceContractsRoute />} />
+              <Route path="/trace-contracts/new" element={<TraceContractWizardRoute />} />
+              <Route path="/snapshots" element={<SnapshotsRoute />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>
   );
 }
+
+const TraceContractsRoute = lazy(async () => {
+  const module = await import("@/features/snapshots/routes/TraceContractsPage");
+  return { default: module.TraceContractsPage };
+});
+
+const TraceContractWizardRoute = lazy(async () => {
+  const module = await import("@/features/snapshots/routes/TraceContractWizard");
+  return { default: module.TraceContractWizard };
+});
+
+const SnapshotsRoute = lazy(async () => {
+  const module = await import("@/features/snapshots/routes/SnapshotsPage");
+  return { default: module.SnapshotsPage };
+});
 
 export function App() {
   return (

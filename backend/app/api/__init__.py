@@ -11,7 +11,9 @@ from app.api.labels import router as labels_router
 from app.api.queries import router as queries_router
 from app.api.query_history import router as query_history_router
 from app.api.render_rules import router as render_rules_router
+from app.api.run_snapshots import router as run_snapshots_router
 from app.api.selection_snapshots import router as selection_snapshots_router
+from app.api.trace_contracts import router as trace_contracts_router
 from app.api.trajectories import router as trajectories_router
 from app.api.view_configs import router as view_configs_router
 
@@ -27,8 +29,10 @@ api_router.include_router(label_schemas_router)
 api_router.include_router(queries_router)
 api_router.include_router(query_history_router)
 api_router.include_router(render_rules_router)
+api_router.include_router(run_snapshots_router)
 api_router.include_router(selection_snapshots_router)
 api_router.include_router(trajectories_router)
+api_router.include_router(trace_contracts_router)
 api_router.include_router(view_configs_router)
 
 __all__ = ["api_router"]

@@ -4,7 +4,8 @@ import base64
 import json
 import threading
 import time as time_module
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -17,7 +18,13 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.exc import DBAPIError
 
 from app.core.crypto import CryptoService
-from app.core.errors import ConnectionTestError, SqlExecutionError, SqlSyntaxError, SqlTimeoutError
+from app.core.errors import (
+    ConnectionTestError,
+    SqlExecutionError,
+    SqlSyntaxError,
+    SqlTimeoutError,
+    ValidationError,
+)
 from app.core.logging import safe_exception_context, sanitize_exception_message
 from app.core.sql_guard import validate_sql
 from app.models.connection import Connection
@@ -60,6 +67,24 @@ class ExecutorResult:
     rows: list[dict[str, Any]]
     duration_ms: int
     truncated: bool
+
+
+@dataclass(slots=True)
+class ExecutorBatch:
+    rows: list[dict[str, Any]]
+    start_index: int
+
+
+@dataclass(slots=True)
+class ExecutorStream:
+    columns: list[Column]
+    batches: Iterator[ExecutorBatch]
+    duration_ms: int = 0
+    row_count: int = 0
+    truncated: bool = False
+
+    def __iter__(self) -> Iterator[ExecutorBatch]:
+        return self.batches
 
 
 @dataclass(slots=True)
@@ -133,6 +158,296 @@ class ExecutorService:
             query_id=query_id,
             sql_fingerprint=sql_fingerprint,
         )
+
+    @contextmanager
+    def iter_execute(
+        self,
+        connection: Connection,
+        sql: str,
+        *,
+        timeout: int,
+        row_limit: int,
+        batch_size: int = 500,
+        query_id: int | None = None,
+        sql_fingerprint: str | None = None,
+    ) -> Iterator[ExecutorStream]:
+        """Yield serialized rows in bounded batches while the source cursor remains open."""
+        if timeout <= 0 or row_limit <= 0 or batch_size <= 0:
+            raise ValidationError(
+                code="QUERY_ITERATOR_LIMIT_INVALID",
+                detail={
+                    "timeout": timeout,
+                    "row_limit": row_limit,
+                    "batch_size": batch_size,
+                },
+            )
+        validate_sql(sql)
+        if connection.db_type == _DB_TYPE_ODPS:
+            with self._iter_execute_odps(
+                connection,
+                sql,
+                timeout=timeout,
+                row_limit=row_limit,
+                batch_size=batch_size,
+                query_id=query_id,
+            ) as stream:
+                yield stream
+            return
+        if connection.db_type != _DB_TYPE_MYSQL:
+            raise SqlExecutionError(
+                code="SQL_UNSUPPORTED_DB_TYPE",
+                detail={"db_type": connection.db_type},
+            )
+        with self._iter_execute_mysql(
+            connection,
+            sql,
+            timeout=timeout,
+            row_limit=row_limit,
+            batch_size=batch_size,
+            query_id=query_id,
+            sql_fingerprint=sql_fingerprint,
+        ) as stream:
+            yield stream
+
+    @contextmanager
+    def _iter_execute_mysql(
+        self,
+        connection: Connection,
+        sql: str,
+        *,
+        timeout: int,
+        row_limit: int,
+        batch_size: int,
+        query_id: int | None,
+        sql_fingerprint: str | None,
+    ) -> Iterator[ExecutorStream]:
+        start = time_module.perf_counter()
+        stream: ExecutorStream | None = None
+        try:
+            engine = self._get_or_create_engine(connection)
+            with engine.connect() as raw_conn:
+                conn = raw_conn.execution_options(
+                    isolation_level="AUTOCOMMIT",
+                    stream_results=True,
+                    max_row_buffer=batch_size,
+                )
+                conn.exec_driver_sql(f"SET SESSION MAX_EXECUTION_TIME={timeout * 1000}")
+                result = conn.exec_driver_sql(sql.replace("%", "%%"))
+                try:
+                    cursor = result.cursor
+                    description = cursor.description if cursor is not None else ()
+                    columns = self._build_columns(description)
+                    stream = ExecutorStream(columns=columns, batches=iter(()))
+                    stream.batches = self._iter_mysql_batches(
+                        result,
+                        stream,
+                        connection_id=connection.id,
+                        query_id=query_id,
+                        timeout=timeout,
+                        row_limit=row_limit,
+                        batch_size=batch_size,
+                        started_at=start,
+                    )
+                    yield stream
+                finally:
+                    result.close()
+        except DBAPIError as exc:
+            logger.warning(
+                "Streaming SQL DBAPI error: query_id={} connection_id={} "
+                "sql_fingerprint={} error_class={} error_code={}",
+                query_id,
+                connection.id,
+                sql_fingerprint,
+                _dbapi_error_class(exc),
+                _extract_operational_error_code(exc),
+            )
+            self._raise_sql_error(exc, timeout=timeout)
+        except (SqlExecutionError, SqlTimeoutError, ValidationError):
+            raise
+        except (OSError, TypeError, ValueError) as exc:
+            logger.error(
+                "Streaming SQL execution failed: query_id={} connection_id={} "
+                "sql_fingerprint={} context={}",
+                query_id,
+                connection.id,
+                sql_fingerprint,
+                safe_exception_context(exc),
+            )
+            raise SqlExecutionError(
+                code="SQL_EXECUTION_ERROR",
+                detail={"orig": sanitize_exception_message(exc)},
+            ) from exc
+        finally:
+            if stream is not None:
+                stream.duration_ms = int((time_module.perf_counter() - start) * 1000)
+
+    def _iter_mysql_batches(
+        self,
+        result: Any,
+        stream: ExecutorStream,
+        *,
+        connection_id: int,
+        query_id: int | None,
+        timeout: int,
+        row_limit: int,
+        batch_size: int,
+        started_at: float,
+    ) -> Iterator[ExecutorBatch]:
+        exhausted = False
+        while stream.row_count < row_limit:
+            remaining = row_limit - stream.row_count
+            rows_raw = result.fetchmany(min(batch_size, remaining))
+            self._raise_if_stream_timed_out(started_at, timeout)
+            if not rows_raw:
+                exhausted = True
+                break
+            self._promote_text_json_columns(stream.columns, rows_raw)
+            rows = self._build_rows(
+                stream.columns,
+                rows_raw,
+                query_id=query_id,
+                connection_id=connection_id,
+            )
+            start_index = stream.row_count
+            stream.row_count += len(rows)
+            yield ExecutorBatch(rows=rows, start_index=start_index)
+            if len(rows_raw) < min(batch_size, remaining):
+                exhausted = True
+                break
+        if not exhausted and stream.row_count >= row_limit:
+            stream.truncated = bool(result.fetchmany(1))
+            self._raise_if_stream_timed_out(started_at, timeout)
+
+    @staticmethod
+    def _raise_if_stream_timed_out(started_at: float, timeout: int) -> None:
+        if time_module.perf_counter() - started_at > timeout:
+            raise SqlTimeoutError(detail={"timeout": timeout})
+
+    @contextmanager
+    def _iter_execute_odps(
+        self,
+        connection: Connection,
+        sql: str,
+        *,
+        timeout: int,
+        row_limit: int,
+        batch_size: int,
+        query_id: int | None,
+    ) -> Iterator[ExecutorStream]:
+        start = time_module.perf_counter()
+        stream: ExecutorStream | None = None
+        instance: Any | None = None
+        try:
+            extra_params = _load_odps_extra_params(connection)
+            odps_client = _build_odps_client(connection, self._crypto_service)
+            instance = odps_client.run_sql(sql, **_build_odps_run_kwargs(extra_params))
+            try:
+                instance.wait_for_success(timeout=timeout)
+            except Exception as exc:
+                if _is_odps_timeout_error(exc):
+                    _stop_odps_instance(instance)
+                    raise SqlTimeoutError(detail={"timeout": timeout}) from exc
+                raise
+            with instance.open_reader(**_build_odps_reader_kwargs(extra_params)) as reader:
+                source = iter(reader)
+                first_row = next(source, None)
+                seed_rows = [] if first_row is None else [first_row]
+                columns = self._build_odps_columns(reader, seed_rows)
+                stream = ExecutorStream(columns=columns, batches=iter(()))
+                stream.batches = self._iter_odps_batches(
+                    source,
+                    first_row,
+                    stream,
+                    connection_id=connection.id,
+                    query_id=query_id,
+                    timeout=timeout,
+                    row_limit=row_limit,
+                    batch_size=batch_size,
+                    started_at=start,
+                )
+                yield stream
+        except InvalidToken as exc:
+            raise ConnectionTestError(
+                code="CONN_SECRET_DECRYPT_FAILED",
+                message=_PASSWORD_DECRYPT_ERROR,
+                detail={"connection_id": connection.id},
+            ) from exc
+        except ModuleNotFoundError as exc:
+            raise SqlExecutionError(
+                code="SQL_EXECUTION_ERROR",
+                message=_PYODPS_MISSING_ERROR,
+                detail={"db_type": connection.db_type},
+            ) from exc
+        except (SqlExecutionError, SqlTimeoutError, ValidationError):
+            raise
+        except (OSError, TypeError, ValueError) as exc:
+            raise SqlExecutionError(
+                code="SQL_EXECUTION_ERROR",
+                detail={"orig": sanitize_exception_message(exc)},
+            ) from exc
+        except Exception as exc:
+            if _is_odps_timeout_error(exc):
+                if instance is not None:
+                    _stop_odps_instance(instance)
+                raise SqlTimeoutError(detail={"timeout": timeout}) from exc
+            raise SqlExecutionError(
+                code="SQL_EXECUTION_ERROR",
+                detail={"orig": sanitize_exception_message(exc)},
+            ) from exc
+        finally:
+            if stream is not None:
+                stream.duration_ms = int((time_module.perf_counter() - start) * 1000)
+
+    def _iter_odps_batches(
+        self,
+        source: Iterator[Any],
+        first_row: Any | None,
+        stream: ExecutorStream,
+        *,
+        connection_id: int,
+        query_id: int | None,
+        timeout: int,
+        row_limit: int,
+        batch_size: int,
+        started_at: float,
+    ) -> Iterator[ExecutorBatch]:
+        pending = first_row
+        exhausted = False
+        while stream.row_count < row_limit:
+            take = min(batch_size, row_limit - stream.row_count)
+            rows_raw: list[Any] = []
+            if pending is not None:
+                rows_raw.append(pending)
+                pending = None
+            while len(rows_raw) < take:
+                try:
+                    rows_raw.append(next(source))
+                except StopIteration:
+                    exhausted = True
+                    break
+            self._raise_if_stream_timed_out(started_at, timeout)
+            if not rows_raw:
+                break
+            self._promote_text_json_columns(stream.columns, rows_raw)
+            rows = self._build_rows(
+                stream.columns,
+                rows_raw,
+                query_id=query_id,
+                connection_id=connection_id,
+            )
+            start_index = stream.row_count
+            stream.row_count += len(rows)
+            yield ExecutorBatch(rows=rows, start_index=start_index)
+            if exhausted:
+                break
+        if not exhausted and stream.row_count >= row_limit:
+            try:
+                next(source)
+            except StopIteration:
+                stream.truncated = False
+            else:
+                stream.truncated = True
+            self._raise_if_stream_timed_out(started_at, timeout)
 
     def _execute_mysql(
         self,

@@ -12,6 +12,11 @@ class Pagination(BaseModel):
     total_pages: int
 
 
+class CursorPagination(BaseModel):
+    limit: int
+    next_cursor: str | None = None
+
+
 class WarningRead(BaseModel):
     code: str
     message: str

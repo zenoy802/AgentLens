@@ -408,6 +408,75 @@ export interface paths {
         patch: operations["update_render_rule_api_v1_render_rules__rule_id__patch"];
         trace?: never;
     };
+    "/run-snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Run Snapshots */
+        get: operations["list_run_snapshots_api_v1_run_snapshots_get"];
+        put?: never;
+        /** Create Run Snapshot */
+        post: operations["create_run_snapshot_api_v1_run_snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/run-snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Snapshot */
+        get: operations["get_run_snapshot_api_v1_run_snapshots__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/run-snapshots/{snapshot_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Snapshot Status */
+        get: operations["get_run_snapshot_status_api_v1_run_snapshots__snapshot_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/run-snapshots/{snapshot_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Snapshot Rows */
+        get: operations["get_run_snapshot_rows_api_v1_run_snapshots__snapshot_id__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/{query_id}/selection-snapshots": {
         parameters: {
             query?: never;
@@ -454,6 +523,58 @@ export interface paths {
         put?: never;
         /** Aggregate Query Trajectories */
         post: operations["aggregate_query_trajectories_api_v1_queries__query_id__trajectories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trace-contracts/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Trace Contract */
+        post: operations["validate_trace_contract_api_v1_trace_contracts_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trace-contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Trace Contracts */
+        get: operations["list_trace_contracts_api_v1_trace_contracts_get"];
+        put?: never;
+        /** Create Trace Contract */
+        post: operations["create_trace_contract_api_v1_trace_contracts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trace-contracts/{contract_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Trace Contract */
+        get: operations["get_trace_contract_api_v1_trace_contracts__contract_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -576,6 +697,72 @@ export interface components {
          * @enum {string}
          */
         AnnotationSeverity: "info" | "warning" | "error";
+        /** CanonicalMessage */
+        CanonicalMessage: {
+            /** Event Index */
+            event_index: number | string;
+            /** Kind */
+            kind?: string | null;
+            /** Role */
+            role?: string | null;
+            content: components["schemas"]["JsonValue"];
+            /** Name */
+            name?: string | null;
+            /** Tool Call Id */
+            tool_call_id?: string | null;
+            tool_calls?: components["schemas"]["JsonValue"] | null;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "ok" | "error" | "cancelled" | "unknown";
+            /** Parent Event Id */
+            parent_event_id?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Tokens In */
+            tokens_in?: number | null;
+            /** Tokens Out */
+            tokens_out?: number | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            source_ref: components["schemas"]["SourceRef"];
+        };
+        /** CanonicalRunRow */
+        CanonicalRunRow: {
+            /**
+             * Schema Version
+             * @default run-row/v1
+             * @constant
+             */
+            schema_version: "run-row/v1";
+            /** Task Id */
+            task_id: string;
+            /** Trial Id */
+            trial_id?: string | null;
+            /** Trace Id */
+            trace_id: string;
+            /** Pairing Key */
+            pairing_key?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure" | "abstain" | "unknown";
+            /** Score */
+            score?: number | null;
+            metrics?: components["schemas"]["RunMetrics"];
+            /** Messages */
+            messages: components["schemas"]["CanonicalMessage"][];
+            error?: components["schemas"]["JsonValue"] | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: string | number | boolean | null;
+            };
+        };
         /** CleanupReport */
         CleanupReport: {
             /** Expired Queries Deleted */
@@ -746,6 +933,13 @@ export interface components {
             /** Default Row Limit */
             default_row_limit?: number | null;
         };
+        /** CursorPagination */
+        CursorPagination: {
+            /** Limit */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** EnumRender */
         EnumRender: {
             /**
@@ -759,6 +953,107 @@ export interface components {
             };
         } & {
             [key: string]: unknown;
+        };
+        /** EventMapping */
+        EventMapping: {
+            /** Kind */
+            kind?: string | null;
+            /**
+             * Role
+             * @default role
+             */
+            role: string | null;
+            /**
+             * Content
+             * @default content
+             */
+            content: string;
+            /**
+             * Name
+             * @default name
+             */
+            name: string | null;
+            /**
+             * Tool Call Id
+             * @default tool_call_id
+             */
+            tool_call_id: string | null;
+            /**
+             * Tool Calls
+             * @default tool_calls
+             */
+            tool_calls: string | null;
+            /** Status */
+            status?: string | null;
+            /** Parent Event Id */
+            parent_event_id?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Latency Ms */
+            latency_ms?: string | null;
+            /** Tokens In */
+            tokens_in?: string | null;
+            /** Tokens Out */
+            tokens_out?: string | null;
+            /** Cost Usd */
+            cost_usd?: string | null;
+        };
+        /** EventRowsContract */
+        EventRowsContract: {
+            /**
+             * Version
+             * @default trace-contract/v1
+             * @constant
+             */
+            version: "trace-contract/v1";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source_layout: "event_rows";
+            /** Task Id */
+            task_id: string;
+            /** Trial Id */
+            trial_id?: string | null;
+            /** Trace Id */
+            trace_id: string;
+            /** Pairing Key */
+            pairing_key?: string | null;
+            /** Outcome */
+            outcome: string;
+            outcome_mapping: components["schemas"]["OutcomeMapping"];
+            status_mapping?: components["schemas"]["EventStatusMapping"] | null;
+            /** Score */
+            score?: string | null;
+            /** Latency Ms */
+            latency_ms?: string | null;
+            /** Token Usage */
+            token_usage?: string | null;
+            /** Cost Usd */
+            cost_usd?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: string;
+            };
+            /** Event Index */
+            event_index: string;
+            event_mapping: components["schemas"]["EventMapping"];
+        };
+        /** EventStatusMapping */
+        EventStatusMapping: {
+            /** Ok Values */
+            ok_values?: (string | number | boolean | null)[];
+            /** Error Values */
+            error_values?: (string | number | boolean | null)[];
+            /** Cancelled Values */
+            cancelled_values?: (string | number | boolean | null)[];
+            /**
+             * Case Sensitive
+             * @default true
+             */
+            case_sensitive: boolean;
         };
         /** ExecuteRequest */
         ExecuteRequest: {
@@ -871,6 +1166,7 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        JsonValue: unknown;
         /** LabelBatchError */
         LabelBatchError: {
             /** Row Identity */
@@ -984,6 +1280,46 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** MessageMapping */
+        MessageMapping: {
+            /**
+             * Role
+             * @default role
+             */
+            role: string;
+            /**
+             * Content
+             * @default content
+             */
+            content: string;
+            /**
+             * Name
+             * @default name
+             */
+            name: string | null;
+            /**
+             * Tool Call Id
+             * @default tool_call_id
+             */
+            tool_call_id: string | null;
+            /**
+             * Tool Calls
+             * @default tool_calls
+             */
+            tool_calls: string | null;
+            /** Status */
+            status?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Latency Ms */
+            latency_ms?: string | null;
+            /** Tokens In */
+            tokens_in?: string | null;
+            /** Tokens Out */
+            tokens_out?: string | null;
+            /** Cost Usd */
+            cost_usd?: string | null;
+        };
         /** MultiSelectField */
         MultiSelectField: {
             /** Key */
@@ -1067,6 +1403,20 @@ export interface components {
             description?: string | null;
             /** Expires At */
             expires_at?: string | null;
+        };
+        /** OutcomeMapping */
+        OutcomeMapping: {
+            /** Success Values */
+            success_values: (string | number | boolean | null)[];
+            /** Failure Values */
+            failure_values: (string | number | boolean | null)[];
+            /** Abstain Values */
+            abstain_values?: (string | number | boolean | null)[];
+            /**
+             * Case Sensitive
+             * @default true
+             */
+            case_sensitive: boolean;
         };
         /** Pagination */
         Pagination: {
@@ -1187,6 +1537,192 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
         };
+        /** RunMetrics */
+        RunMetrics: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Token Usage */
+            token_usage?: number | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+        };
+        /** RunRowsContract */
+        RunRowsContract: {
+            /**
+             * Version
+             * @default trace-contract/v1
+             * @constant
+             */
+            version: "trace-contract/v1";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source_layout: "run_rows";
+            /** Task Id */
+            task_id: string;
+            /** Trial Id */
+            trial_id?: string | null;
+            /** Trace Id */
+            trace_id: string;
+            /** Pairing Key */
+            pairing_key?: string | null;
+            /** Outcome */
+            outcome: string;
+            outcome_mapping: components["schemas"]["OutcomeMapping"];
+            status_mapping?: components["schemas"]["EventStatusMapping"] | null;
+            /** Score */
+            score?: string | null;
+            /** Latency Ms */
+            latency_ms?: string | null;
+            /** Token Usage */
+            token_usage?: string | null;
+            /** Cost Usd */
+            cost_usd?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: string;
+            };
+            /** Messages */
+            messages: string;
+            message_mapping: components["schemas"]["MessageMapping"];
+        };
+        /** RunSnapshotCreate */
+        RunSnapshotCreate: {
+            /** Name */
+            name: string;
+            /** Connection Id */
+            connection_id: number;
+            /** Named Query Id */
+            named_query_id: number;
+            /** Trace Contract Id */
+            trace_contract_id: string;
+            build_policy?: components["schemas"]["SnapshotBuildPolicy"];
+        };
+        /** RunSnapshotListResponse */
+        RunSnapshotListResponse: {
+            /** Items */
+            items: components["schemas"]["RunSnapshotRead"][];
+            pagination: components["schemas"]["CursorPagination"];
+        };
+        /** RunSnapshotManifest */
+        RunSnapshotManifest: {
+            /**
+             * Schema Version
+             * @default run-snapshot/v1
+             * @constant
+             */
+            schema_version: "run-snapshot/v1";
+            /** Snapshot Id */
+            snapshot_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            query: components["schemas"]["SnapshotQueryManifest"];
+            contract: components["schemas"]["SnapshotContractManifest"];
+            policy: components["schemas"]["SnapshotBuildPolicy"];
+            /** Source Row Count */
+            source_row_count: number;
+            /** Run Count */
+            run_count: number;
+        };
+        /** RunSnapshotRead */
+        RunSnapshotRead: {
+            /**
+             * Schema Version
+             * @default run-snapshot-resource/v1
+             * @constant
+             */
+            schema_version: "run-snapshot-resource/v1";
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Trace Contract Id */
+            trace_contract_id: string;
+            /** Trace Contract Version */
+            trace_contract_version: number;
+            /** Connection Id */
+            connection_id: number;
+            /** Named Query Id */
+            named_query_id: number;
+            /** Named Query Name */
+            named_query_name: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "building" | "ready" | "failed" | "corrupted" | "deleted";
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /** Content Sha256 */
+            content_sha256: string | null;
+            /** Artifact Sha256 */
+            artifact_sha256: string | null;
+            /** Artifact Size Bytes */
+            artifact_size_bytes: number;
+            /** Source Row Count */
+            source_row_count: number;
+            /** Run Count */
+            run_count: number;
+            /** Progress Source Rows */
+            progress_source_rows: number;
+            /** Progress Runs */
+            progress_runs: number;
+            /** Pairing Key Field Coverage */
+            pairing_key_field_coverage?: number | null;
+            build_policy: components["schemas"]["SnapshotBuildPolicy"];
+            error: components["schemas"]["SnapshotErrorInfo"] | null;
+            manifest: components["schemas"]["RunSnapshotManifest"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Deleted At */
+            deleted_at: string | null;
+        };
+        /** RunSnapshotRowsResponse */
+        RunSnapshotRowsResponse: {
+            /**
+             * Schema Version
+             * @default run-snapshot-rows/v1
+             * @constant
+             */
+            schema_version: "run-snapshot-rows/v1";
+            /** Items */
+            items: components["schemas"]["CanonicalRunRow"][];
+            pagination: components["schemas"]["CursorPagination"];
+        };
+        /** RunSnapshotStatusRead */
+        RunSnapshotStatusRead: {
+            /**
+             * Schema Version
+             * @default run-snapshot-status/v1
+             * @constant
+             */
+            schema_version: "run-snapshot-status/v1";
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "building" | "ready" | "failed" | "corrupted" | "deleted";
+            /** Progress Source Rows */
+            progress_source_rows: number;
+            /** Progress Runs */
+            progress_runs: number;
+            error: components["schemas"]["SnapshotErrorInfo"] | null;
+            /** Completed At */
+            completed_at: string | null;
+        };
         /** SchedulerJobRead */
         SchedulerJobRead: {
             /** Id */
@@ -1242,6 +1778,53 @@ export interface components {
             /** Options */
             options?: components["schemas"]["LabelOption"][];
         };
+        /** SnapshotBuildPolicy */
+        SnapshotBuildPolicy: {
+            /**
+             * Version
+             * @default snapshot-build/v1
+             * @constant
+             */
+            version: "snapshot-build/v1";
+            /**
+             * Max Source Rows
+             * @default 100000
+             */
+            max_source_rows: number;
+            /**
+             * Max Runs
+             * @default 10000
+             */
+            max_runs: number;
+            /**
+             * Timeout Seconds
+             * @default 30
+             */
+            timeout_seconds: number;
+        };
+        /** SnapshotContractManifest */
+        SnapshotContractManifest: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: number;
+            /** Definition Sha256 */
+            definition_sha256: string;
+        };
+        /** SnapshotErrorInfo */
+        SnapshotErrorInfo: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** SnapshotQueryManifest */
+        SnapshotQueryManifest: {
+            /** Named Query Id */
+            named_query_id: number;
+            /** Sql Sha256 */
+            sql_sha256: string;
+        };
         /** SortConfig */
         SortConfig: {
             /** Column */
@@ -1252,6 +1835,15 @@ export interface components {
              * @enum {string}
              */
             direction: "asc" | "desc";
+        };
+        /** SourceRef */
+        SourceRef: {
+            /** Query Id */
+            query_id: number;
+            /** Row Identity */
+            row_identity: string;
+            /** Json Path */
+            json_path?: string | null;
         };
         /** TableConfig */
         TableConfig: {
@@ -1314,6 +1906,113 @@ export interface components {
             format: string;
         } & {
             [key: string]: unknown;
+        };
+        /** TraceContractCreate */
+        TraceContractCreate: {
+            /** Name */
+            name: string;
+            /** Named Query Id */
+            named_query_id: number;
+            /** Definition */
+            definition: components["schemas"]["RunRowsContract"] | components["schemas"]["EventRowsContract"];
+        };
+        /** TraceContractListResponse */
+        TraceContractListResponse: {
+            /** Items */
+            items: components["schemas"]["TraceContractRead"][];
+            pagination: components["schemas"]["CursorPagination"];
+        };
+        /** TraceContractRead */
+        TraceContractRead: {
+            /**
+             * Schema Version
+             * @default trace-contract-resource/v1
+             * @constant
+             */
+            schema_version: "trace-contract-resource/v1";
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Named Query Id */
+            named_query_id: number;
+            /** Named Query Name */
+            named_query_name: string | null;
+            /** Version */
+            version: number;
+            /** Definition */
+            definition: components["schemas"]["RunRowsContract"] | components["schemas"]["EventRowsContract"];
+            /** Definition Sha256 */
+            definition_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Archived At */
+            archived_at: string | null;
+        };
+        /** TraceContractValidateRequest */
+        TraceContractValidateRequest: {
+            /** Named Query Id */
+            named_query_id: number;
+            /** Definition */
+            definition: components["schemas"]["RunRowsContract"] | components["schemas"]["EventRowsContract"];
+            /**
+             * Sample Limit
+             * @default 100
+             */
+            sample_limit: number;
+        };
+        /** TraceContractValidationResult */
+        TraceContractValidationResult: {
+            /**
+             * Schema Version
+             * @default trace-contract-validation/v1
+             * @constant
+             */
+            schema_version: "trace-contract-validation/v1";
+            /** Valid */
+            valid: boolean;
+            /** Source Row Count */
+            source_row_count: number;
+            /** Valid Run Count */
+            valid_run_count: number;
+            /** Error Count */
+            error_count: number;
+            /** Errors */
+            errors: components["schemas"]["TraceValidationIssue"][];
+            /** Diagnostics */
+            diagnostics: components["schemas"]["TraceDiagnostic"][];
+            /** Pairing Key Field Coverage */
+            pairing_key_field_coverage: number;
+            /** Canonical Preview */
+            canonical_preview: components["schemas"]["CanonicalRunRow"][];
+        };
+        /** TraceDiagnostic */
+        TraceDiagnostic: {
+            /** Code */
+            code: string;
+            /** Path */
+            path: string;
+            /** Source Row Index */
+            source_row_index: number;
+        };
+        /** TraceValidationIssue */
+        TraceValidationIssue: {
+            /** Code */
+            code: string;
+            /** Reason */
+            reason: string;
+            /** Path */
+            path?: string | null;
+            /** Source Row Index */
+            source_row_index?: number | null;
         };
         /** Trajectory */
         Trajectory: {
@@ -2619,6 +3318,171 @@ export interface operations {
             };
         };
     };
+    list_run_snapshots_api_v1_run_snapshots_get: {
+        parameters: {
+            query?: {
+                status?: ("building" | "ready" | "failed" | "corrupted" | "deleted") | null;
+                trace_contract_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshotListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_snapshot_api_v1_run_snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunSnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_snapshot_api_v1_run_snapshots__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_snapshot_status_api_v1_run_snapshots__snapshot_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshotStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_snapshot_rows_api_v1_run_snapshots__snapshot_id__rows_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshotRowsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_selection_snapshot_api_v1_queries__query_id__selection_snapshots_post: {
         parameters: {
             query?: never;
@@ -2736,6 +3600,139 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrajectoryAggregateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_trace_contract_api_v1_trace_contracts_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TraceContractValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceContractValidationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_trace_contracts_api_v1_trace_contracts_get: {
+        parameters: {
+            query?: {
+                named_query_id?: number | null;
+                include_archived?: boolean;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceContractListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_trace_contract_api_v1_trace_contracts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TraceContractCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trace_contract_api_v1_trace_contracts__contract_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceContractRead"];
                 };
             };
             /** @description Validation Error */

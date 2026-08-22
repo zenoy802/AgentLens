@@ -171,6 +171,38 @@ def extract_path(value: object, path: str | CompiledPath) -> object:
     return current
 
 
+def project_source_row(
+    row: Mapping[str, object], contract: CompiledTraceContract
+) -> dict[str, object]:
+    """Copy only contract-declared event-row paths into a temporary projection."""
+    if not isinstance(contract.definition, EventRowsContract):
+        raise TraceContractError(detail={"reason": "source_layout_mismatch"})
+    projected: dict[str, object] = {}
+    declared_paths = [
+        *contract.paths.values(),
+        *contract.metadata_paths.values(),
+        *(path for path in contract.message_paths.values() if path is not None),
+    ]
+    for path in declared_paths:
+        try:
+            value = extract_path(row, path)
+        except TraceContractError:
+            continue
+        _assign_projected_path(projected, path, value)
+    return projected
+
+
+def _assign_projected_path(projected: dict[str, object], path: CompiledPath, value: object) -> None:
+    current = projected
+    for segment in path[:-1]:
+        child = current.get(segment)
+        if not isinstance(child, dict):
+            child = {}
+            current[segment] = child
+        current = child
+    current[path[-1]] = value
+
+
 def normalize_run_row(
     row: Mapping[str, object],
     contract: CompiledTraceContract,
@@ -212,15 +244,21 @@ def aggregate_event_rows(
     *,
     query_id: int,
     row_identities: Sequence[str],
+    source_row_indexes: Sequence[int] | None = None,
 ) -> list[NormalizedRun]:
     """Group event rows by trace id while enforcing trace-level consistency."""
     if not isinstance(contract.definition, EventRowsContract):
         raise TraceContractError(detail={"reason": "source_layout_mismatch"})
-    if len(rows) != len(row_identities):
+    active_source_indexes = (
+        list(range(len(rows))) if source_row_indexes is None else list(source_row_indexes)
+    )
+    if len(rows) != len(row_identities) or len(rows) != len(active_source_indexes):
         raise TraceContractError(detail={"reason": "row_identity_count_mismatch"})
 
     grouped: dict[str, list[tuple[int, Mapping[str, object], str]]] = defaultdict(list)
-    for source_row_index, (row, row_identity) in enumerate(zip(rows, row_identities, strict=True)):
+    for source_row_index, row, row_identity in zip(
+        active_source_indexes, rows, row_identities, strict=True
+    ):
         trace_id = _normalize_identifier(
             _required_value(row, contract.paths["trace_id"], source_row_index),
             contract.paths["trace_id"],

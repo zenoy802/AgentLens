@@ -22,6 +22,7 @@ from app.core.executor_registry import dispose_executor_engines
 from app.core.http_clients import close_http_clients
 from app.core.logging import safe_exception_context, setup_logging
 from app.core.scheduler import shutdown_scheduler, start_scheduler
+from app.core.snapshot_jobs import recover_interrupted_snapshot_builds, shutdown_snapshot_jobs
 from app.core.version import get_app_version
 from app.db.session import dispose_engine, initialize_metadata_database
 
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
         )
         initialize_metadata_database()
         logger.info("Database schema up to date.")
+        recover_interrupted_snapshot_builds()
         scheduler = start_scheduler(settings)
         app.state.scheduler = scheduler
         app.state.started_at = time.monotonic()
@@ -140,6 +142,7 @@ def create_app() -> FastAPI:
         finally:
             logger.info("Graceful shutdown started")
             shutdown_scheduler(getattr(app.state, "scheduler", None))
+            shutdown_snapshot_jobs()
             dispose_executor_engines()
             await annotation_broadcaster.close_all()
             try:

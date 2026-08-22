@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
 from pydantic import (
@@ -12,6 +13,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.schemas.common import CursorPagination
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 CanonicalOutcome: TypeAlias = Literal["success", "failure", "abstain", "unknown"]
@@ -227,3 +230,53 @@ class NormalizationBatch(StrictSchema):
     source_row_count: int = Field(ge=0)
     valid_run_count: int = Field(ge=0)
     pairing_key_field_coverage: float = Field(ge=0.0, le=1.0)
+
+
+class TraceContractCreate(StrictSchema):
+    name: str = Field(min_length=1, max_length=200)
+    named_query_id: int = Field(gt=0)
+    definition: TraceContract
+
+
+class TraceContractValidateRequest(StrictSchema):
+    named_query_id: int = Field(gt=0)
+    definition: TraceContract
+    sample_limit: int = Field(default=100, ge=1, le=100)
+
+
+class TraceValidationIssue(StrictSchema):
+    code: str
+    reason: str
+    path: str | None = None
+    source_row_index: int | None = None
+
+
+class TraceContractValidationResult(StrictSchema):
+    schema_version: Literal["trace-contract-validation/v1"] = "trace-contract-validation/v1"
+    valid: bool
+    source_row_count: int = Field(ge=0)
+    valid_run_count: int = Field(ge=0)
+    error_count: int = Field(ge=0)
+    errors: list[TraceValidationIssue]
+    diagnostics: list[TraceDiagnostic]
+    pairing_key_field_coverage: float = Field(ge=0.0, le=1.0)
+    canonical_preview: list[CanonicalRunRow]
+
+
+class TraceContractRead(StrictSchema):
+    schema_version: Literal["trace-contract-resource/v1"] = "trace-contract-resource/v1"
+    id: str
+    name: str
+    named_query_id: int
+    named_query_name: str | None
+    version: int
+    definition: TraceContract
+    definition_sha256: str
+    created_at: datetime
+    updated_at: datetime
+    archived_at: datetime | None
+
+
+class TraceContractListResponse(StrictSchema):
+    items: list[TraceContractRead]
+    pagination: CursorPagination

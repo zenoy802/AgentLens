@@ -49,8 +49,11 @@ def test_migration_upgrades_empty_database_and_downgrades_cleanly(tmp_path: Path
         assert isinstance(snapshot_columns["named_query_id"], sa.Integer)
         assert isinstance(snapshot_columns["artifact_sha256"], sa.String)
         assert snapshot_columns["artifact_sha256"].length == _SHA256_HEX_LENGTH
+        assert isinstance(snapshot_columns["progress_source_rows"], sa.Integer)
+        assert isinstance(snapshot_columns["progress_runs"], sa.Integer)
         snapshot_indexes = {index["name"] for index in inspector.get_indexes("run_snapshots")}
         assert "ix_run_snapshot_artifact_sha256" in snapshot_indexes
+        assert "uq_run_snapshot_building_input_fingerprint" in snapshot_indexes
     finally:
         engine.dispose()
 
@@ -94,7 +97,7 @@ def test_migration_upgrades_current_head_without_rewriting_legacy_rows(tmp_path:
             name = connection.scalar(sa.text("SELECT name FROM named_queries WHERE id = 42"))
             revision = connection.scalar(sa.text("SELECT version_num FROM alembic_version"))
         assert name == "existing-query"
-        assert revision == "0004_add_trace_contracts_and_run_snapshots"
+        assert revision == "0005_add_snapshot_idempotency_and_progress"
     finally:
         upgraded_engine.dispose()
 

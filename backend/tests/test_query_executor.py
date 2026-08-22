@@ -29,6 +29,8 @@ TIMEOUT_SECONDS = 3
 MYSQL_POOL_SIZE = 5
 ODPS_CONNECTION_ID = 2
 ODPS_TIMEOUT_SECONDS = 8
+STREAM_ROW_LIMIT = 4
+STREAM_BATCH_SIZE = 2
 
 
 class FakeCursor:
@@ -49,6 +51,19 @@ class FakeResult:
 
     def close(self) -> None:
         self.closed = True
+
+
+class StreamingFakeResult(FakeResult):
+    def __init__(self, rows: list[tuple[Any, ...]], description: Sequence[Sequence[Any]]) -> None:
+        super().__init__(rows, description)
+        self.offset = 0
+        self.fetchmany_sizes: list[int] = []
+
+    def fetchmany(self, size: int) -> list[tuple[Any, ...]]:
+        self.fetchmany_sizes.append(size)
+        batch = self.rows[self.offset : self.offset + size]
+        self.offset += len(batch)
+        return batch
 
 
 class FakeDbConnection:
@@ -284,6 +299,45 @@ def test_execute_validates_sql_and_marks_truncated(monkeypatch: pytest.MonkeyPat
     assert executor_result.columns[0].inferred_type == "integer"
 
 
+def test_iter_execute_consumes_mysql_rows_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    description = [("id", FIELD_TYPE.LONGLONG, None, None, None, None, True)]
+    result = StreamingFakeResult([(1,), (2,), (3,), (4,), (5,)], description)
+    db_connection = FakeDbConnection(result=result)
+    fake_engine = FakeEngine(db_connection)
+
+    def fake_get_or_create_engine(
+        self: ExecutorService,
+        connection: Connection,
+    ) -> Engine:
+        assert isinstance(self, ExecutorService)
+        assert connection.id == 1
+        return cast(Engine, fake_engine)
+
+    monkeypatch.setattr(ExecutorService, "_get_or_create_engine", fake_get_or_create_engine)
+
+    with ExecutorService().iter_execute(
+        _connection(),
+        "SELECT id FROM t",
+        timeout=7,
+        row_limit=STREAM_ROW_LIMIT,
+        batch_size=STREAM_BATCH_SIZE,
+    ) as stream:
+        batches = list(stream)
+        assert stream.row_count == STREAM_ROW_LIMIT
+        assert stream.truncated is True
+
+    assert [batch.start_index for batch in batches] == [0, 2]
+    assert [batch.rows for batch in batches] == [
+        [{"id": 1}, {"id": 2}],
+        [{"id": 3}, {"id": 4}],
+    ]
+    assert result.fetchmany_sizes == [2, 2, 1]
+    assert result.closed is True
+    assert db_connection.execution_options_kwargs["max_row_buffer"] == STREAM_BATCH_SIZE
+
+
 def test_execute_preserves_duplicate_column_values(monkeypatch: pytest.MonkeyPatch) -> None:
     description = [
         ("id", FIELD_TYPE.LONGLONG, None, None, None, None, True),
@@ -456,6 +510,47 @@ def test_execute_odps_uses_pyodps_and_marks_truncated(monkeypatch: pytest.Monkey
         {"id": 1, "payload": {"ok": True}, "score": 0.5},
         {"id": 2, "payload": {"ok": False}, "score": 0.7},
     ]
+
+
+def test_iter_execute_consumes_odps_rows_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = FakeOdpsSchema([FakeOdpsColumn("id", "bigint")])
+    reader = FakeOdpsReader(
+        [FakeOdpsRecord([index]) for index in range(1, 6)],
+        schema,
+    )
+    instance = FakeOdpsInstance(reader=reader)
+    odps_client = FakeOdpsClient(instance)
+
+    def fake_build_odps_client(
+        connection: Connection,
+        crypto_service: object,
+    ) -> FakeOdpsClient:
+        assert connection.id == ODPS_CONNECTION_ID
+        assert crypto_service is not None
+        return odps_client
+
+    monkeypatch.setattr("app.services.query_executor._build_odps_client", fake_build_odps_client)
+
+    with ExecutorService().iter_execute(
+        _odps_connection(),
+        "SELECT id FROM t",
+        timeout=ODPS_TIMEOUT_SECONDS,
+        row_limit=STREAM_ROW_LIMIT,
+        batch_size=STREAM_BATCH_SIZE,
+    ) as stream:
+        batches = list(stream)
+        assert stream.row_count == STREAM_ROW_LIMIT
+        assert stream.truncated is True
+
+    assert [batch.start_index for batch in batches] == [0, 2]
+    assert [batch.rows for batch in batches] == [
+        [{"id": 1}, {"id": 2}],
+        [{"id": 3}, {"id": 4}],
+    ]
+    assert instance.wait_timeout == ODPS_TIMEOUT_SECONDS
+    assert instance.open_reader_kwargs == {"tunnel": True, "limit": True}
 
 
 def test_execute_odps_timeout_stops_instance(monkeypatch: pytest.MonkeyPatch) -> None:

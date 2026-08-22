@@ -63,10 +63,37 @@ class SnapshotRowError(ValidationError):
     default_message = "Snapshot source row validation failed."
 
 
+class ArtifactPathError(ValidationError):
+    default_code = "ARTIFACT_PATH_INVALID"
+    default_message = "Artifact path is invalid."
+
+
+class ArtifactCorruptedError(AppError):
+    default_code = "ARTIFACT_CORRUPTED"
+    default_message = "Artifact integrity validation failed."
+    default_http_status = status.HTTP_409_CONFLICT
+
+
+class ArtifactWriteError(AppError):
+    default_code = "ARTIFACT_WRITE_FAILED"
+    default_message = "Artifact could not be written safely."
+    default_http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
 class ConflictError(AppError):
     default_code = "CONFLICT"
     default_message = "Resource conflict."
     default_http_status = status.HTTP_409_CONFLICT
+
+
+class IdempotencyConflictError(ConflictError):
+    default_code = "IDEMPOTENCY_CONFLICT"
+    default_message = "Idempotency key was already used with a different request."
+
+
+class SnapshotStateError(ConflictError):
+    default_code = "SNAPSHOT_STATE_INVALID"
+    default_message = "Snapshot is not in the required state."
 
 
 class SqlForbiddenError(AppError):
