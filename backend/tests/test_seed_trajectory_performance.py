@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-import tiktoken
+from tiktoken import Encoding
 
 from scripts.seed_trajectory_performance import (
     SeedConfig,
@@ -20,31 +20,39 @@ _SMALL_CONTENT_TOKEN_COUNT = 128
 _EXPECTED_ROW_COUNT = 6
 
 
-def test_build_content_matches_requested_token_count() -> None:
-    encoding = tiktoken.get_encoding("cl100k_base")
+@pytest.fixture(scope="module")
+def offline_encoding() -> Encoding:
+    return Encoding(
+        name="agentlens_test_byte_encoding",
+        pat_str=r"(?s).",
+        mergeable_ranks={bytes([value]): value for value in range(256)},
+        special_tokens={},
+    )
 
+
+def test_build_content_matches_requested_token_count(offline_encoding: Encoding) -> None:
     content = build_content(
-        encoding=encoding,
+        encoding=offline_encoding,
         token_count=_CONTENT_TOKEN_COUNT,
         session_id="perf-trajectory-01",
         message_index=3,
         role="tool",
     )
 
-    assert len(encoding.encode(content)) == _CONTENT_TOKEN_COUNT
+    assert len(offline_encoding.encode(content)) == _CONTENT_TOKEN_COUNT
     assert "perf-trajectory-01" in content
 
 
-def test_write_jsonl_persists_expected_trajectory_shape(tmp_path: Path) -> None:
+def test_write_jsonl_persists_expected_trajectory_shape(
+    tmp_path: Path, offline_encoding: Encoding
+) -> None:
     output_path = tmp_path / "trajectories.jsonl"
     config = SeedConfig(
         trajectory_count=2,
         messages_per_trajectory=3,
         tokens_per_message=_SMALL_CONTENT_TOKEN_COUNT,
     )
-    encoding = tiktoken.get_encoding("cl100k_base")
-
-    row_count = write_jsonl(output_path, config, encoding)
+    row_count = write_jsonl(output_path, config, offline_encoding)
     rows = list(iter_jsonl(output_path))
 
     assert row_count == _EXPECTED_ROW_COUNT
@@ -55,7 +63,9 @@ def test_write_jsonl_persists_expected_trajectory_shape(tmp_path: Path) -> None:
     }
     assert [row["message_index"] for row in rows[:3]] == [0, 1, 2]
     assert all(row["content_token_count"] == _SMALL_CONTENT_TOKEN_COUNT for row in rows)
-    assert all(len(encoding.encode(row["content"])) == _SMALL_CONTENT_TOKEN_COUNT for row in rows)
+    assert all(
+        len(offline_encoding.encode(row["content"])) == _SMALL_CONTENT_TOKEN_COUNT for row in rows
+    )
     assert json.loads(json.dumps(rows[0]))["message_id"] == "perf-t01-m000"
 
 
@@ -65,12 +75,14 @@ def test_validate_table_name_rejects_unsafe_identifiers(table: str) -> None:
         validate_table_name(table)
 
 
-def test_insert_params_converts_utc_iso_time_for_mysql_datetime(tmp_path: Path) -> None:
+def test_insert_params_converts_utc_iso_time_for_mysql_datetime(
+    tmp_path: Path, offline_encoding: Encoding
+) -> None:
     output = tmp_path / "single-perf-row.jsonl"
     write_jsonl(
         output,
         SeedConfig(trajectory_count=1, messages_per_trajectory=1, tokens_per_message=32),
-        tiktoken.get_encoding("cl100k_base"),
+        offline_encoding,
     )
     row = next(iter_jsonl(output))
 

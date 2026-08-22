@@ -53,6 +53,16 @@ class ValidationError(AppError):
     default_http_status = status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+class TraceContractError(ValidationError):
+    default_code = "TRACE_CONTRACT_INVALID"
+    default_message = "Trace contract validation failed."
+
+
+class SnapshotRowError(ValidationError):
+    default_code = "SNAPSHOT_ROW_INVALID"
+    default_message = "Snapshot source row validation failed."
+
+
 class ConflictError(AppError):
     default_code = "CONFLICT"
     default_message = "Resource conflict."

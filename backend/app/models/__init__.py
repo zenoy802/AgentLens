@@ -5,6 +5,7 @@ from app.models.llm import LLMAnalysis, LLMProvider
 from app.models.misc import GlobalRenderRule, QueryHistory
 from app.models.named_query import NamedQuery
 from app.models.selection_snapshot import SelectionSnapshot
+from app.models.trace_contract import RunSnapshot, TraceContract
 from app.models.view_config import ViewConfig
 
 
@@ -21,6 +22,8 @@ def import_all_models() -> None:
         QueryHistory,
         Annotation,
         SelectionSnapshot,
+        TraceContract,
+        RunSnapshot,
     )
 
 
@@ -34,7 +37,9 @@ __all__ = [
     "LabelSchema",
     "NamedQuery",
     "QueryHistory",
+    "RunSnapshot",
     "SelectionSnapshot",
+    "TraceContract",
     "ViewConfig",
     "import_all_models",
 ]
