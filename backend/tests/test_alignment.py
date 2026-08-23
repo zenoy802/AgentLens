@@ -93,8 +93,15 @@ def test_golden_corpus_reports_exact_and_degraded_coverage_separately() -> None:
     exact_coverage = sum(result.quality == "exact" for result in exact_results) / len(exact_results)
     end_to_end = [*exact_results, degraded]
     degraded_coverage = sum(result.quality == "degraded" for result in end_to_end) / len(end_to_end)
+    exact_fad_category_correct = sum(
+        (result.first_action_divergence.category if result.first_action_divergence else None)
+        == case["expected_fad"]
+        for result, case in zip(exact_results, _GOLD_CASES, strict=True)
+    )
     assert exact_coverage == 1.0
+    assert exact_fad_category_correct == len(_GOLD_CASES)
     assert degraded.quality == "degraded"
+    assert degraded.first_action_divergence is None
     assert degraded_coverage > 0.0
 
 

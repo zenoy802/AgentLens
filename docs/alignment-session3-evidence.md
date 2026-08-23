@@ -10,6 +10,10 @@ upgrade design targets into product claims.
   calls, tool choice/argument/result changes, status-only failure, and object/array ordering.
 - Synthetic exact coverage and deliberately degraded coverage are asserted separately by
   `backend/tests/test_alignment.py`.
+- Synthetic FAD category results: exact path 10/10; deliberately degraded path 1/1; combined
+  11/11. Path coverage is exact 10/11 and degraded 1/11. The degraded case is one long,
+  identical pair used to prove the fallback path and denominator reporting; it is not broad
+  degraded-path accuracy evidence.
 - Real Agent gold: **not measured**. The design release gate requires at least 50 real Agent pairs
   within a 100-pair human-labelled corpus. The collection plan remains
   `docs/real-alignment-gold-collection-plan.md`; no synthetic result is reported as real accuracy.
