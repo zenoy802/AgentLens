@@ -237,6 +237,190 @@ def test_top_level_help_mentions_live_and_snapshot() -> None:
     assert "agentlens context export --query 42" in result.output
 
 
+def test_local_diff_json_reports_observed_and_action_divergence(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    baseline.write_text(
+        json.dumps(_local_diff_run("baseline", assistant_text="I will search.", limit=10)),
+        encoding="utf-8",
+    )
+    candidate.write_text(
+        json.dumps(_local_diff_run("candidate", assistant_text="I shall search.", limit=100)),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "diff",
+            "--baseline-trace",
+            str(baseline),
+            "--candidate-trace",
+            str(candidate),
+            "--format",
+            "json",
+        ],
+        env=BASE_ENV,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["schema_version"] == "trajectory-alignment/v1"
+    assert payload["first_observed_divergence"]["category"] == "assistant_content_changed"
+    assert payload["first_action_divergence"]["category"] == "tool_argument_changed"
+    assert payload["steps"][1]["field_diffs"][0]["path"] == "$.arguments.limit"
+
+
+def test_local_diff_rejects_invalid_trace_without_backend_request(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{}", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "diff",
+            "--baseline-trace",
+            str(invalid),
+            "--candidate-trace",
+            str(invalid),
+        ],
+        env=BASE_ENV,
+    )
+
+    assert result.exit_code == 1
+    assert "Unable to diff traces" in result.output
+
+
+def test_local_diff_text_accepts_wrapped_trace_and_policy(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    policy = tmp_path / "policy.json"
+    baseline.write_text(
+        json.dumps({"run": _local_diff_run("baseline", assistant_text="same", limit=10)}),
+        encoding="utf-8",
+    )
+    candidate.write_text(
+        json.dumps({"run": _local_diff_run("candidate", assistant_text="same", limit=10)}),
+        encoding="utf-8",
+    )
+    policy.write_text(
+        json.dumps(
+            {
+                "canonicalization_policy": {"version": "canonicalization/v1"},
+                "alignment_policy": {"version": "alignment/v1"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "diff",
+            "--baseline-trace",
+            str(baseline),
+            "--candidate-trace",
+            str(candidate),
+            "--policy",
+            str(policy),
+        ],
+        env=BASE_ENV,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "quality: exact" in result.output
+    assert "first observed divergence: none" in result.output
+    assert "first action divergence: none" in result.output
+
+
+def test_local_diff_accepts_canonical_trajectory_fixtures(tmp_path: Path) -> None:
+    from app.schemas.trace_contract import CanonicalRunRow  # noqa: PLC0415
+    from app.services.canonicalization import canonicalize_run  # noqa: PLC0415
+
+    baseline = tmp_path / "baseline-canonical.json"
+    candidate = tmp_path / "candidate-canonical.json"
+    baseline_trajectory = canonicalize_run(
+        CanonicalRunRow.model_validate(_local_diff_run("baseline", assistant_text="same", limit=10))
+    )
+    candidate_trajectory = canonicalize_run(
+        CanonicalRunRow.model_validate(
+            _local_diff_run("candidate", assistant_text="same", limit=11)
+        )
+    )
+    baseline.write_text(baseline_trajectory.model_dump_json(), encoding="utf-8")
+    candidate.write_text(candidate_trajectory.model_dump_json(), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "diff",
+            "--baseline-trace",
+            str(baseline),
+            "--candidate-trace",
+            str(candidate),
+            "--format",
+            "json",
+        ],
+        env=BASE_ENV,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["first_action_divergence"]["category"] == (
+        "tool_argument_changed"
+    )
+
+
+def _local_diff_run(trace_id: str, *, assistant_text: str, limit: int) -> dict[str, Any]:
+    return {
+        "schema_version": "run-row/v1",
+        "task_id": "task-1",
+        "trial_id": None,
+        "trace_id": trace_id,
+        "pairing_key": None,
+        "outcome": "success",
+        "score": None,
+        "metrics": {"latency_ms": None, "token_usage": None, "cost_usd": None},
+        "messages": [
+            {
+                "event_index": 0,
+                "kind": None,
+                "role": "assistant",
+                "content": assistant_text,
+                "name": None,
+                "tool_call_id": None,
+                "tool_calls": None,
+                "status": "unknown",
+                "parent_event_id": None,
+                "timestamp": None,
+                "latency_ms": None,
+                "tokens_in": None,
+                "tokens_out": None,
+                "cost_usd": None,
+                "source_ref": {"query_id": 1, "row_identity": "row-0", "json_path": None},
+            },
+            {
+                "event_index": 1,
+                "kind": None,
+                "role": "assistant",
+                "content": "",
+                "name": None,
+                "tool_call_id": None,
+                "tool_calls": [{"function": {"name": "search", "arguments": {"limit": limit}}}],
+                "status": "unknown",
+                "parent_event_id": None,
+                "timestamp": None,
+                "latency_ms": None,
+                "tokens_in": None,
+                "tokens_out": None,
+                "cost_usd": None,
+                "source_ref": {"query_id": 1, "row_identity": "row-1", "json_path": None},
+            },
+        ],
+        "error": None,
+        "metadata": {},
+    }
+
+
 def test_top_level_help_does_not_import_backend_server_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

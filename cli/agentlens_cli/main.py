@@ -193,6 +193,7 @@ from agentlens_cli.commands.annotation import annotate, annotation, highlight  #
 from agentlens_cli.commands.connection import connection  # noqa: E402
 from agentlens_cli.commands.context import context  # noqa: E402
 from agentlens_cli.commands.data import data  # noqa: E402
+from agentlens_cli.commands.diff import diff_traces  # noqa: E402
 from agentlens_cli.commands.query import query  # noqa: E402
 from agentlens_cli.commands.schema import schema  # noqa: E402
 
@@ -204,6 +205,7 @@ cli.add_command(cast(click.Command, annotate))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, highlight))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, schema))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, context))  # type: ignore[has-type]
+cli.add_command(cast(click.Command, diff_traces))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, run))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, cleanup))  # type: ignore[has-type]
 cli.add_command(cast(click.Command, export_config))  # type: ignore[has-type]

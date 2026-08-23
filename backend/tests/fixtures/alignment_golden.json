@@ -1,0 +1,118 @@
+[
+  {
+    "name": "assistant_only_near_match",
+    "baseline": [
+      {"role": "assistant", "content": "The careful research assistant will inspect every available record before selecting the strongest relevant evidence and writing a concise answer for the user today without omitting important details."}
+    ],
+    "candidate": [
+      {"role": "assistant", "content": "The careful research assistant will inspect every available record before selecting the strongest reliable evidence and writing a concise answer for the user today without omitting important details."}
+    ],
+    "expected_fod": "assistant_content_near_match",
+    "expected_fad": null,
+    "expected_ops": ["near_match"]
+  },
+  {
+    "name": "text_then_tool_argument",
+    "baseline": [
+      {"role": "assistant", "content": "I will search carefully for the requested record now."},
+      {"role": "assistant", "content": "", "tool_calls": [{"id": "call-a", "function": {"name": "search", "arguments": {"query": "agent", "limit": 10}}}]}
+    ],
+    "candidate": [
+      {"role": "assistant", "content": "I will now search carefully for the requested record."},
+      {"role": "assistant", "content": "", "tool_calls": [{"id": "call-b", "function": {"name": "search", "arguments": {"limit": 100, "query": "agent"}}}]}
+    ],
+    "expected_fod": "assistant_content_changed",
+    "expected_fad": "tool_argument_changed",
+    "expected_ops": ["change", "change"]
+  },
+  {
+    "name": "volatile_tool_result",
+    "baseline": [
+      {"role": "tool", "name": "shell", "tool_call_id": "a", "content": {"timestamp": "2026-08-21T10:11:12Z", "request_id": "550e8400-e29b-41d4-a716-446655440000", "log": "pid=8123 http://localhost:4317 wrote /tmp/run-a/output.txt", "value": 17}}
+    ],
+    "candidate": [
+      {"role": "tool", "name": "shell", "tool_call_id": "b", "content": {"value": 17, "log": "pid=9911 http://localhost:9876 wrote /private/tmp/run-b/output.txt", "request_id": "8d29e2f1-d506-46e4-95de-ee9d9ff19da7", "timestamp": "2026-08-22T10:11:12Z"}}
+    ],
+    "expected_fod": null,
+    "expected_fad": null,
+    "expected_ops": ["match"]
+  },
+  {
+    "name": "retry_insertion_rejoins",
+    "baseline": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"query": "alpha"}}}]},
+      {"role": "tool", "name": "search", "content": {"items": [1, 2]}, "status": "ok"},
+      {"role": "assistant", "content": "The result is ready."}
+    ],
+    "candidate": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"query": "alpha"}}}]},
+      {"role": "tool", "name": "search", "content": "temporary timeout", "status": "error"},
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"query": "alpha"}}}]},
+      {"role": "tool", "name": "search", "content": {"items": [1, 2]}, "status": "ok"},
+      {"role": "assistant", "content": "The result is ready."}
+    ],
+    "expected_fod": "message_inserted",
+    "expected_fad": "message_inserted",
+    "expected_ops": ["insert", "insert", "match", "match", "match"]
+  },
+  {
+    "name": "repeated_second_call_changed",
+    "baseline": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 1}}}]},
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 2}}}]},
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 3}}}]}
+    ],
+    "candidate": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 1}}}]},
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 20}}}]},
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"page": 3}}}]}
+    ],
+    "expected_fod": "tool_argument_changed",
+    "expected_fad": "tool_argument_changed",
+    "expected_ops": ["match", "change", "match"]
+  },
+  {
+    "name": "tool_name_changed",
+    "baseline": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "search", "arguments": {"q": "x"}}}]}
+    ],
+    "candidate": [
+      {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "fetch", "arguments": {"q": "x"}}}]}
+    ],
+    "expected_fod": "tool_name_changed",
+    "expected_fad": "tool_name_changed",
+    "expected_ops": ["change"]
+  },
+  {
+    "name": "tool_result_changed",
+    "baseline": [{"role": "tool", "name": "search", "content": {"count": 2}}],
+    "candidate": [{"role": "tool", "name": "search", "content": {"count": 3}}],
+    "expected_fod": "tool_result_changed",
+    "expected_fad": "tool_result_changed",
+    "expected_ops": ["change"]
+  },
+  {
+    "name": "status_only_error",
+    "baseline": [{"role": "tool", "name": "search", "content": "same", "status": "ok"}],
+    "candidate": [{"role": "tool", "name": "search", "content": "same", "status": "error"}],
+    "expected_fod": "error_or_termination_changed",
+    "expected_fad": "error_or_termination_changed",
+    "expected_ops": ["change"]
+  },
+  {
+    "name": "object_key_order",
+    "baseline": [{"role": "tool", "name": "calc", "content": {"a": 1, "b": 2}}],
+    "candidate": [{"role": "tool", "name": "calc", "content": {"b": 2, "a": 1}}],
+    "expected_fod": null,
+    "expected_fad": null,
+    "expected_ops": ["match"]
+  },
+  {
+    "name": "array_order_changed",
+    "baseline": [{"role": "tool", "name": "calc", "content": [1, 2, 3]}],
+    "candidate": [{"role": "tool", "name": "calc", "content": [3, 2, 1]}],
+    "expected_fod": "tool_result_changed",
+    "expected_fad": "tool_result_changed",
+    "expected_ops": ["change"]
+  }
+]
